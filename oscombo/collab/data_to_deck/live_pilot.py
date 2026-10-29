@@ -540,6 +540,29 @@ def _activate_ready_document(guest: LoggedGuest, path: str, phase: str) -> None:
         "window": guest._window_sample(phase), "atomic": False})
 
 
+def _prepare_saved_document_reopen(guest: LoggedGuest, path: str, phase: str,
+                                   application: str, log_path: str,
+                                   model_episode: bool) -> bool:
+    """Restore a saved model output whose window was closed during the episode.
+
+    The scored file is already on disk. This runs only after both Actors have
+    stopped and never arbitrates their live GUI input. It returns whether the
+    window had to be opened from the saved file before the normal close/reopen
+    check.
+    """
+    try:
+        _activate_ready_document(guest, path, phase)
+        return False
+    except RuntimeError as exc:
+        if not model_episode or "could not activate" not in str(exc):
+            raise
+        if "Save Document?" in (guest.active_window() or ""):
+            raise
+        _launch(guest, application, path, log_path)
+        _activate_ready_document(guest, path, phase + "-restored")
+        return True
+
+
 def _clipboard(guest: LoggedGuest, run_id: str, payload: bytes | None = None) -> None:
     payload = payload if payload is not None else _gold_tsv()
     payload_path = f"/tmp/{run_id}/analysis.tsv"
@@ -1343,7 +1366,10 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
             guest, guest_path = role_paths[role]
             before_bytes = guest.env.controller.get_file(guest_path)
             try:
-                _activate_ready_document(guest, guest_path, f"reopen-{role}-before")
+                restored_closed_window = _prepare_saved_document_reopen(
+                    guest, guest_path, f"reopen-{role}-before",
+                    "calc" if role == "A" else b_application,
+                    f"/tmp/{run_id}/restore-{role}.log", bool(model))
             except RuntimeError:
                 active = guest.active_window() or ""
                 if not model or "Save Document?" not in active:
@@ -1382,7 +1408,9 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
                     raise RuntimeError(f"saved {role} artifact changed or disappeared during GUI reopen")
                 reopen_evidence.append({"actor": role, "guest_key": guest.guest_key,
                                         "sha256": __import__("hashlib").sha256(after_bytes).hexdigest(),
-                                        "same_bytes_after_gui_reopen": True, "time": time.time()})
+                    "same_bytes_after_gui_reopen": True,
+                    "restored_closed_window": restored_closed_window,
+                    "time": time.time()})
                 if condition == "collaborative_isolated":
                     peer_guest = guest_b if role == "A" else guest_a
                     _launch(peer_guest, "calc" if role == "A" else b_application, guest_path,
