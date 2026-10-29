@@ -1,6 +1,16 @@
 # CoDesk Collaboration Case Registry
 
-This registry covers the seven standalone collaboration cases in this checkout. Offline fixtures and scripted or application-level checks are not model-agent results. No OSWorld Guest, QEMU, or model was started for Cases 6–7 in this branch update.
+This registry covers the seven original standalone collaboration cases and their independent Lite variants. Offline fixtures and scripted or application-level checks are not model-agent results. The original Case 6/7 packages remain at their previously documented validation level; the Lite variants below have separate real Guest evidence.
+
+## New independent Lite variants (2026-10-29)
+
+| Original case | Lite variant | Real Guest scripted controls | Real model evidence |
+|---|---|---|---|
+| 3 Build-and-Verify | [Lite v1.0.4](build_and_verify_lite_v1/DESIGN.md) | Shared and Isolated positive PASS with GUI editor, Chrome, saved file, browser screenshot, reopen and reset. | Isolated small-budget Pilot failed before A saved; full Shared/Isolated pair is recorded in `audits/three_lite_cases_20261029/REPORT.md`. |
+| 6 Spreadsheet Handoff | [Lite v1.0.0](spreadsheet_handoff_lite_v1/DESIGN.md) | Shared and Isolated positive PASS with Calc, saved ODS, bridge revision, reopen and reset. | One full Shared had model/Oracle success but a postscore infra error; another Shared and one Isolated model run failed. Preserve and distinguish all episodes in the report. |
+| 7 Workspace Assembly | [Lite v1.0.1](workspace_assembly_lite_v1/DESIGN.md) | Shared and Isolated positive controls for the new lifecycle are recorded separately from v1.0.0. | v1.0.0 Shared and Isolated model runs failed; v1.0.1 adds identical B yield/wake lifecycle to both topologies. New runs are in the report. |
+
+These Lite variants have their own Task Cards, public fixtures, private Gold, Oracle and Guest adapters. No original Case Card, fixture, Gold or Oracle was overwritten. The reported run IDs and verdicts refer only to the Lite variants.
 
 ## Validation status
 
@@ -125,7 +135,7 @@ Dependencies: Python/Pillow and optional LibreOffice Writer + system UNO for the
 
 ## Shared limitations and safety
 
-- No Case 6/7 run in this update reached Guest, Solo, MA-ID, MA-SD, or model validation.
+- The **original** Case 6/7 packages in the seven-case table have no Guest or model validation claim. Their independent Lite variants have separate Guest/model runs, linked above.
 - The case packages reuse the same Data-to-Deck message/attachment service. Tokens and hidden oracle directories under run roots are private; do not mount them into actor workspaces.
 - Case 6's ODS repository and Case 7's canonical workspace are condition-invariant in configuration. The Guest adapters that expose them to desktop sessions are pending; do not interpret offline plan equality as a completed backend test.
 - Message count does not prove substantive collaboration. Window changes alone do not prove interference. Future attribution requires action/screenshot/app-state evidence and a non-atomic sampling caveat.
