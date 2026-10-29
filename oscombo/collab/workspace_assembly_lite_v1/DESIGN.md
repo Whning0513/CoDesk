@@ -1,3 +1,5 @@
 # Design
 
 This Lite task reduces four attachments, an integrity manifest and four Writer links to one file-manager move and one report sentence. B needs the inspection tag inside A's delivered file and can inspect the draft before A finishes. The Shared desktop naturally pits File Manager and Writer focus against each other. The Isolated bridge must publish A's newly created delivery file, preserve its revision and make it readable in B's Guest. This missing-at-start output is a deliberate engineering gate; an artifact-only Oracle cannot prove that B actually read the delivered file.
+
+Version 1.0.1 changes only the handoff lifecycle instruction and coordinator option. B may finish its current turn while waiting for A; the coordinator pauses B's remaining active model time, watches public message and saved-file revision state, then resumes B's own thread. This is enabled identically in Shared and Isolated with `--yield-wait-lifecycle`. The v1.0.0 Isolated model run had a valid A file move and bridge transfer, but B exhausted its wall-clock budget immediately before the late handoff. Both v1.0.0 model runs and their Oracle records remain frozen.

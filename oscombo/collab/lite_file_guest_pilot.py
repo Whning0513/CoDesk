@@ -207,7 +207,8 @@ def _browser_trace_audit(run_root: Path) -> dict:
 
 def run(case: str, condition: str, run_root: Path, provider: Path, image: str, runtime: str,
         model: str | None, base_url: str, api_key_env: str, mcp_python: str,
-        model_timeout: float, diagnostic_step_limit: int | None, negative: bool) -> dict:
+        model_timeout: float, diagnostic_step_limit: int | None, negative: bool,
+        yield_wait_lifecycle: bool = False) -> dict:
     spec, fixtures, oracle = _profile(case)
     if condition not in spec.CONDITIONS:
         raise ValueError(condition)
@@ -221,6 +222,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 "model": model, "model_called": bool(model), "started_at": time.time(),
                 "endpoint": base_url if model else None,
                 "role_budget_contract": spec.ROLE_BUDGET,
+                "yield_wait_lifecycle": bool(yield_wait_lifecycle),
                 "scripted_negative_control": negative}
     ledger = RunLedger(run_root, metadata)
     (run_root / "ownership.json").write_text(json.dumps({"run_id": run_id, "resources": [],
@@ -302,6 +304,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                     max_steps=core._effective_role_steps(role, diagnostic_step_limit, spec.ROLE_BUDGET),
                     timeout=model_timeout, relay_client_token_env=relay_env,
                     workspace_bridge=True, handoff_from=spec.HANDOFF_DEPENDENCIES.get(role),
+                    yield_wait=yield_wait_lifecycle,
                     case_id=spec.CASE_ID)
             with ThreadPoolExecutor(max_workers=2, thread_name_prefix="lite-file-actor") as pool:
                 futures = {role: pool.submit(actor, role) for role in "AB"}
@@ -496,6 +499,8 @@ def main(argv: list[str] | None = None):
     parser.add_argument("--model-timeout", type=float, default=1200)
     parser.add_argument("--diagnostic-step-limit", type=int)
     parser.add_argument("--scripted-negative", action="store_true")
+    parser.add_argument("--yield-wait-lifecycle", action="store_true",
+                        help="pause B's active model budget after it voluntarily yields for A's handoff")
     args = parser.parse_args(argv)
     run_root = args.run_root.resolve()
     if args.model and not os.environ.get(args.api_key_env):
@@ -504,7 +509,8 @@ def main(argv: list[str] | None = None):
         result = run(args.case, args.condition, run_root,
                      args.provider.resolve(), args.image, args.runtime,
                      args.model, args.base_url, args.api_key_env, args.mcp_python,
-                     args.model_timeout, args.diagnostic_step_limit, args.scripted_negative)
+                     args.model_timeout, args.diagnostic_step_limit, args.scripted_negative,
+                     args.yield_wait_lifecycle)
     except Exception as exc:
         failure = {"status": "INVALID_INFRA_OR_RUNNER_ERROR", "run_id": args.run_root.name,
                    "error": f"{type(exc).__name__}: {exc}", "traceback": traceback.format_exc()}

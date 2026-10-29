@@ -361,6 +361,12 @@ env = {{ {env_toml} }}
                      "send_attachment, and read_attachment. Use them to exchange task evidence or ask for "
                      "clarification. You may decide when communication is useful; there is no required "
                      "message count or timing. The collaboration API exposes no evaluator or hidden state.")
+            if self.collaboration.get("yield_wait"):
+                text += ("\n\nIf your task requires a peer's saved file and message and they are not yet "
+                         "available, send any needed request, then finish your current turn stating that "
+                         "you are waiting. The coordinator will suspend this same conversation and resume "
+                         "it after the public handoff arrives. Use desktop wait only for a loading GUI, "
+                         "not to poll for a peer. No task answer is supplied during resume.")
         return text
 
     def run(self, ctx: AgentContext) -> AgentResult:

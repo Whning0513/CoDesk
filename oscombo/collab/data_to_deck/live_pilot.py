@@ -616,6 +616,7 @@ def _run_model_actor(role: str, guest: LoggedGuest, instruction: str, run_root: 
                      relay_client_token_env: str | None = None,
                      workspace_bridge: bool = False,
                      handoff_from: str | None = None,
+                     yield_wait: bool = False,
                      case_id: str = spec.CASE_ID) -> dict[str, Any]:
     """Run the existing CodexHarness against a real Guest and the case message API."""
     from oscombo.harness.base import AgentContext
@@ -632,7 +633,8 @@ def _run_model_actor(role: str, guest: LoggedGuest, instruction: str, run_root: 
         options["redact_env_keys"] = [api_key_env]
     if collab_url and token_env:
         options["collaboration"] = {"actor": role, "url": collab_url, "token_env": token_env,
-                                    "workspace_bridge": workspace_bridge}
+                                    "workspace_bridge": workspace_bridge,
+                                    "yield_wait": bool(yield_wait and handoff_from)}
     actor_spec = {"harness": "codex", "model": model, "effort": effort, "options": options}
     ctx = AgentContext(name=role, task_id=case_id, instruction=instruction,
                        guest=guest, out=actor_root, max_steps=max_steps,
@@ -653,12 +655,16 @@ def _run_model_actor(role: str, guest: LoggedGuest, instruction: str, run_root: 
         newest_unseen = bool(state["peer_message_ids"] and
                              state["peer_message_ids"][-1] not in seen_ids)
         if state["own_revision"] == 0 and (not state["ready"] or newest_unseen):
+            deadline, resume_budget = _handoff_wait_budgets(
+                started, time.monotonic(), timeout, yield_wait)
             _append(run_root / "actor_lifecycle.jsonl", {
                 "event": "suspended_for_peer_handoff", "actor": role, "peer": handoff_from,
                 "time": time.time(), "elapsed_s": round(time.monotonic() - started, 3),
                 "desktop_steps": result.steps, "state": state,
-                "newest_peer_message_seen": not newest_unseen})
-            deadline = started + timeout
+                "newest_peer_message_seen": not newest_unseen,
+                "wait_deadline_monotonic": deadline,
+                "remaining_active_model_s": round(resume_budget, 3),
+                "pause_active_budget": bool(yield_wait)})
             peer_finished_seen_at = None
             while not state["ready"] and time.monotonic() < deadline and not ctx.stop.is_set():
                 time.sleep(min(1.0, max(0.0, deadline - time.monotonic())))
@@ -679,12 +685,13 @@ def _run_model_actor(role: str, guest: LoggedGuest, instruction: str, run_root: 
                             "time": time.time(), "elapsed_s": round(time.monotonic() - started, 3),
                             "state": state})
                         break
-            if state["ready"] and deadline - time.monotonic() > 5:
+            active_remaining = (resume_budget if yield_wait else deadline - time.monotonic())
+            if state["ready"] and active_remaining > 5:
                 _append(run_root / "actor_lifecycle.jsonl", {
                     "event": "woken_by_peer_handoff", "actor": role, "peer": handoff_from,
                     "time": time.time(), "elapsed_s": round(time.monotonic() - started, 3),
                     "state": state})
-                result = harness.resume_after_external_update(ctx, deadline - time.monotonic())
+                result = harness.resume_after_external_update(ctx, active_remaining)
             elif result.status != "blocked_on_peer":
                 result.status = "timeout"
                 _append(run_root / "actor_lifecycle.jsonl", {
@@ -701,6 +708,15 @@ def _run_model_actor(role: str, guest: LoggedGuest, instruction: str, run_root: 
                "harness_version": harness.harness_version}
     _append(run_root / "actors.jsonl", summary)
     return summary
+
+
+def _handoff_wait_budgets(started: float, now: float, timeout: float,
+                          pause_active_budget: bool) -> tuple[float, float]:
+    """Return wall wait deadline and model time remaining after a voluntary yield."""
+    if pause_active_budget:
+        return now + timeout, max(0.0, timeout - (now - started))
+    deadline = started + timeout
+    return deadline, max(0.0, deadline - now)
 
 
 def _public_handoff_state(client: CollaborationClient, peer: str, actor: str) -> dict[str, Any]:
