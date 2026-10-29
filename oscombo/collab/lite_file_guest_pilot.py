@@ -138,7 +138,7 @@ def _scripted_actions(case: str, role: str, task_root: str, fixtures, negative: 
         note = ("Query: North\nStatus: Delivered\nVisible order IDs: " +
                 ("none" if negative else "OD-104") + "\nSaved source: orderdesk.html\n")
         return [
-            "import pyautogui, time; pyautogui.hotkey('ctrl','shift','r'); time.sleep(3)",
+            f"import pyautogui, time; pyautogui.hotkey('ctrl','l'); pyautogui.write({('file://' + task_root + '/outputs/agent_A/orderdesk.html')!r}, 0.01); pyautogui.press('enter'); time.sleep(3)",
             "import pyautogui, time; pyautogui.click(680,268); pyautogui.write('North', 0.1); time.sleep(1)",
             "import pyautogui, time; pyautogui.click(1050,268); pyautogui.press('end'); pyautogui.press('enter'); time.sleep(1)",
             "import pyautogui, time; pyautogui.click(1180,268); time.sleep(3)",
@@ -270,7 +270,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
         if case == "build_verify":
             _launch(guest_b, "editor", b_path, run_id)
             _launch(guest_a, "editor", a_path, run_id)
-            _launch(guest_b, "browser", a_path, run_id)
+            _launch(guest_b, "browser", f"{task_root}/input/{spec.FIXTURE_NAMES['source']}", run_id)
             a_app, b_app = "editor", "editor"
         else:
             _launch(guest_a, "files", f"{task_root}/incoming", run_id)

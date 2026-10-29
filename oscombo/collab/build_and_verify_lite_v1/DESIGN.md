@@ -5,3 +5,5 @@ This Lite task removes backend setup, server testing, framework navigation and m
 Patch 1.0.1 accepts harmless line indentation and trailing blank lines added by the Guest text editor. It still requires the same ordered non-whitespace source lines with only the Delivered value repaired. A browser screenshot showing one visible result after A's saved revision is required for an end-to-end PASS.
 
 Patch 1.0.2 makes B use a hard reload after the saved source revision; the v1.0.1 Guest screenshot showed a stale option value despite a correct saved file and ordinary Ctrl+R. Both desktop conditions receive the same instruction and Adapter behavior.
+
+Patch 1.0.3 opens the original read-only input HTML in Chrome at setup. After A publishes the corrected output file, B navigates to that distinct saved output path in the address bar. The v1.0.2 Shared Guest control still showed the original option after Ctrl+Shift+R, so a new URL is needed to verify the saved revision in the actual browser. Both conditions use the same initial page and navigation instruction.
