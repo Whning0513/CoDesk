@@ -1370,22 +1370,28 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
                     guest, guest_path, f"reopen-{role}-before",
                     "calc" if role == "A" else b_application,
                     f"/tmp/{run_id}/restore-{role}.log", bool(model))
-            except RuntimeError:
-                active = guest.active_window() or ""
-                if not model or "Save Document?" not in active:
+            except RuntimeError as exc:
+                if not model:
                     raise
-                # A timed-out Actor may leave unsaved edits and LO's save
-                # question. Scoring already used the saved bytes above. Do not
-                # click Save or silently change that artifact for a lifecycle
-                # check; preserve the modal screenshot and continue to reset.
-                shot_path = run_root / "screenshots" / f"reopen-{role}-blocked-unsaved.png"
-                shot_path.write_bytes(guest.screenshot(patience=45))
+                # Model scoring already used the saved bytes. A peer may have
+                # closed this document or left a modal Open/Save dialog.
+                # Record the postscore lifecycle failure and continue to the
+                # exact run-owned reset without answering the dialog or
+                # changing the scored file.
+                active = guest.active_window() or ""
+                shot_path = run_root / "screenshots" / f"reopen-{role}-activation-failed.png"
+                try:
+                    shot_path.write_bytes(guest.screenshot(patience=45))
+                    shot = str(shot_path.relative_to(run_root))
+                except Exception:
+                    shot = None
                 reopen_complete = False
                 reopen_evidence.append({"actor": role, "guest_key": guest.guest_key,
-                    "same_bytes_after_gui_reopen": False, "blocked_by_unsaved_dialog": True,
-                    "active_window": active,
+                    "same_bytes_after_gui_reopen": False,
+                    "blocked_by_unsaved_dialog": "Save Document?" in active,
+                    "active_window": active, "postscore_activation_error": str(exc),
                     "saved_sha256": __import__("hashlib").sha256(before_bytes).hexdigest(),
-                    "screenshot": str(shot_path.relative_to(run_root)), "time": time.time()})
+                    "screenshot": shot, "time": time.time()})
                 continue
             try:
                 guest.actor = "system"
