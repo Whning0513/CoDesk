@@ -200,6 +200,42 @@ def _lite_v2_calc_actions(negative: bool = False) -> list[str]:
     ]
 
 
+def _spreadsheet_lite_select_cell(column_offset: int) -> str:
+    # Select from A1 through the grid. LibreOffice's name box can retain text
+    # focus after Return, and donation banners can move fixed row coordinates.
+    return ("import pyautogui, time; pyautogui.click(900,600); "
+            "pyautogui.hotkey('ctrl','home'); "
+            f"pyautogui.press('right', presses={column_offset}, interval=0.15); "
+            "pyautogui.press('down', presses=2, interval=0.15); time.sleep(1)")
+
+
+def _spreadsheet_lite_forecast_actions(negative: bool = False) -> list[str]:
+    formula = "=-1" if negative else "=AVERAGE(B3:D3)*2+G3-E3-F3"
+    return [
+        _spreadsheet_lite_select_cell(7),
+        f"import pyautogui, time; pyautogui.write({formula!r}, 0.08); time.sleep(1)",
+        "import pyautogui, time; pyautogui.press('enter'); time.sleep(1)",
+        _spreadsheet_lite_select_cell(8),
+        "import pyautogui, time; pyautogui.write('B3:G3', 0.12); time.sleep(1)",
+        "import pyautogui, time; pyautogui.press('enter'); time.sleep(1)",
+        "import pyautogui, time; pyautogui.hotkey('ctrl','s'); time.sleep(3)",
+        "DONE",
+    ]
+
+
+def _spreadsheet_lite_order_actions(units: int) -> list[str]:
+    return [
+        _spreadsheet_lite_select_cell(4),
+        f"import pyautogui, time; pyautogui.write({str(units)!r}, 0.12); time.sleep(1)",
+        "import pyautogui, time; pyautogui.press('enter'); time.sleep(1)",
+        _spreadsheet_lite_select_cell(5),
+        "import pyautogui, time; pyautogui.write('=E3*C3', 0.12); time.sleep(1)",
+        "import pyautogui, time; pyautogui.press('enter'); time.sleep(1)",
+        "import pyautogui, time; pyautogui.hotkey('ctrl','s'); time.sleep(3)",
+        "DONE",
+    ]
+
+
 def _lite_v2_impress_actions(change: float) -> list[str]:
     # The optional LibreOffice donation banners shift the slide canvas down
     # about 40 pixels on a fresh Guest. Search the unique draft sentence in
@@ -427,23 +463,21 @@ def _shell(guest: LoggedGuest, script: str, timeout: int = 45) -> dict[str, Any]
     return result
 
 
-def _install_fixture(guest: LoggedGuest, fixture_dir: Path, task_root: str) -> None:
+def _install_fixture(guest: LoggedGuest, fixture_dir: Path, task_root: str,
+                     profile_spec=spec, source_keys: tuple[str, str] = ("authority", "draft")) -> None:
     pieces = [f"test ! -e {shlex.quote(task_root)}",
               f"mkdir -p {shlex.quote(task_root + '/input')} {shlex.quote(task_root + '/outputs/agent_A')} "
               f"{shlex.quote(task_root + '/outputs/agent_B')}"]
-    for name in (spec.FIXTURE_NAMES["authority"], spec.FIXTURE_NAMES["draft"], spec.FIXTURE_NAMES["brief"]):
+    for name in profile_spec.FIXTURE_NAMES.values():
         payload = base64.b64encode((fixture_dir / name).read_bytes()).decode("ascii")
         dest = f"{task_root}/input/{name}"
         pieces.append(f"printf %s {shlex.quote(payload)} | base64 -d > {shlex.quote(dest)}")
-    pieces.extend([
-        f"chmod -R a-w {shlex.quote(task_root + '/input')}",
-        f"cp {shlex.quote(task_root + '/input/' + spec.FIXTURE_NAMES['authority'])} "
-        f"{shlex.quote(task_root + '/outputs/agent_A/verified_analysis.ods')}",
-        f"cp {shlex.quote(task_root + '/input/' + spec.FIXTURE_NAMES['draft'])} "
-        f"{shlex.quote(task_root + '/outputs/agent_B/final_management_brief.odp')}",
-        f"chmod u+w {shlex.quote(task_root + '/outputs/agent_A/verified_analysis.ods')} "
-        f"{shlex.quote(task_root + '/outputs/agent_B/final_management_brief.odp')}",
-    ])
+    pieces.append(f"chmod -R a-w {shlex.quote(task_root + '/input')}")
+    for role, source_key in zip("AB", source_keys, strict=True):
+        source = task_root + "/input/" + profile_spec.FIXTURE_NAMES[source_key]
+        target = task_root + "/" + profile_spec.OUTPUTS[role]
+        pieces.append(f"cp {shlex.quote(source)} {shlex.quote(target)}")
+        pieces.append(f"chmod u+w {shlex.quote(target)}")
     _shell(guest, "set -e\n" + "\n".join(pieces), timeout=60)
 
 
@@ -454,7 +488,10 @@ def _office_frame_ready(png: bytes) -> bool:
         if frame.size != (1920, 1080):
             return False
         toolbar = frame.convert("L").crop((100, 85, 1800, 220))
-        return sum(toolbar.histogram()[:128]) / (toolbar.width * toolbar.height) > 0.01
+        # The pinned Guest's wallpaper is dark and can still report the stale
+        # Calc window title while the window has not painted yet. A ready
+        # LibreOffice toolbar is predominantly light in this image.
+        return sum(toolbar.histogram()[180:]) / (toolbar.width * toolbar.height) > 0.5
 
 
 def _launch(guest: LoggedGuest, application: str, path: str, log: str, readonly: bool = False) -> None:
@@ -822,17 +859,24 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
               case_lite_v1: bool = False,
               case_lite_v2: bool = False,
               case_lite_v2_1: bool = False,
+              case_spreadsheet_lite_v1: bool = False,
               handoff_lifecycle: bool = False,
               scripted_negative: bool = False) -> dict[str, Any]:
-    if sum(bool(value) for value in (case_lite_v1, case_lite_v2, case_lite_v2_1)) > 1:
+    if sum(bool(value) for value in (case_lite_v1, case_lite_v2, case_lite_v2_1,
+                                    case_spreadsheet_lite_v1)) > 1:
         raise ValueError("select only one case version")
     lite_v2_family = case_lite_v2 or case_lite_v2_1
-    if scripted_negative and (not lite_v2_family or model):
-        raise ValueError("scripted_negative applies only to v2 family scripted controls")
-    if handoff_lifecycle and (not lite_v2_family or not model or condition not in
+    lite_handoff_family = lite_v2_family or case_spreadsheet_lite_v1
+    if scripted_negative and (not lite_handoff_family or model):
+        raise ValueError("scripted_negative applies only to supported Lite scripted controls")
+    if handoff_lifecycle and (not lite_handoff_family or not model or condition not in
                               {"collaborative_shared", "collaborative_isolated"}):
-        raise ValueError("handoff_lifecycle requires a collaborative v2 model run")
-    if case_lite_v2_1:
+        raise ValueError("handoff_lifecycle requires a collaborative Lite model run")
+    if case_spreadsheet_lite_v1:
+        from oscombo.collab.spreadsheet_handoff_lite_v1 import spec as case_spec
+        from oscombo.collab.spreadsheet_handoff_lite_v1.fixtures import build_fixture as case_build_fixture
+        from oscombo.collab.spreadsheet_handoff_lite_v1.oracle import evaluate as case_evaluate
+    elif case_lite_v2_1:
         from oscombo.collab.data_to_deck_lite_v2_1 import spec as case_spec
         from oscombo.collab.data_to_deck_lite_v2_1.fixtures import build_fixture as case_build_fixture
         from oscombo.collab.data_to_deck_lite_v2_1.oracle import evaluate as case_evaluate
@@ -906,7 +950,7 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
                 "effective_role_step_budget": {role: _effective_role_steps(role, diagnostic_step_limit, case_spec.ROLE_BUDGET)
                                                 for role in ((solo_role,) if is_solo else ("A", "B"))},
                 "message_api_enabled": True, "attachment_api_enabled": True,
-                "lite_peer_documents_preopened": bool((case_lite_v1 or lite_v2_family) and model and
+                "lite_peer_documents_preopened": bool((case_lite_v1 or lite_handoff_family) and model and
                                                       condition == "collaborative_isolated"),
                 "scripted_negative_control": scripted_negative,
                 "handoff_lifecycle": handoff_lifecycle,
@@ -943,7 +987,8 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
     relay_client_token_env: str | None = None
     # Guest overlays are episode-private; a fixed public path keeps the role
     # prompts identical across conditions without exposing the treatment name.
-    task_root = ("/tmp/codesk-data-to-deck-lite-v2-1" if case_lite_v2_1 else
+    task_root = ("/tmp/codesk-spreadsheet-handoff-lite-v1" if case_spreadsheet_lite_v1 else
+                 "/tmp/codesk-data-to-deck-lite-v2-1" if case_lite_v2_1 else
                  "/tmp/codesk-data-to-deck-lite-v2" if case_lite_v2 else
                  "/tmp/codesk-data-to-deck-lite-v1" if case_lite_v1 else
                  "/tmp/codesk-data-to-deck")
@@ -980,43 +1025,50 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
             _append(run_root / "resource_actions.jsonl", {"action": "guest_created",
                 "run_id": run_id, "guest_key": key, "container_id": cid,
                 "labels": _owned_container(env, run_id)[1], "time_utc": _stamp()})
-            _install_fixture(guest, fixture_dir, task_root)
+            _install_fixture(guest, fixture_dir, task_root, case_spec,
+                             ("forecast", "order") if case_spreadsheet_lite_v1 else ("authority", "draft"))
 
         guest_a = guests["shared"] if condition == "collaborative_shared" else (
             guests["solo"] if is_solo else guests["A"])
         guest_b = guests["shared"] if condition == "collaborative_shared" else (
             guests["solo"] if is_solo else guests["B"])
+        a_output = f"{task_root}/{case_spec.OUTPUTS['A']}"
+        b_output = f"{task_root}/{case_spec.OUTPUTS['B']}"
+        b_application = "calc" if case_spreadsheet_lite_v1 else "impress"
         if not is_solo:
             from .workspace_bridge import SavedArtifactBridge
             workspace_bridge = SavedArtifactBridge(
                 run_root / "workspace_versions", run_id, task_root,
                 {"A": guest_a.env.controller, "B": guest_b.env.controller},
                 {"A": guest_a.guest_key, "B": guest_b.guest_key},
-                case_id=case_spec.CASE_ID, peer_read_only=case_lite_v1 or lite_v2_family)
+                case_id=case_spec.CASE_ID, peer_read_only=case_lite_v1 or lite_handoff_family,
+                outputs=case_spec.OUTPUTS,
+                mime_types=({"A": "application/vnd.oasis.opendocument.spreadsheet",
+                             "B": "application/vnd.oasis.opendocument.spreadsheet"}
+                            if case_spreadsheet_lite_v1 else None))
             server.workspace_bridge = workspace_bridge
             workspace_bridge.start()
-        _launch(guest_a, "calc", f"{task_root}/outputs/agent_A/verified_analysis.ods",
+        _launch(guest_a, "calc", a_output,
                 f"/tmp/{run_id}/calc.log")
         if model:
-            if (case_lite_v1 or lite_v2_family) and condition == "collaborative_isolated":
+            if (case_lite_v1 or lite_handoff_family) and condition == "collaborative_isolated":
                 # The Shared desktop already has both role documents open.
                 # Give each Isolated desktop the same open-document choices;
                 # restore the role's own application to the foreground before
                 # either Actor starts. Peer copies are read-only on disk.
-                _launch(guest_a, "impress", f"{task_root}/outputs/agent_B/final_management_brief.odp",
-                        f"/tmp/{run_id}/peer-impress.log", readonly=True)
-                _launch(guest_b, "calc", f"{task_root}/outputs/agent_A/verified_analysis.ods",
+                _launch(guest_a, b_application, b_output,
+                        f"/tmp/{run_id}/peer-{b_application}.log", readonly=True)
+                _launch(guest_b, "calc", a_output,
                         f"/tmp/{run_id}/peer-calc.log", readonly=True)
-                _activate_ready_document(guest_a,
-                    f"{task_root}/outputs/agent_A/verified_analysis.ods", "isolated-A-own-foreground")
-            _launch(guest_b, "impress", f"{task_root}/outputs/agent_B/final_management_brief.odp",
-                    f"/tmp/{run_id}/impress.log")
+                _activate_ready_document(guest_a, a_output, "isolated-A-own-foreground")
+            _launch(guest_b, b_application, b_output,
+                    f"/tmp/{run_id}/{b_application}.log")
             # Solo A and Solo B share one Guest object. Opening Impress after Calc
             # otherwise leaves the role-only A calibration on the wrong app.
             # Shared/isolated collaborative conditions retain their existing setup.
             if condition == "solo_A":
                 _activate_ready_document(
-                    guest_a, f"{task_root}/outputs/agent_A/verified_analysis.ods",
+                    guest_a, a_output,
                     "solo_A_calc_foreground")
             actor_roles = (solo_role,) if is_solo else ("A", "B")
             collaboration_roles = () if is_solo else actor_roles
@@ -1025,9 +1077,10 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
 
             instructions = {
                 "A": case_spec.AGENT_A_INSTRUCTION +
-                    f"\nThe open editable output workbook is {task_root}/outputs/agent_A/verified_analysis.ods.",
+                    f"\nThe open editable output workbook is {a_output}.",
                 "B": case_spec.AGENT_B_INSTRUCTION +
-                    f"\nThe open editable output presentation is {task_root}/outputs/agent_B/final_management_brief.odp.",
+                    (f"\nThe open editable output workbook is {b_output}." if case_spreadsheet_lite_v1
+                     else f"\nThe open editable output presentation is {b_output}."),
             }
             if is_solo:
                 instructions[solo_role] += "\nThis is a role-only solvability run. Complete your assigned role goal without waiting for or messaging another Actor."
@@ -1038,10 +1091,11 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
                         "Use publish_saved_artifact after saving to verify delivery, and list_saved_artifacts "
                         "to obtain revision/hash metadata. "
                         + ("You may open the other role's file read-only through the GUI if needed. "
-                           if lite_v2_family else
+                           if lite_handoff_family else
                            "Open the other role's file read-only through the GUI; reopen it to read a newly saved revision. ")
                         + "Do not write the other role's output. "
-                        "Edit documents through Calc and Impress; do not use Terminal commands, scripts, "
+                        f"Edit documents through {'Calc' if case_spreadsheet_lite_v1 else 'Calc and Impress'}; "
+                        "do not use Terminal commands, scripts, "
                         "macros or evaluator files to generate document contents.")
             actor_barrier = threading.Barrier(len(actor_roles))
             def actor_task(role: str) -> dict[str, Any]:
@@ -1102,6 +1156,31 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
                 max_steps=case_spec.ROLE_BUDGET["B"]["steps"], case_id=case_spec.CASE_ID)
             if outcomes["B"]["status"] != "done":
                 raise RuntimeError(f"Lite v2 B scripted GUI did not finish: {outcomes['B']}")
+            workspace_bridge.publish("B")
+        elif case_spreadsheet_lite_v1:
+            from oscombo.collab.spreadsheet_handoff_lite_v1.private.gold import expected_plan
+            need, units, _ = expected_plan()
+            outcomes["A"] = _run_actor(
+                "A", guest_a, case_spec.AGENT_A_INSTRUCTION,
+                _spreadsheet_lite_forecast_actions(scripted_negative), run_root,
+                max_steps=case_spec.ROLE_BUDGET["A"]["steps"], case_id=case_spec.CASE_ID)
+            if outcomes["A"]["status"] != "done":
+                raise RuntimeError(f"Spreadsheet Lite A scripted GUI did not finish: {outcomes['A']}")
+            workspace_bridge.publish("A")
+            if guest_b.env.controller.get_file(a_output) != guest_a.env.controller.get_file(a_output):
+                raise RuntimeError("Spreadsheet Lite B Guest cannot read saved A revision")
+            message = clients["A"].send_message(
+                "B", f"Forecast saved: net need {need} units from Forecast!B3:G3 in forecast.ods. "
+                     "Use the saved revision for whole-case order planning.")
+            if not any(m["message_id"] == message["message_id"] for m in clients["B"].read_messages()):
+                raise RuntimeError("Spreadsheet Lite B cannot read A's message")
+            _launch(guest_b, "calc", b_output, f"/tmp/{run_id}/order-calc.log")
+            outcomes["B"] = _run_actor(
+                "B", guest_b, case_spec.AGENT_B_INSTRUCTION,
+                _spreadsheet_lite_order_actions(units), run_root,
+                max_steps=case_spec.ROLE_BUDGET["B"]["steps"], case_id=case_spec.CASE_ID)
+            if outcomes["B"]["status"] != "done":
+                raise RuntimeError(f"Spreadsheet Lite B scripted GUI did not finish: {outcomes['B']}")
             workspace_bridge.publish("B")
         elif case_lite_v1:
             from oscombo.collab.data_to_deck_lite_v1.private.gold import gold_findings_rows
@@ -1198,8 +1277,7 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
         # saved files actually produced by the GUI actions below.
         guest_save_evidence = {}
         artifact_roles = (solo_role,) if is_solo else ("A", "B")
-        role_paths = {"A": (guest_a, f"{task_root}/outputs/agent_A/verified_analysis.ods"),
-                      "B": (guest_b, f"{task_root}/outputs/agent_B/final_management_brief.odp")}
+        role_paths = {"A": (guest_a, a_output), "B": (guest_b, b_output)}
         for role in artifact_roles:
             guest, guest_path = role_paths[role]
             proof = _shell(guest,
@@ -1211,18 +1289,20 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
 
         artifact_items = [{"actor": role, "guest_id": role_paths[role][0].guest_key,
                            "guest_path": role_paths[role][1],
-                           "local_path": f"{role}/{'verified_analysis.ods' if role == 'A' else 'final_management_brief.odp'}"}
+                           "local_path": f"{role}/{Path(role_paths[role][1]).name}"}
                           for role in artifact_roles]
         guest_controllers = {key: envs[key].controller for key in envs}
         manifest = collect_artifacts(run_root, artifact_items, GuestFiles(guest_controllers))
         (run_root / "guest_save_evidence.json").write_text(
             json.dumps(guest_save_evidence, indent=2, sort_keys=True) + "\n")
-        analysis_path = (run_root / "artifacts/A/verified_analysis.ods" if "A" in artifact_roles
-                         else fixture_dir / case_spec.FIXTURE_NAMES["authority"])
-        deck_path = (run_root / "artifacts/B/final_management_brief.odp" if "B" in artifact_roles
-                     else fixture_dir / case_spec.FIXTURE_NAMES["draft"])
-        oracle = case_evaluate(fixture_dir / case_spec.FIXTURE_NAMES["authority"], analysis_path,
-                          fixture_dir / case_spec.FIXTURE_NAMES["draft"], deck_path)
+        source_a_key, source_b_key = (("forecast", "order") if case_spreadsheet_lite_v1
+                                       else ("authority", "draft"))
+        analysis_path = (run_root / "artifacts/A" / Path(a_output).name if "A" in artifact_roles
+                         else fixture_dir / case_spec.FIXTURE_NAMES[source_a_key])
+        deck_path = (run_root / "artifacts/B" / Path(b_output).name if "B" in artifact_roles
+                     else fixture_dir / case_spec.FIXTURE_NAMES[source_b_key])
+        oracle = case_evaluate(fixture_dir / case_spec.FIXTURE_NAMES[source_a_key], analysis_path,
+                               fixture_dir / case_spec.FIXTURE_NAMES[source_b_key], deck_path)
         (run_root / "oracle.json").write_text(json.dumps(oracle, indent=2, sort_keys=True) + "\n")
 
         # Post-execution lifecycle check: close/reopen via real GUI, without
@@ -1265,7 +1345,7 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
                 _shell(guest, f"for i in $(seq 1 30); do "
                               f"wmctrl -l | grep -Fq {shlex.quote(Path(guest_path).name)} || exit 0; "
                               "sleep 1; done; exit 1", timeout=40)
-                _launch(guest, "calc" if role == "A" else "impress", guest_path,
+                _launch(guest, "calc" if role == "A" else b_application, guest_path,
                         f"/tmp/{run_id}/reopen-{role}.log")
                 after_bytes = guest.env.controller.get_file(guest_path)
                 if not before_bytes or before_bytes != after_bytes:
@@ -1275,7 +1355,7 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
                                         "same_bytes_after_gui_reopen": True, "time": time.time()})
                 if condition == "collaborative_isolated":
                     peer_guest = guest_b if role == "A" else guest_a
-                    _launch(peer_guest, "calc" if role == "A" else "impress", guest_path,
+                    _launch(peer_guest, "calc" if role == "A" else b_application, guest_path,
                             f"/tmp/{run_id}/peer-read-{role}.log", readonly=True)
                     peer_bytes = peer_guest.env.controller.get_file(guest_path)
                     if peer_bytes != after_bytes:
@@ -1457,6 +1537,8 @@ def main(argv: list[str] | None = None) -> None:
                         help="run the independent Data-to-Deck Lite v2 profile")
     parser.add_argument("--case-lite-v2-1", action="store_true",
                         help="run Lite v2.1 with the versioned equivalent-unit Oracle")
+    parser.add_argument("--case-spreadsheet-lite-v1", action="store_true",
+                        help="run the independent Spreadsheet Handoff Lite v1 profile")
     parser.add_argument("--handoff-lifecycle", action="store_true",
                         help="suspend a v2 B Actor that exits before A's public handoff, then resume it")
     parser.add_argument("--scripted-negative", action="store_true",
@@ -1515,6 +1597,7 @@ def main(argv: list[str] | None = None) -> None:
                            case_lite_v1=args.case_lite_v1,
                            case_lite_v2=args.case_lite_v2,
                            case_lite_v2_1=args.case_lite_v2_1,
+                           case_spreadsheet_lite_v1=args.case_spreadsheet_lite_v1,
                            handoff_lifecycle=args.handoff_lifecycle,
                            scripted_negative=args.scripted_negative)
     except Exception as exc:

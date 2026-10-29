@@ -26,13 +26,29 @@ def digest(data: bytes) -> str:
 class SavedArtifactBridge:
     def __init__(self, root: Path, run_id: str, task_root: str, controllers: dict,
                  guest_ids: dict[str, str], poll_seconds: float = 2,
-                 case_id: str = spec.CASE_ID, peer_read_only: bool = False):
+                 case_id: str = spec.CASE_ID, peer_read_only: bool = False,
+                 outputs: dict[str, str] | None = None,
+                 mime_types: dict[str, str | None] | None = None,
+                 allow_initial_missing: set[str] | None = None):
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=False)
         self.run_id, self.task_root = run_id, task_root
         self.controllers, self.guest_ids = controllers, guest_ids
         self.poll_seconds = poll_seconds
         self.peer_read_only = peer_read_only
+        self.outputs = dict(spec.OUTPUTS if outputs is None else outputs)
+        self.mime_types = dict({
+            "A": "application/vnd.oasis.opendocument.spreadsheet",
+            "B": "application/vnd.oasis.opendocument.presentation",
+        } if mime_types is None else mime_types)
+        self.allow_initial_missing = set(allow_initial_missing or ())
+        if set(self.outputs) != {"A", "B"} or set(self.mime_types) != {"A", "B"}:
+            raise ValueError("bridge needs one output and MIME contract per role")
+        if not self.allow_initial_missing <= {"A", "B"}:
+            raise ValueError("unknown role allowed to create an output")
+        if any(not path or Path(path).is_absolute() or ".." in Path(path).parts
+               for path in self.outputs.values()):
+            raise ValueError("bridge output paths must remain under the task root")
         self.current: dict[str, dict] = {}
         self.peer_hashes: dict[str, str] = {}
         self._lock = threading.RLock()
@@ -41,10 +57,11 @@ class SavedArtifactBridge:
         self.errors: list[str] = []
         (self.root / "ownership.json").write_text(json.dumps({
             "run_id": run_id, "case_id": case_id,
-            "outputs": spec.OUTPUTS, "writer_roles": {p: r for r, p in spec.OUTPUTS.items()},
+            "outputs": self.outputs, "writer_roles": {p: r for r, p in self.outputs.items()},
             "guest_ids": guest_ids, "root": str(self.root.resolve()),
             "scope": "saved-file publication ownership; GUI role discipline is separate",
             "peer_read_only": peer_read_only,
+            "allow_initial_missing": sorted(self.allow_initial_missing),
         }, indent=2) + "\n")
 
     def _record(self, **event):
@@ -56,6 +73,16 @@ class SavedArtifactBridge:
         if not data:
             raise RuntimeError(f"no saved artifact returned by Guest {self.guest_ids[role]}")
         return data
+
+    def _exists(self, role: str, path: str) -> bool:
+        result = self.controllers[role].run_bash_script(
+            f"if test -f {shlex.quote(path)}; then printf 1; else printf 0; fi", timeout=30)
+        if not isinstance(result, dict) or result.get("status") != "success":
+            raise RuntimeError("Guest artifact existence check failed")
+        value = (result.get("output") or "").strip()
+        if value not in {"0", "1"}:
+            raise RuntimeError("Guest artifact existence check returned an invalid value")
+        return value == "1"
 
     def _write(self, role: str, path: str, data: bytes):
         # A same-directory rename avoids exposing a half-written zip container.
@@ -75,7 +102,9 @@ class SavedArtifactBridge:
         if not self.peer_read_only or self.guest_ids["A"] == self.guest_ids["B"]:
             return
         peer = "B" if owner == "A" else "A"
-        path = f"{self.task_root}/{spec.OUTPUTS[owner]}"
+        path = f"{self.task_root}/{self.outputs[owner]}"
+        if owner in self.allow_initial_missing and not self._exists(peer, path):
+            return
         result = self.controllers[peer].run_bash_script(
             f"set -e\nchmod a-w -- {shlex.quote(path)}\nstat -c %a -- {shlex.quote(path)}", timeout=30)
         mode = (result.get("output") or "").strip() if isinstance(result, dict) else ""
@@ -86,36 +115,43 @@ class SavedArtifactBridge:
 
     def publish(self, actor: str) -> dict:
         """Publish only this actor's fixed output; callers cannot select a path."""
-        if actor not in self.controllers or actor not in spec.OUTPUTS:
+        if actor not in self.controllers or actor not in self.outputs:
             raise ValueError("no output owned by this actor")
         with self._lock:
             started = time.time()
-            path = f"{self.task_root}/{spec.OUTPUTS[actor]}"
+            path = f"{self.task_root}/{self.outputs[actor]}"
             data = self._read(actor, path)
             # Read twice and check ZIP CRCs before transferring a GUI save.
             if self._read(actor, path) != data:
                 raise RuntimeError("artifact changed during save; retry after saving completes")
-            with zipfile.ZipFile(io.BytesIO(data)) as archive:
-                if archive.testzip() is not None:
-                    raise RuntimeError("saved artifact has an invalid ZIP checksum")
-                expected = ("application/vnd.oasis.opendocument.spreadsheet" if actor == "A"
-                            else "application/vnd.oasis.opendocument.presentation")
-                if archive.read("mimetype").decode() != expected:
-                    raise RuntimeError("saved artifact is not the role's ODF document type")
+            expected = self.mime_types[actor]
+            if expected is not None:
+                with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                    if archive.testzip() is not None:
+                        raise RuntimeError("saved artifact has an invalid ZIP checksum")
+                    if archive.read("mimetype").decode() != expected:
+                        raise RuntimeError("saved artifact is not the role's ODF document type")
+            else:
+                data.decode("utf-8")
             sha = digest(data)
             previous = self.current.get(actor)
             peer = "B" if actor == "A" else "A"
             distinct = self.guest_ids[actor] != self.guest_ids[peer]
             if distinct:
-                peer_hash = digest(self._read(peer, path))
+                peer_hash = digest(self._read(peer, path)) if (
+                    actor not in self.allow_initial_missing or self._exists(peer, path)) else None
                 # Never silently overwrite an unexpected peer edit or broken sync.
                 allowed = {sha, self.peer_hashes[actor]} if actor in self.peer_hashes else {sha}
+                if actor in self.allow_initial_missing and actor not in self.peer_hashes:
+                    allowed.add(None)
                 if peer_hash not in allowed:
                     self._record(event="ownership_or_sync_conflict", actor=actor, peer=peer,
                                  peer_sha256=peer_hash, source_sha256=sha)
                     raise RuntimeError("non-owner output changed or prior transfer is inconsistent")
             if not previous or previous["sha256"] != sha:
-                revision = 0 if previous is None else previous["revision"] + 1
+                # A file that is absent in both Guests at setup has no seed
+                # revision. Its first delivered save is the first handoff.
+                revision = (1 if actor in self.allow_initial_missing else 0) if previous is None else previous["revision"] + 1
                 local = self.root / actor / f"revision-{revision:06d}{Path(path).suffix}"
                 local.parent.mkdir(exist_ok=True)
                 with local.open("xb") as stream:
@@ -144,6 +180,10 @@ class SavedArtifactBridge:
 
     def sync(self):
         for role in ("A", "B"):
+            if role in self.allow_initial_missing and role not in self.current:
+                path = f"{self.task_root}/{self.outputs[role]}"
+                if not self._exists(role, path):
+                    continue
             self.publish(role)
 
     def start(self):

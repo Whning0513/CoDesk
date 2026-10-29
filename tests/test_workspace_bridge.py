@@ -26,6 +26,9 @@ class Files:
     def run_bash_script(self, script, timeout=30):
         if self.fail_transfer:
             return {"status": "error"}
+        if script.startswith("if test -f "):
+            path = shlex.split(script.split(";", 1)[0])[3]
+            return {"status": "success", "output": "1" if path in self.files else "0"}
         lines = script.splitlines()
         if lines[-1].startswith("stat -c %a"):
             path = shlex.split(lines[-1])[-1]
@@ -154,3 +157,77 @@ def test_http_publication_bound_to_authenticated_role(tmp_path):
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+
+def test_case_specific_dual_workbook_outputs_preserve_role_ownership(tmp_path):
+    fixture = tmp_path / "fixture"
+    build_fixture(fixture)
+    initial = (fixture / spec.FIXTURE_NAMES["authority"]).read_bytes()
+    outputs = {"A": "outputs/forecast.ods", "B": "outputs/order.ods"}
+    files = {f"/task/{path}": initial for path in outputs.values()}
+    a, b = Files(files), Files(files)
+    mime = "application/vnd.oasis.opendocument.spreadsheet"
+    bridge = SavedArtifactBridge(tmp_path / "versions", "workbook-case", "/task",
+                                 {"A": a, "B": b}, {"A": "A", "B": "B"},
+                                 outputs=outputs, mime_types={"A": mime, "B": mime},
+                                 peer_read_only=True)
+    bridge.start()
+    try:
+        b.files["/task/outputs/order.ods"] = edited_workbook(tmp_path)
+        revision = bridge.publish("B")
+        assert revision["revision"] == 1
+        assert a.files["/task/outputs/order.ods"] == b.files["/task/outputs/order.ods"]
+        assert a.modes["/task/outputs/order.ods"] == "444"
+        ownership = json.loads((bridge.root / "ownership.json").read_text())
+        assert ownership["writer_roles"]["outputs/order.ods"] == "B"
+    finally:
+        bridge.stop()
+
+
+def test_text_output_contract_rejects_non_utf8_and_syncs_saved_source(tmp_path):
+    fixture = tmp_path / "fixture"
+    build_fixture(fixture)
+    ods = (fixture / spec.FIXTURE_NAMES["authority"]).read_bytes()
+    outputs = {"A": "outputs/app.js", "B": "outputs/qa.ods"}
+    files = {"/task/outputs/app.js": b"const ready = false;\n",
+             "/task/outputs/qa.ods": ods}
+    a, b = Files(files), Files(files)
+    bridge = SavedArtifactBridge(tmp_path / "versions", "code-case", "/task",
+                                 {"A": a, "B": b}, {"A": "A", "B": "B"},
+                                 outputs=outputs,
+                                 mime_types={"A": None, "B": "application/vnd.oasis.opendocument.spreadsheet"})
+    bridge.sync()
+    a.files["/task/outputs/app.js"] = b"\xff"
+    with pytest.raises(UnicodeDecodeError):
+        bridge.publish("A")
+    assert b.files["/task/outputs/app.js"] == b"const ready = false;\n"
+    a.files["/task/outputs/app.js"] = b"const ready = true;\n"
+    assert bridge.publish("A")["revision"] == 1
+    assert b.files["/task/outputs/app.js"] == a.files["/task/outputs/app.js"]
+
+
+def test_new_file_is_published_only_after_owner_creates_it(tmp_path):
+    fixture = tmp_path / "fixture"
+    build_fixture(fixture)
+    outputs = {"A": "outputs/agent_A/note.txt", "B": "outputs/agent_B/report.odp"}
+    b_path = f"/task/{outputs['B']}"
+    a_path = f"/task/{outputs['A']}"
+    draft = (fixture / spec.FIXTURE_NAMES["draft"]).read_bytes()
+    a, b = Files({b_path: draft}), Files({b_path: draft})
+    bridge = SavedArtifactBridge(tmp_path / "versions", "new-file", "/task",
+                                 {"A": a, "B": b}, {"A": "A", "B": "B"},
+                                 outputs=outputs,
+                                 mime_types={"A": None, "B": "application/vnd.oasis.opendocument.presentation"},
+                                 allow_initial_missing={"A"}, peer_read_only=True)
+    bridge.start()
+    try:
+        assert set(bridge.snapshot()) == {"B"}
+        with pytest.raises(RuntimeError, match="no saved artifact"):
+            bridge.publish("A")
+        a.files[a_path] = b"inspection tag: RIVER-27\n"
+        revision = bridge.publish("A")
+        assert revision["revision"] == 1
+        assert b.files[a_path] == a.files[a_path]
+        assert b.modes[a_path] == "444"
+    finally:
+        bridge.stop()
