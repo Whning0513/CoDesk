@@ -138,7 +138,7 @@ def _scripted_actions(case: str, role: str, task_root: str, fixtures, negative: 
         note = ("Query: North\nStatus: Delivered\nVisible order IDs: " +
                 ("none" if negative else "OD-104") + "\nSaved source: orderdesk.html\n")
         return [
-            "import pyautogui, time; pyautogui.hotkey('ctrl','r'); time.sleep(3)",
+            "import pyautogui, time; pyautogui.hotkey('ctrl','shift','r'); time.sleep(3)",
             "import pyautogui, time; pyautogui.click(680,268); pyautogui.write('North', 0.1); time.sleep(1)",
             "import pyautogui, time; pyautogui.click(1050,268); pyautogui.press('end'); pyautogui.press('enter'); time.sleep(1)",
             "import pyautogui, time; pyautogui.click(1180,268); time.sleep(3)",
@@ -231,10 +231,15 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
     server_thread.start()
     clients = {r: CollaborationClient(f"http://127.0.0.1:{server.server_port}", r, tokens[r]) for r in "AB"}
     envs, guests, container_ids = {}, {}, {}
+    resource_stop = threading.Event()
+    resource_thread = threading.Thread(target=core._sample_guest_resources,
+        args=(run_root, container_ids, resource_stop), daemon=True)
+    resource_thread.start()
     bridge = None
     relay = None
     env_token_names = []
     reset_evidence = []
+    cleanup_errors = []
     try:
         model_base = base_url
         if model:
@@ -439,6 +444,8 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
         (run_root / "result.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
         return result
     finally:
+        resource_stop.set()
+        resource_thread.join(timeout=10)
         if bridge is not None:
             try:
                 bridge.stop()
@@ -456,6 +463,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 core._append(run_root / "resource_actions.jsonl", {"event": "guest_closed",
                     "guest": key, "full_container_id": cid, "run_id": run_id})
             except Exception as exc:
+                cleanup_errors.append(f"{key}: {type(exc).__name__}: {exc}")
                 core._append(run_root / "cleanup_errors.jsonl", {"guest": key, "error": str(exc)})
         if relay is not None:
             relay.terminate()
@@ -467,6 +475,8 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
         server.shutdown()
         server.server_close()
         server_thread.join(timeout=5)
+        if cleanup_errors:
+            raise RuntimeError("run-owned Guest cleanup incomplete: " + "; ".join(cleanup_errors))
 
 
 def main(argv: list[str] | None = None):

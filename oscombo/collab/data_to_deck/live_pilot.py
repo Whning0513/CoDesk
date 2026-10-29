@@ -636,18 +636,33 @@ def _run_model_actor(role: str, guest: LoggedGuest, instruction: str, run_root: 
                 "desktop_steps": result.steps, "state": state,
                 "newest_peer_message_seen": not newest_unseen})
             deadline = started + timeout
+            peer_finished_seen_at = None
             while not state["ready"] and time.monotonic() < deadline and not ctx.stop.is_set():
                 time.sleep(min(1.0, max(0.0, deadline - time.monotonic())))
                 state = _public_handoff_state(client, handoff_from, role)
                 if state["ready"]:
                     break
+                peer_status = _recorded_actor_status(run_root, handoff_from)
+                if peer_status is not None:
+                    peer_finished_seen_at = peer_finished_seen_at or time.monotonic()
+                    # Allow the asynchronous saved-file poll one last chance
+                    # to publish a just-finished GUI save. A finished Actor
+                    # cannot subsequently send a missing handoff message.
+                    if time.monotonic() - peer_finished_seen_at >= 5:
+                        result.status = "blocked_on_peer"
+                        _append(run_root / "actor_lifecycle.jsonl", {
+                            "event": "peer_finished_without_handoff", "actor": role,
+                            "peer": handoff_from, "peer_status": peer_status,
+                            "time": time.time(), "elapsed_s": round(time.monotonic() - started, 3),
+                            "state": state})
+                        break
             if state["ready"] and deadline - time.monotonic() > 5:
                 _append(run_root / "actor_lifecycle.jsonl", {
                     "event": "woken_by_peer_handoff", "actor": role, "peer": handoff_from,
                     "time": time.time(), "elapsed_s": round(time.monotonic() - started, 3),
                     "state": state})
                 result = harness.resume_after_external_update(ctx, deadline - time.monotonic())
-            else:
+            elif result.status != "blocked_on_peer":
                 result.status = "timeout"
                 _append(run_root / "actor_lifecycle.jsonl", {
                     "event": "peer_handoff_wait_expired", "actor": role, "peer": handoff_from,
@@ -694,6 +709,21 @@ def _observed_peer_message_ids(stdout_path: Path) -> set[str]:
             observed.update(str(m["message_id"]) for m in records if isinstance(m, dict) and
                             m.get("message_id"))
     return observed
+
+
+def _recorded_actor_status(run_root: Path, peer: str) -> str | None:
+    """Coordinator-only terminal signal; never exposed as a peer answer."""
+    path = run_root / "actors.jsonl"
+    if not path.exists():
+        return None
+    for line in path.read_text().splitlines():
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if record.get("actor") == peer:
+            return str(record.get("status"))
+    return None
 
 
 def _effective_role_steps(role: str, diagnostic_step_limit: int | None,
