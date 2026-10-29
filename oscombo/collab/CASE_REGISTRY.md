@@ -6,7 +6,7 @@ This registry covers the seven original standalone collaboration cases and their
 
 | Original case | Lite variant | Real Guest scripted controls | Real model evidence |
 |---|---|---|---|
-| 3 Build-and-Verify | [Lite v1.0.4](build_and_verify_lite_v1/DESIGN.md) | Shared and Isolated positive PASS with GUI editor, Chrome, saved file, browser screenshot, reopen and reset. | Isolated small-budget Pilot failed before A saved; full Shared/Isolated pair is recorded in `audits/three_lite_cases_20261029/REPORT.md`. |
+| 3 Build-and-Verify | [Lite v1.0.5](build_and_verify_lite_v1/DESIGN.md); model pair frozen at v1.0.4 | v1.0.4 Shared and Isolated positive PASS with GUI editor, Chrome, saved file, browser screenshot, reopen and reset. v1.0.5 fixes model screenshot extraction and dirty-editor postscore handling without changing the task or artifact Oracle. | Isolated small-budget Pilot failed before A saved; frozen v1.0.4 full Shared/Isolated pair and retrospective visual audit are recorded in `audits/three_lite_cases_20261029/REPORT.md`. |
 | 6 Spreadsheet Handoff | [Lite v1.0.0](spreadsheet_handoff_lite_v1/DESIGN.md) | Shared and Isolated positive PASS with Calc, saved ODS, bridge revision, reopen and reset. | One full Shared had model/Oracle success but a postscore infra error; another Shared and one Isolated model run failed. Preserve and distinguish all episodes in the report. |
 | 7 Workspace Assembly | [Lite v1.0.1](workspace_assembly_lite_v1/DESIGN.md) | Shared and Isolated positive controls for the new lifecycle are recorded separately from v1.0.0. | v1.0.0 Shared and Isolated model runs failed; v1.0.1 adds identical B yield/wake lifecycle to both topologies. New runs are in the report. |
 

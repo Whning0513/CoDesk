@@ -113,6 +113,10 @@ def _activate(guest, app: str, path: str):
         raise RuntimeError(f"cannot activate {hint}")
 
 
+def _editor_has_unsaved_buffer(title: str, path: str) -> bool:
+    return f"*{Path(path).name}".casefold() in title.casefold()
+
+
 def _activate_editor_tab(guest, role: str, shared: bool):
     """Scripted setup for the Text Editor's two tabs on one Shared desktop."""
     if not shared:
@@ -162,7 +166,7 @@ def _scripted_actions(case: str, role: str, task_root: str, fixtures, negative: 
     raise ValueError((case, role))
 
 
-def _browser_trace_audit(run_root: Path) -> dict:
+def _browser_trace_audit(run_root: Path, *, write: bool = True) -> dict:
     """Count actual visible table rows in B's post-handoff Chrome screenshots.
 
     This is a conservative, pinned-Guest visual check. The final human trace
@@ -177,31 +181,52 @@ def _browser_trace_audit(run_root: Path) -> dict:
             break
     candidates = []
     action_path = run_root / "gui_actions.jsonl"
-    for line in action_path.read_text().splitlines() if action_path.exists() else ():
-        event = json.loads(line)
-        if event.get("actor") != "B" or revision_time is None or event.get("ended_at", 0) < revision_time:
+    scripted = [json.loads(line) for line in action_path.read_text().splitlines()
+                if line.strip()] if action_path.exists() else []
+    model_path = run_root / "actor_runs/B/B/actions.jsonl"
+    model_actions = [json.loads(line) for line in model_path.read_text().splitlines()
+                     if line.strip()] if model_path.exists() else []
+    observations = []
+    for event in scripted:
+        if event.get("actor") != "B":
             continue
-        title = (event.get("window_after") or {}).get("output", "")
-        if "OrderDesk Lite" not in title:
+        observations.append((event.get("ended_at", 0),
+                             (event.get("window_after") or {}).get("output", ""),
+                             event["action_id"], event["screenshot"]))
+    for event in model_actions:
+        if not event.get("executed") or event.get("tool") == "screenshot":
             continue
-        shot = run_root / event["screenshot"]
+        observations.append((event.get("screenshot_ended_at", 0),
+                             event.get("window_after") or "",
+                             f"model-B-{event['n']:03d}",
+                             f"actor_runs/B/B/shots/{event['n']:03d}.png"))
+    for timestamp, title, action_id, shot_name in observations:
+        if revision_time is None or timestamp < revision_time or "OrderDesk Lite" not in title:
+            continue
+        shot = run_root / shot_name
+        if not shot.exists():
+            continue
         with Image.open(shot) as image:
             gray = image.convert("L")
-            if gray.size != (1920, 1080):
+            width, height = gray.size
+            if (width, height) not in {(1920, 1080), (1280, 720)}:
                 continue
+            sx, sy = width / 1920, height / 1080
+            x_values = range(round(545 * sx), round(1446 * sx), max(1, round(3 * sx)))
             lines = []
-            for y in range(350, 650):
-                dark = sum(gray.getpixel((x, y)) < 180 for x in range(545, 1446, 3))
-                if dark >= 250 and (not lines or y > lines[-1] + 1):
+            for y in range(round(350 * sy), round(650 * sy)):
+                dark = sum(gray.getpixel((x, y)) < 220 for x in x_values)
+                if dark >= int(0.8 * len(x_values)) and (not lines or y > lines[-1] + 1):
                     lines.append(y)
             rows = len(lines) - 2 if len(lines) >= 2 else None
-        candidates.append({"action_id": event["action_id"], "screenshot": event["screenshot"],
+        candidates.append({"action_id": action_id, "screenshot": shot_name,
                            "horizontal_borders": lines, "visible_rows": rows,
                            "after_A_revision": True})
     result = {"A_saved_revision_time": revision_time, "candidates": candidates,
               "browser_one_visible_row_after_handoff": any(x["visible_rows"] == 1 for x in candidates),
               "scope": "visible row count only; inspect query/status text and action chronology separately"}
-    (run_root / "browser_trace_audit.json").write_text(json.dumps(result, indent=2) + "\n")
+    if write:
+        (run_root / "browser_trace_audit.json").write_text(json.dumps(result, indent=2) + "\n")
     return result
 
 
@@ -410,6 +435,17 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                     _activate_editor_tab(guest, role, True)
                 else:
                     _activate(guest, app, path)
+                # A model can leave correct text in an unsaved editor buffer.
+                # Closing that tab opens a save/discard modal and makes the
+                # subsequent launch look like an infrastructure failure. The
+                # saved artifact is already scored; record the dirty buffer
+                # and do not mutate it in the postscore verification phase.
+                active_title = guest.active_window() or ""
+                if app == "editor" and _editor_has_unsaved_buffer(active_title, path):
+                    reopen.append({"role": role, "guest": guest.guest_key,
+                                   "same_bytes": True, "gui_reopen": "skipped_unsaved_buffer",
+                                   "saved_sha256": hashlib.sha256(data_before).hexdigest()})
+                    continue
                 guest.actor = "system"
                 guest.run_pyautogui("import pyautogui, time; pyautogui.hotkey('ctrl','w'); time.sleep(2)")
                 _launch(guest, app, path, run_id)
