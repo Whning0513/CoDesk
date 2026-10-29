@@ -12,6 +12,8 @@ def test_positive_and_negative_artifacts(tmp_path):
     a.write_text(source.read_text().replace('value="delievered"', 'value="delivered"'))
     b.write_text("Query: North\nStatus: Delivered\nVisible order IDs: OD-104\nSaved source: orderdesk.html\n")
     assert evaluate(source, a, qa, b)["joint_success"]
+    a.write_text("\n".join("      " + line for line in a.read_text().splitlines()) + "\n")
+    assert evaluate(source, a, qa, b)["joint_success"]
     a.write_text(source.read_text())
     assert not evaluate(source, a, qa, b)["joint_success"]
     a.write_text(source.read_text().replace('value="delievered"', 'value="delivered"'))

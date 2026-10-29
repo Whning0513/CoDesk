@@ -58,11 +58,14 @@ def _install(guest, fixture: Path, task_root: str, case: str, spec):
         for role, key in (("A", "source"), ("B", "qa")):
             commands.append(f"cp {shlex.quote(task_root + '/input/' + names[key])} "
                             f"{shlex.quote(task_root + '/' + spec.OUTPUTS[role])}")
+            commands.append(f"chmod u+w {shlex.quote(task_root + '/' + spec.OUTPUTS[role])}")
     else:
         commands.append(f"cp {shlex.quote(task_root + '/input/' + names['asset'])} "
                         f"{shlex.quote(task_root + '/incoming/' + names['asset'])}")
+        commands.append(f"chmod u+w {shlex.quote(task_root + '/incoming/' + names['asset'])}")
         commands.append(f"cp {shlex.quote(task_root + '/input/' + names['report'])} "
                         f"{shlex.quote(task_root + '/' + spec.OUTPUTS['B'])}")
+        commands.append(f"chmod u+w {shlex.quote(task_root + '/' + spec.OUTPUTS['B'])}")
     _guest_script(guest, "set -e\n" + "\n".join(commands), timeout=60)
 
 
@@ -110,6 +113,20 @@ def _activate(guest, app: str, path: str):
         raise RuntimeError(f"cannot activate {hint}")
 
 
+def _activate_editor_tab(guest, role: str, shared: bool):
+    """Scripted setup for the Text Editor's two tabs on one Shared desktop."""
+    if not shared:
+        return
+    # GNOME Text Editor reuses one window for both files. The A tab is opened
+    # last during setup; after activating that window, choose the requested
+    # tab with a real GUI click. Model actors receive no such intervention.
+    _guest_script(guest, "wmctrl -a orderdesk.html || wmctrl -a qa_note.txt", timeout=15)
+    guest.actor = "system"
+    guest.run_pyautogui("import pyautogui, time; pyautogui.click(760,193); time.sleep(1)"
+                         if role == "A" else
+                         "import pyautogui, time; pyautogui.click(300,193); time.sleep(1)")
+
+
 def _scripted_actions(case: str, role: str, task_root: str, fixtures, negative: bool) -> list[str]:
     if case == "build_verify" and role == "A":
         corrected = fixtures.source_html().replace('value="delievered"',
@@ -122,15 +139,16 @@ def _scripted_actions(case: str, role: str, task_root: str, fixtures, negative: 
                 ("none" if negative else "OD-104") + "\nSaved source: orderdesk.html\n")
         return [
             "import pyautogui, time; pyautogui.hotkey('ctrl','r'); time.sleep(3)",
-            "import pyautogui, time; pyautogui.click(680,240); pyautogui.write('North', 0.1); time.sleep(1)",
-            "import pyautogui, time; pyautogui.click(1050,240); pyautogui.press('end'); pyautogui.press('enter'); time.sleep(1)",
-            "import pyautogui, time; pyautogui.click(1180,240); time.sleep(3)",
+            "import pyautogui, time; pyautogui.click(680,268); pyautogui.write('North', 0.1); time.sleep(1)",
+            "import pyautogui, time; pyautogui.click(1050,268); pyautogui.press('end'); pyautogui.press('enter'); time.sleep(1)",
+            "import pyautogui, time; pyautogui.click(1180,268); time.sleep(3)",
             "import pyautogui, time; pyautogui.hotkey('ctrl','a'); time.sleep(1)",
             f"import pyautogui, time; pyautogui.write({note!r}, 0.03); time.sleep(1)",
             "import pyautogui, time; pyautogui.hotkey('ctrl','s'); time.sleep(3)", "DONE"]
     if case == "workspace_assembly" and role == "A":
         return [
-            "import pyautogui, time; pyautogui.hotkey('ctrl','a'); pyautogui.hotkey('ctrl','x'); time.sleep(1)",
+            "import pyautogui, time; pyautogui.hotkey('ctrl','a'); time.sleep(2)",
+            "import pyautogui, time; pyautogui.hotkey('ctrl','x'); time.sleep(2)",
             f"import pyautogui, time; pyautogui.hotkey('ctrl','l'); pyautogui.write({(task_root + '/outputs/agent_A')!r}, 0.01); pyautogui.press('enter'); time.sleep(2)",
             "import pyautogui, time; pyautogui.hotkey('ctrl','v'); time.sleep(3)", "DONE"]
     if case == "workspace_assembly" and role == "B":
@@ -141,6 +159,49 @@ def _scripted_actions(case: str, role: str, task_root: str, fixtures, negative: 
                 f"import pyautogui, time; pyautogui.write({text!r}, 0.03); time.sleep(2)",
                 "import pyautogui, time; pyautogui.hotkey('ctrl','s'); time.sleep(3)", "DONE"]
     raise ValueError((case, role))
+
+
+def _browser_trace_audit(run_root: Path) -> dict:
+    """Count actual visible table rows in B's post-handoff Chrome screenshots.
+
+    This is a conservative, pinned-Guest visual check. The final human trace
+    audit also checks the typed query and selected status from screenshots.
+    """
+    from PIL import Image
+    revision_time = None
+    for line in (run_root / "workspace_versions/events.jsonl").read_text().splitlines():
+        event = json.loads(line)
+        if event.get("event") == "revision_saved" and event.get("actor") == "A" and event.get("revision", 0) >= 1:
+            revision_time = event["time"]
+            break
+    candidates = []
+    action_path = run_root / "gui_actions.jsonl"
+    for line in action_path.read_text().splitlines() if action_path.exists() else ():
+        event = json.loads(line)
+        if event.get("actor") != "B" or revision_time is None or event.get("ended_at", 0) < revision_time:
+            continue
+        title = (event.get("window_after") or {}).get("output", "")
+        if "OrderDesk Lite" not in title:
+            continue
+        shot = run_root / event["screenshot"]
+        with Image.open(shot) as image:
+            gray = image.convert("L")
+            if gray.size != (1920, 1080):
+                continue
+            lines = []
+            for y in range(350, 650):
+                dark = sum(gray.getpixel((x, y)) < 180 for x in range(545, 1446, 3))
+                if dark >= 250 and (not lines or y > lines[-1] + 1):
+                    lines.append(y)
+            rows = len(lines) - 2 if len(lines) >= 2 else None
+        candidates.append({"action_id": event["action_id"], "screenshot": event["screenshot"],
+                           "horizontal_borders": lines, "visible_rows": rows,
+                           "after_A_revision": True})
+    result = {"A_saved_revision_time": revision_time, "candidates": candidates,
+              "browser_one_visible_row_after_handoff": any(x["visible_rows"] == 1 for x in candidates),
+              "scope": "visible row count only; inspect query/status text and action chronology separately"}
+    (run_root / "browser_trace_audit.json").write_text(json.dumps(result, indent=2) + "\n")
+    return result
 
 
 def run(case: str, condition: str, run_root: Path, provider: Path, image: str, runtime: str,
@@ -202,8 +263,8 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
         a_path = f"{task_root}/{spec.OUTPUTS['A']}"
         b_path = f"{task_root}/{spec.OUTPUTS['B']}"
         if case == "build_verify":
-            _launch(guest_a, "editor", a_path, run_id)
             _launch(guest_b, "editor", b_path, run_id)
+            _launch(guest_a, "editor", a_path, run_id)
             _launch(guest_b, "browser", a_path, run_id)
             a_app, b_app = "editor", "editor"
         else:
@@ -242,14 +303,25 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                     outcomes[role] = future.result()
         else:
             if case == "build_verify":
-                _activate(guest_a, "editor", a_path)
+                if condition.endswith("shared"):
+                    _activate_editor_tab(guest_a, "A", True)
+                else:
+                    _activate(guest_a, "editor", a_path)
+            else:
+                _activate(guest_a, "files", f"{task_root}/incoming")
             outcomes["A"] = core._run_actor("A", guest_a, spec.AGENT_A_INSTRUCTION,
                 _scripted_actions(case, "A", task_root, fixtures, negative), run_root,
                 max_steps=25, case_id=spec.CASE_ID)
             if outcomes["A"]["status"] != "done":
                 raise RuntimeError("scripted A GUI failed")
             if case == "workspace_assembly":
-                _guest_script(guest_a, f"test ! -e {shlex.quote(task_root + '/incoming/' + spec.FIXTURE_NAMES['asset'])}")
+                probe = _guest_script(guest_a,
+                    f"find {shlex.quote(task_root + '/incoming')} "
+                    f"{shlex.quote(task_root + '/outputs/agent_A')} -maxdepth 1 -type f "
+                    "-printf '%p %s bytes\\n'", timeout=20)
+                (run_root / "file_move_probe.json").write_text(json.dumps(probe, indent=2) + "\n")
+                _guest_script(guest_a, f"test ! -e {shlex.quote(task_root + '/incoming/' + spec.FIXTURE_NAMES['asset'])} "
+                    f"&& test -s {shlex.quote(a_path)}")
             a_revision = bridge.publish("A")
             if controllers["B"].get_file(a_path) != controllers["A"].get_file(a_path):
                 raise RuntimeError("B Guest did not receive A's saved version")
@@ -260,6 +332,9 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
             if case == "build_verify":
                 _activate(guest_b, "browser", a_path)
             else:
+                # Smoke the real peer file in a GUI viewer before the scripted
+                # Writer edit. Model actors must choose their own read action.
+                _launch(guest_b, "editor", a_path, run_id)
                 _activate(guest_b, "writer", b_path)
             b_actions = _scripted_actions(case, "B", task_root, fixtures, negative)
             if case == "build_verify":
@@ -267,7 +342,10 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                     b_actions[:4] + ["DONE"], run_root, max_steps=25, case_id=spec.CASE_ID)
                 if browser_result["status"] != "done":
                     raise RuntimeError("scripted browser QA failed")
-                _activate(guest_b, "editor", b_path)
+                if condition.endswith("shared"):
+                    _activate_editor_tab(guest_b, "B", True)
+                else:
+                    _activate(guest_b, "editor", b_path)
                 b_actions = b_actions[4:]
             outcomes["B"] = core._run_actor("B", guest_b, spec.AGENT_B_INSTRUCTION,
                 b_actions, run_root, max_steps=25, case_id=spec.CASE_ID)
@@ -279,12 +357,19 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
             "final_versions": bridge.snapshot(), "transient_errors": bridge.errors,
             "verified": True}, indent=2) + "\n")
         bridge = None
-        artifacts = collect_artifacts(run_root, [
-            {"actor": "A", "guest_id": guest_a.guest_key, "guest_path": a_path,
-             "local_path": f"A/{Path(a_path).name}"},
-            {"actor": "B", "guest_id": guest_b.guest_key, "guest_path": b_path,
-             "local_path": f"B/{Path(b_path).name}"},
-        ], core.GuestFiles({g.guest_key: g.env.controller for g in guests.values()}))
+        artifact_items = []
+        missing_outputs = []
+        for role, guest, path in (("A", guest_a, a_path), ("B", guest_b, b_path)):
+            exists = _guest_script(guest,
+                f"if test -s {shlex.quote(path)}; then printf 1; else printf 0; fi")["output"].strip() == "1"
+            if exists:
+                artifact_items.append({"actor": role, "guest_id": guest.guest_key,
+                    "guest_path": path, "local_path": f"{role}/{Path(path).name}"})
+            else:
+                missing_outputs.append(role)
+        (run_root / "missing_outputs.json").write_text(json.dumps(missing_outputs) + "\n")
+        artifacts = collect_artifacts(run_root, artifact_items,
+            core.GuestFiles({g.guest_key: g.env.controller for g in guests.values()}))
         if case == "build_verify":
             score = oracle.evaluate(fixture / spec.FIXTURE_NAMES["source"],
                 run_root / "artifacts/A" / Path(a_path).name,
@@ -303,11 +388,19 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 fixture / spec.FIXTURE_NAMES["report"],
                 run_root / "artifacts/B" / Path(b_path).name)
         (run_root / "oracle.json").write_text(json.dumps(score, indent=2, sort_keys=True) + "\n")
+        browser_trace = _browser_trace_audit(run_root) if case == "build_verify" else None
         reopen = []
         for role, guest, app, path in (("A", guest_a, a_app, a_path), ("B", guest_b, b_app, b_path)):
+            if role in missing_outputs:
+                reopen.append({"role": role, "guest": guest.guest_key,
+                               "same_bytes": False, "missing_output": True})
+                continue
             data_before = guest.env.controller.get_file(path)
             if app != "files":
-                _activate(guest, app, path)
+                if case == "build_verify" and condition.endswith("shared"):
+                    _activate_editor_tab(guest, role, True)
+                else:
+                    _activate(guest, app, path)
                 guest.actor = "system"
                 guest.run_pyautogui("import pyautogui, time; pyautogui.hotkey('ctrl','w'); time.sleep(2)")
                 _launch(guest, app, path, run_id)
@@ -337,9 +430,12 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
         (run_root / "reset_evidence.json").write_text(json.dumps(reset_evidence, indent=2) + "\n")
         result = {"run_id": run_id, "case_id": spec.CASE_ID, "condition": condition,
                   "model": model, "actor_results": outcomes, "oracle": score,
+                  "browser_trace_audit": browser_trace,
                   "artifact_manifest": artifacts, "reopen": reopen,
                   "reset": reset_evidence, "elapsed_s": time.time() - metadata["started_at"],
-                  "status": core._episode_result_status(score["joint_success"], True, outcomes, bool(model))}
+                  "status": core._episode_result_status(score["joint_success"] and
+                      (browser_trace is None or browser_trace["browser_one_visible_row_after_handoff"]),
+                      not missing_outputs, outcomes, bool(model))}
         (run_root / "result.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
         return result
     finally:
@@ -390,18 +486,19 @@ def main(argv: list[str] | None = None):
     parser.add_argument("--diagnostic-step-limit", type=int)
     parser.add_argument("--scripted-negative", action="store_true")
     args = parser.parse_args(argv)
+    run_root = args.run_root.resolve()
     if args.model and not os.environ.get(args.api_key_env):
         parser.error(f"model requested but {args.api_key_env} is unset")
     try:
-        result = run(args.case, args.condition, args.run_root.resolve(),
+        result = run(args.case, args.condition, run_root,
                      args.provider.resolve(), args.image, args.runtime,
                      args.model, args.base_url, args.api_key_env, args.mcp_python,
                      args.model_timeout, args.diagnostic_step_limit, args.scripted_negative)
     except Exception as exc:
         failure = {"status": "INVALID_INFRA_OR_RUNNER_ERROR", "run_id": args.run_root.name,
                    "error": f"{type(exc).__name__}: {exc}", "traceback": traceback.format_exc()}
-        if args.run_root.exists():
-            (args.run_root / "failure.json").write_text(json.dumps(failure, indent=2) + "\n")
+        if run_root.exists():
+            (run_root / "failure.json").write_text(json.dumps(failure, indent=2) + "\n")
         print(json.dumps(failure, indent=2), file=sys.stderr)
         raise SystemExit(3)
     print(json.dumps(result, indent=2))

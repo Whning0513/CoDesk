@@ -21,9 +21,14 @@ def evaluate(source_path: str | Path, saved_source_path: str | Path,
                 "actors": {"A": {"success": False}, "B": {"success": False}},
                 "joint_success": False, "invalid_artifact": type(exc).__name__}
     corrected = source.replace('value="delievered"', 'value="delivered"', 1)
+    # GNOME Text Editor may auto-indent pasted/typewritten lines. That does
+    # not change this static page's behavior, so compare line content while
+    # preserving all non-leading characters and their order.
+    significant_lines = lambda text: [line.strip() for line in text.splitlines() if line.strip()]
     a_checks = {
         "public_source_intact": source == source_html(),
-        "delivered_option_repaired": corrected != source and saved == corrected,
+        "delivered_option_repaired": corrected != source and
+                                     significant_lines(saved) == significant_lines(corrected),
     }
     values = {}
     for field in ("Query", "Status", "Visible order IDs", "Saved source"):
