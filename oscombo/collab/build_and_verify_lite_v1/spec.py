@@ -1,7 +1,7 @@
 """Actor-visible contract; evaluator answers are kept under private/."""
 
 CASE_ID = "CDD-BV-LITE-001"
-CASE_VERSION = "1.0.3"
+CASE_VERSION = "1.0.4"
 CONDITIONS = ("collaborative_shared", "collaborative_isolated")
 FIXTURE_NAMES = {"source": "orderdesk.html", "qa": "qa_note.txt", "brief": "case_brief.md"}
 OUTPUTS = {"A": "outputs/agent_A/orderdesk.html", "B": "outputs/agent_B/qa_note.txt"}

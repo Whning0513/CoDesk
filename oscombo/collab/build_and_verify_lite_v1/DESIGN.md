@@ -7,3 +7,5 @@ Patch 1.0.1 accepts harmless line indentation and trailing blank lines added by 
 Patch 1.0.2 makes B use a hard reload after the saved source revision; the v1.0.1 Guest screenshot showed a stale option value despite a correct saved file and ordinary Ctrl+R. Both desktop conditions receive the same instruction and Adapter behavior.
 
 Patch 1.0.3 opens the original read-only input HTML in Chrome at setup. After A publishes the corrected output file, B navigates to that distinct saved output path in the address bar. The v1.0.2 Shared Guest control still showed the original option after Ctrl+Shift+R, so a new URL is needed to verify the saved revision in the actual browser. Both conditions use the same initial page and navigation instruction.
+
+Patch 1.0.4 separates address-bar focus and URL typing into two GUI actions with waits. The v1.0.3 Guest screenshot showed Chrome searching a truncated URL because typing began before the address bar had focus. The model task, artifacts and Oracle remain the same.

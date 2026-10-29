@@ -138,7 +138,8 @@ def _scripted_actions(case: str, role: str, task_root: str, fixtures, negative: 
         note = ("Query: North\nStatus: Delivered\nVisible order IDs: " +
                 ("none" if negative else "OD-104") + "\nSaved source: orderdesk.html\n")
         return [
-            f"import pyautogui, time; pyautogui.hotkey('ctrl','l'); pyautogui.write({('file://' + task_root + '/outputs/agent_A/orderdesk.html')!r}, 0.01); pyautogui.press('enter'); time.sleep(3)",
+            "import pyautogui, time; pyautogui.hotkey('ctrl','l'); time.sleep(2)",
+            f"import pyautogui, time; pyautogui.write({('file://' + task_root + '/outputs/agent_A/orderdesk.html')!r}, 0.05); time.sleep(1); pyautogui.press('enter'); time.sleep(4)",
             "import pyautogui, time; pyautogui.click(680,268); pyautogui.write('North', 0.1); time.sleep(1)",
             "import pyautogui, time; pyautogui.click(1050,268); pyautogui.press('end'); pyautogui.press('enter'); time.sleep(1)",
             "import pyautogui, time; pyautogui.click(1180,268); time.sleep(3)",
@@ -344,14 +345,14 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
             b_actions = _scripted_actions(case, "B", task_root, fixtures, negative)
             if case == "build_verify":
                 browser_result = core._run_actor("B", guest_b, spec.AGENT_B_INSTRUCTION,
-                    b_actions[:4] + ["DONE"], run_root, max_steps=25, case_id=spec.CASE_ID)
+                    b_actions[:5] + ["DONE"], run_root, max_steps=25, case_id=spec.CASE_ID)
                 if browser_result["status"] != "done":
                     raise RuntimeError("scripted browser QA failed")
                 if condition.endswith("shared"):
                     _activate_editor_tab(guest_b, "B", True)
                 else:
                     _activate(guest_b, "editor", b_path)
-                b_actions = b_actions[4:]
+                b_actions = b_actions[5:]
             outcomes["B"] = core._run_actor("B", guest_b, spec.AGENT_B_INSTRUCTION,
                 b_actions, run_root, max_steps=25, case_id=spec.CASE_ID)
             if outcomes["B"]["status"] != "done":
