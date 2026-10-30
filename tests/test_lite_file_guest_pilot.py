@@ -2,7 +2,16 @@ import json
 
 from PIL import Image, ImageDraw
 
-from oscombo.collab.lite_file_guest_pilot import _browser_trace_audit
+from oscombo.collab.lite_file_guest_pilot import _browser_trace_audit, _postscore_lifecycle_ok
+
+
+def test_postscore_lifecycle_separates_missing_task_output_from_reopen_fault():
+    assert _postscore_lifecycle_ok([
+        {"role": "A", "missing_output": True, "same_bytes": False},
+        {"role": "B", "same_bytes": True}])
+    assert not _postscore_lifecycle_ok([
+        {"role": "A", "same_bytes": False, "postscore_error": "modal"},
+        {"role": "B", "same_bytes": True}])
 
 
 def test_browser_trace_requires_visible_single_row_after_saved_revision(tmp_path):

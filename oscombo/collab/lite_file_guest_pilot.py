@@ -119,6 +119,14 @@ def _launch(guest, app: str, path: str, run_id: str):
     raise RuntimeError(f"{app} did not become the visible Guest window: {hint}")
 
 
+def _postscore_lifecycle_ok(reopen: list[dict]) -> bool:
+    """Distinguish an absent task output from failure to reopen a saved one."""
+    return len(reopen) == 2 and all(
+        item.get("missing_output") is True or
+        (item.get("same_bytes") is True and
+         item.get("gui_reopen") != "skipped_unsaved_buffer") for item in reopen)
+
+
 def _maximize_case7_files(guest):
     """Set the same broad Files viewport before either model Actor starts."""
     result = _guest_script(guest,
@@ -595,6 +603,10 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
         (run_root / "reopen_evidence.json").write_text(json.dumps(reopen, indent=2) + "\n")
         reopen_complete = (len(reopen) == 2 and all(item.get("same_bytes") is True
                             and item.get("gui_reopen") != "skipped_unsaved_buffer" for item in reopen))
+        # A missing Actor output is a task failure, not a GUI reopen fault.
+        # A failed reopen of an existing saved output is infrastructure-invalid
+        # even when the already-scored Oracle also rejected the task.
+        postscore_lifecycle_ok = _postscore_lifecycle_ok(reopen)
         for key, env in envs.items():
             old_id = container_ids[key]
             core._verify_container(old_id, run_id)
@@ -616,11 +628,11 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                   "browser_trace_audit": browser_trace,
                   "artifact_manifest": artifacts, "reopen": reopen,
                   "reopen_complete": reopen_complete,
+                  "postscore_lifecycle_ok": postscore_lifecycle_ok,
                   "reset": reset_evidence, "elapsed_s": time.time() - metadata["started_at"],
-                  "status": ("INVALID_INFRA" if score["joint_success"] and not reopen_complete else
-                      core._episode_result_status(score["joint_success"] and
+                  "status": core._episode_result_status(score["joint_success"] and
                       (browser_trace is None or browser_trace["browser_one_visible_row_after_handoff"]),
-                      not missing_outputs, outcomes, bool(model)))}
+                      postscore_lifecycle_ok, outcomes, bool(model))}
         (run_root / "result.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
         return result
     finally:

@@ -77,7 +77,9 @@ def _append(path: Path, value: dict[str, Any]) -> None:
 
 def _episode_result_status(score_success: bool, reset_success: bool,
                            actor_results: dict[str, dict[str, Any]], model_called: bool) -> str:
-    """Keep a failed Codex/MCP launch out of the model task-failure count."""
+    """Keep launch and postscore lifecycle faults out of model task-failure counts."""
+    if not reset_success:
+        return "INVALID_INFRA_OR_RUNNER_ERROR"
     if model_called and any(
         result.get("status") == "error"
         or (result.get("status") == "timeout" and int(result.get("steps", 0)) == 0)
