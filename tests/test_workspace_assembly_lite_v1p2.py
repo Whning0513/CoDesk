@@ -77,3 +77,16 @@ def test_scripted_read_checks_the_delivered_file_not_the_source(tmp_path):
     path.write_text(json.dumps(action) + "\n")
     result = pilot._audit_case7_scripted_delivered_read(tmp_path)
     assert result["delivered_note_opened_in_GUI"]
+
+
+def test_input_lock_arm_rejects_isolated_or_scripted_without_booting(tmp_path):
+    args = ("workspace_assembly_v1p2", "collaborative_isolated", tmp_path / "run",
+            tmp_path, "image", "runtime", "model", "base", "KEY", "python", 10, None, False)
+    with pytest.raises(ValueError, match="Shared model run"):
+        pilot.run(*args, gui_input_lock=True)
+    assert not (tmp_path / "run").exists()
+    scripted = list(args)
+    scripted[1] = "collaborative_shared"
+    scripted[6] = None
+    with pytest.raises(ValueError, match="Shared model run"):
+        pilot.run(*scripted, gui_input_lock=True)
