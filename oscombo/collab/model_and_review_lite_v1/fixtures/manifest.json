@@ -1,0 +1,13 @@
+{
+  "case_id": "CDD-MAR-LITE-001",
+  "case_version": "1.0.0",
+  "generator": "blender_build.py",
+  "blender_version": "5.0.0",
+  "blender_archive_url": "https://download.blender.org/release/Blender5.0/blender-5.0.0-linux-x64.tar.xz",
+  "blender_archive_sha256": "9de96e81432afba9c0a715c7233f1eff616705b75226dc5d0fa2708ddfb0e525",
+  "public_initial_blend_sha256": "8c4d450b03bc65415af9e6ad7f82b1f9b6f7d727a917ebaffe8caae92ab4f636",
+  "private_gold_blend_sha256": "892ee38a866a90f4f9e45b28adfa958a0594079ffd1b3009b80c852cbc9485d7",
+  "private_wrong_width_negative_sha256": "021ff91108c0018ad10a7f1cc86ebc6d2194346de3bced44516fe4fbeaf32722",
+  "guest_blender_version_observed": "5.0.0",
+  "initial_and_gold_reopened_by_host_blender": true
+}

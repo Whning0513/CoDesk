@@ -33,6 +33,8 @@ def _profile(case: str):
         from oscombo.collab.build_and_verify_lite_v1 import spec, fixtures, oracle
     elif case == "workspace_assembly":
         from oscombo.collab.workspace_assembly_lite_v1 import spec, fixtures, oracle
+    elif case == "model_review":
+        from oscombo.collab.model_and_review_lite_v1 import spec, fixtures, oracle
     else:
         raise ValueError(f"unknown Lite case: {case}")
     return spec, fixtures, oracle
@@ -59,13 +61,18 @@ def _install(guest, fixture: Path, task_root: str, case: str, spec):
             commands.append(f"cp {shlex.quote(task_root + '/input/' + names[key])} "
                             f"{shlex.quote(task_root + '/' + spec.OUTPUTS[role])}")
             commands.append(f"chmod u+w {shlex.quote(task_root + '/' + spec.OUTPUTS[role])}")
-    else:
+    elif case == "workspace_assembly":
         commands.append(f"cp {shlex.quote(task_root + '/input/' + names['asset'])} "
                         f"{shlex.quote(task_root + '/incoming/' + names['asset'])}")
         commands.append(f"chmod u+w {shlex.quote(task_root + '/incoming/' + names['asset'])}")
         commands.append(f"cp {shlex.quote(task_root + '/input/' + names['report'])} "
                         f"{shlex.quote(task_root + '/' + spec.OUTPUTS['B'])}")
         commands.append(f"chmod u+w {shlex.quote(task_root + '/' + spec.OUTPUTS['B'])}")
+    elif case == "model_review":
+        for role, key in (("A", "scene"), ("B", "report")):
+            commands.append(f"cp {shlex.quote(task_root + '/input/' + names[key])} "
+                            f"{shlex.quote(task_root + '/' + spec.OUTPUTS[role])}")
+            commands.append(f"chmod u+w {shlex.quote(task_root + '/' + spec.OUTPUTS[role])}")
     _guest_script(guest, "set -e\n" + "\n".join(commands), timeout=60)
 
 
@@ -77,6 +84,7 @@ def _launch(guest, app: str, path: str, run_id: str):
         "editor": "command -v gedit || command -v gnome-text-editor || command -v mousepad",
         "browser": "command -v google-chrome || command -v chromium-browser || command -v chromium",
         "files": "command -v nautilus || command -v thunar",
+        "blender": "command -v blender",
     }
     if app not in choices:
         raise ValueError(app)
@@ -85,13 +93,15 @@ def _launch(guest, app: str, path: str, run_id: str):
     binary = (check.get("output") or "").strip().splitlines()[-1]
     if not binary.startswith("/"):
         raise RuntimeError(f"Guest {app} application not found")
-    args = "--no-first-run --no-default-browser-check " if app == "browser" else ""
+    args = ("--no-first-run --no-default-browser-check " if app == "browser" else
+            "--disable-autoexec " if app == "blender" else "")
     uri = "file://" + path if app == "browser" else path
     _guest_script(guest, f"mkdir -p /tmp/{shlex.quote(run_id)}; "
                   f"nohup {shlex.quote(binary)} {args}{shlex.quote(uri)} "
                   f">/tmp/{shlex.quote(run_id)}/{app}.log 2>&1 </dev/null &", timeout=15)
-    deadline = time.monotonic() + 120
-    hint = "OrderDesk Lite" if app == "browser" else Path(path).name
+    deadline = time.monotonic() + (300 if app == "blender" else 120)
+    hint = ("OrderDesk Lite" if app == "browser" else
+            "Blender" if app == "blender" else Path(path).name)
     while time.monotonic() < deadline:
         active = guest.active_window() or ""
         shot = guest.screenshot(patience=45)
@@ -107,7 +117,8 @@ def _launch(guest, app: str, path: str, run_id: str):
 def _activate(guest, app: str, path: str):
     if app == "writer":
         return core._activate_ready_document(guest, path, "lite-file-reopen")
-    hint = "OrderDesk Lite" if app == "browser" else Path(path).name
+    hint = ("OrderDesk Lite" if app == "browser" else
+            "Blender" if app == "blender" else Path(path).name)
     _guest_script(guest, f"wmctrl -a {shlex.quote(hint)}", timeout=15)
     if hint.casefold() not in (guest.active_window() or "").casefold():
         raise RuntimeError(f"cannot activate {hint}")
@@ -162,6 +173,18 @@ def _scripted_actions(case: str, role: str, task_root: str, fixtures, negative: 
         text = "Aurora Supply Handoff\n" + sentence + "\nPrepared for operations review."
         return ["import pyautogui, time; pyautogui.hotkey('ctrl','a'); time.sleep(1)",
                 f"import pyautogui, time; pyautogui.write({text!r}, 0.03); time.sleep(2)",
+                "import pyautogui, time; pyautogui.hotkey('ctrl','s'); time.sleep(3)", "DONE"]
+    if case == "model_review" and role == "A":
+        factor = "1.083333333" if negative else "1.216666667"
+        return [
+            "import pyautogui, time; pyautogui.moveTo(900,500); pyautogui.press('esc'); time.sleep(1)",
+            f"import pyautogui, time; pyautogui.press('s'); pyautogui.hotkey('shift','z'); pyautogui.write('{factor}', 0.1); pyautogui.press('enter'); time.sleep(2)",
+            "import pyautogui, time; pyautogui.hotkey('ctrl','s'); time.sleep(4)", "DONE"]
+    if case == "model_review" and role == "B":
+        text = ("Shade width: 1.30 m\nRadial clearance: 0.40 m\nVerdict: PASS\n" if negative else
+                "Shade width: 1.46 m\nRadial clearance: 0.48 m\nVerdict: PASS\n")
+        return ["import pyautogui, time; pyautogui.hotkey('ctrl','a'); time.sleep(1)",
+                f"import pyautogui, time; pyautogui.write({text!r}, 0.02); time.sleep(1)",
                 "import pyautogui, time; pyautogui.hotkey('ctrl','s'); time.sleep(3)", "DONE"]
     raise ValueError((case, role))
 
@@ -233,8 +256,12 @@ def _browser_trace_audit(run_root: Path, *, write: bool = True) -> dict:
 def run(case: str, condition: str, run_root: Path, provider: Path, image: str, runtime: str,
         model: str | None, base_url: str, api_key_env: str, mcp_python: str,
         model_timeout: float, diagnostic_step_limit: int | None, negative: bool,
-        yield_wait_lifecycle: bool = False) -> dict:
+        yield_wait_lifecycle: bool = False,
+        actor_mcp_only: bool = False,
+        blender_bin: str | None = None) -> dict:
     spec, fixtures, oracle = _profile(case)
+    if case == "model_review" and (not blender_bin or not Path(blender_bin).is_file()):
+        raise ValueError("Model-and-Review Lite needs a local Blender scorer executable")
     if condition not in spec.CONDITIONS:
         raise ValueError(condition)
     run_root.mkdir(parents=True, exist_ok=False)
@@ -248,6 +275,8 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 "endpoint": base_url if model else None,
                 "role_budget_contract": spec.ROLE_BUDGET,
                 "yield_wait_lifecycle": bool(yield_wait_lifecycle),
+                "actor_mcp_only": bool(actor_mcp_only),
+                "blender_scorer": blender_bin if case == "model_review" else None,
                 "scripted_negative_control": negative}
     ledger = RunLedger(run_root, metadata)
     (run_root / "ownership.json").write_text(json.dumps({"run_id": run_id, "resources": [],
@@ -275,7 +304,8 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
             os.environ[relay_env] = secrets.token_urlsafe(32)
             env_token_names.append(relay_env)
             relay, model_base = core._start_codex_compat_relay(
-                run_root, base_url, api_key_env, os.environ[relay_env], relay_env)
+                run_root, base_url, api_key_env, os.environ[relay_env], relay_env,
+                actor_mcp_only=actor_mcp_only)
         for key in (("shared",) if condition.endswith("shared") else ("A", "B")):
             env, guest, cid = core._boot_guest(run_root, run_id, key, image, provider, runtime, ledger)
             envs[key], guests[key], container_ids[key] = env, guest, cid
@@ -285,6 +315,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
         controllers = {"A": guest_a.env.controller, "B": guest_b.env.controller}
         ids = {"A": guest_a.guest_key, "B": guest_b.guest_key}
         mime = ({"A": None, "B": None} if case == "build_verify" else
+                {"A": "application/x-blender", "B": None} if case == "model_review" else
                 {"A": None, "B": "application/vnd.oasis.opendocument.text"})
         bridge = SavedArtifactBridge(run_root / "workspace_versions", run_id, task_root,
                                      controllers, ids, case_id=spec.CASE_ID,
@@ -300,6 +331,12 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
             _launch(guest_a, "editor", a_path, run_id)
             _launch(guest_b, "browser", f"{task_root}/input/{spec.FIXTURE_NAMES['source']}", run_id)
             a_app, b_app = "editor", "editor"
+        elif case == "model_review":
+            if condition.endswith("isolated"):
+                _launch(guest_b, "blender", a_path, run_id)
+            _launch(guest_b, "editor", b_path, run_id)
+            _launch(guest_a, "blender", a_path, run_id)
+            a_app, b_app = "blender", "editor"
         else:
             _launch(guest_a, "files", f"{task_root}/incoming", run_id)
             _launch(guest_b, "writer", b_path, run_id)
@@ -341,8 +378,10 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                     _activate_editor_tab(guest_a, "A", True)
                 else:
                     _activate(guest_a, "editor", a_path)
-            else:
+            elif case == "workspace_assembly":
                 _activate(guest_a, "files", f"{task_root}/incoming")
+            else:
+                _activate(guest_a, "blender", a_path)
             outcomes["A"] = core._run_actor("A", guest_a, spec.AGENT_A_INSTRUCTION,
                 _scripted_actions(case, "A", task_root, fixtures, negative), run_root,
                 max_steps=25, case_id=spec.CASE_ID)
@@ -360,11 +399,28 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
             if controllers["B"].get_file(a_path) != controllers["A"].get_file(a_path):
                 raise RuntimeError("B Guest did not receive A's saved version")
             msg = clients["A"].send_message("B", f"Saved {Path(a_path).name} revision {a_revision['revision']}; "
-                    + ("filter defect fixed" if case == "build_verify" else "inspection tag RIVER-27"))
+                    + ("filter defect fixed" if case == "build_verify" else
+                       "shade width 1.46 m" if case == "model_review" else "inspection tag RIVER-27"))
             if msg["message_id"] not in {m["message_id"] for m in clients["B"].read_messages()}:
                 raise RuntimeError("B did not receive A's message")
             if case == "build_verify":
                 _activate(guest_b, "browser", a_path)
+            elif case == "model_review":
+                # Scripted control observes the published scene in the real
+                # Blender GUI; model B must choose its own reload/read action.
+                if condition.endswith("isolated"):
+                    _launch(guest_b, "blender", a_path, run_id)
+                else:
+                    _activate(guest_b, "blender", a_path)
+                peer_shot = run_root / "screenshots" / "scripted-peer-blender-after-handoff.png"
+                peer_shot.write_bytes(guest_b.screenshot(patience=45))
+                (run_root / "scripted_peer_blender_read.json").write_text(json.dumps({
+                    "published_A_revision": a_revision["revision"],
+                    "guest_key": guest_b.guest_key,
+                    "active_window": guest_b.active_window(),
+                    "screenshot": str(peer_shot.relative_to(run_root)),
+                    "saved_sha256": a_revision["sha256"]}, indent=2) + "\n")
+                _activate(guest_b, "editor", b_path)
             else:
                 # Smoke the real peer file in a GUI viewer before the scripted
                 # Writer edit. Model actors must choose their own read action.
@@ -409,6 +465,12 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 run_root / "artifacts/A" / Path(a_path).name,
                 fixture / spec.FIXTURE_NAMES["qa"],
                 run_root / "artifacts/B" / Path(b_path).name)
+        elif case == "model_review":
+            score = oracle.evaluate(fixture / spec.FIXTURE_NAMES["scene"],
+                run_root / "artifacts/A" / Path(a_path).name,
+                fixture / spec.FIXTURE_NAMES["report"],
+                run_root / "artifacts/B" / Path(b_path).name,
+                blender_bin)
         else:
             incoming_guest = f"{task_root}/incoming/{spec.FIXTURE_NAMES['asset']}"
             incoming_present = _guest_script(guest_a,
@@ -430,33 +492,53 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                                "same_bytes": False, "missing_output": True})
                 continue
             data_before = guest.env.controller.get_file(path)
-            if app != "files":
-                if case == "build_verify" and condition.endswith("shared"):
-                    _activate_editor_tab(guest, role, True)
+            try:
+                if app != "files":
+                    if case == "build_verify" and condition.endswith("shared"):
+                        _activate_editor_tab(guest, role, True)
+                    else:
+                        _activate(guest, app, path)
+                    # A dirty Text Editor tab may not be safely closed from
+                    # the generic GUI path. Preserve the already scored bytes
+                    # and record that GUI reopen was not verified.
+                    active_title = guest.active_window() or ""
+                    if app == "editor" and _editor_has_unsaved_buffer(active_title, path):
+                        reopen.append({"role": role, "guest": guest.guest_key,
+                                       "same_bytes": True, "gui_reopen": "skipped_unsaved_buffer",
+                                       "saved_sha256": hashlib.sha256(data_before).hexdigest()})
+                        continue
+                    guest.actor = "system"
+                    guest.run_pyautogui("import pyautogui, time; pyautogui.hotkey('alt','f4'); time.sleep(2)"
+                                        if app == "blender" else
+                                        "import pyautogui, time; pyautogui.hotkey('ctrl','w'); time.sleep(2)")
+                    discarded_unsaved = core._discard_postscore_unsaved_dialog(
+                        guest, f"reopen-{role}-close")
+                    _launch(guest, app, path, run_id)
                 else:
-                    _activate(guest, app, path)
-                # A model can leave correct text in an unsaved editor buffer.
-                # Closing that tab opens a save/discard modal and makes the
-                # subsequent launch look like an infrastructure failure. The
-                # saved artifact is already scored; record the dirty buffer
-                # and do not mutate it in the postscore verification phase.
-                active_title = guest.active_window() or ""
-                if app == "editor" and _editor_has_unsaved_buffer(active_title, path):
-                    reopen.append({"role": role, "guest": guest.guest_key,
-                                   "same_bytes": True, "gui_reopen": "skipped_unsaved_buffer",
-                                   "saved_sha256": hashlib.sha256(data_before).hexdigest()})
-                    continue
-                guest.actor = "system"
-                guest.run_pyautogui("import pyautogui, time; pyautogui.hotkey('ctrl','w'); time.sleep(2)")
-                _launch(guest, app, path, run_id)
-            else:
-                _launch(guest, "files", f"{task_root}/outputs/agent_A", run_id)
-            data_after = guest.env.controller.get_file(path)
-            if data_before != data_after:
-                raise RuntimeError(f"{role} saved bytes changed during GUI reopen")
-            reopen.append({"role": role, "guest": guest.guest_key,
-                "sha256": hashlib.sha256(data_after).hexdigest(), "same_bytes": True})
+                    discarded_unsaved = False
+                    _launch(guest, "files", f"{task_root}/outputs/agent_A", run_id)
+                data_after = guest.env.controller.get_file(path)
+                if data_before != data_after:
+                    raise RuntimeError(f"{role} saved bytes changed during GUI reopen")
+                reopen.append({"role": role, "guest": guest.guest_key,
+                    "sha256": hashlib.sha256(data_after).hexdigest(), "same_bytes": True,
+                    "discarded_uncommitted_buffer_after_scoring": discarded_unsaved})
+            except (RuntimeError, TimeoutError) as exc:
+                # Oracle already scored the saved bytes. Keep its judgement
+                # separate from a blocked postscore GUI lifecycle and reset
+                # only this run's Guest in the normal path below.
+                shot_path = run_root / "screenshots" / f"reopen-{role}-failed.png"
+                try:
+                    shot_path.write_bytes(guest.screenshot(patience=45))
+                    shot = str(shot_path.relative_to(run_root))
+                except Exception:
+                    shot = None
+                reopen.append({"role": role, "guest": guest.guest_key,
+                    "same_bytes": False, "saved_sha256": hashlib.sha256(data_before).hexdigest(),
+                    "postscore_error": f"{type(exc).__name__}: {exc}", "screenshot": shot})
         (run_root / "reopen_evidence.json").write_text(json.dumps(reopen, indent=2) + "\n")
+        reopen_complete = (len(reopen) == 2 and all(item.get("same_bytes") is True
+                            and item.get("gui_reopen") != "skipped_unsaved_buffer" for item in reopen))
         for key, env in envs.items():
             old_id = container_ids[key]
             core._verify_container(old_id, run_id)
@@ -477,10 +559,12 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                   "model": model, "actor_results": outcomes, "oracle": score,
                   "browser_trace_audit": browser_trace,
                   "artifact_manifest": artifacts, "reopen": reopen,
+                  "reopen_complete": reopen_complete,
                   "reset": reset_evidence, "elapsed_s": time.time() - metadata["started_at"],
-                  "status": core._episode_result_status(score["joint_success"] and
+                  "status": ("INVALID_INFRA" if score["joint_success"] and not reopen_complete else
+                      core._episode_result_status(score["joint_success"] and
                       (browser_trace is None or browser_trace["browser_one_visible_row_after_handoff"]),
-                      not missing_outputs, outcomes, bool(model))}
+                      not missing_outputs, outcomes, bool(model)))}
         (run_root / "result.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
         return result
     finally:
@@ -521,7 +605,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
 
 def main(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--case", required=True, choices=("build_verify", "workspace_assembly"))
+    parser.add_argument("--case", required=True, choices=("build_verify", "workspace_assembly", "model_review"))
     parser.add_argument("--condition", required=True,
                         choices=("collaborative_shared", "collaborative_isolated"))
     parser.add_argument("--run-root", type=Path, required=True)
@@ -537,6 +621,9 @@ def main(argv: list[str] | None = None):
     parser.add_argument("--scripted-negative", action="store_true")
     parser.add_argument("--yield-wait-lifecycle", action="store_true",
                         help="pause B's active model budget after it voluntarily yields for A's handoff")
+    parser.add_argument("--actor-mcp-only", action="store_true",
+                        help="model sees only the desktop and collaboration MCP tools")
+    parser.add_argument("--blender-bin", help="host-side Blender scorer for model_review")
     args = parser.parse_args(argv)
     run_root = args.run_root.resolve()
     if args.model and not os.environ.get(args.api_key_env):
@@ -546,7 +633,7 @@ def main(argv: list[str] | None = None):
                      args.provider.resolve(), args.image, args.runtime,
                      args.model, args.base_url, args.api_key_env, args.mcp_python,
                      args.model_timeout, args.diagnostic_step_limit, args.scripted_negative,
-                     args.yield_wait_lifecycle)
+                     args.yield_wait_lifecycle, args.actor_mcp_only, args.blender_bin)
     except Exception as exc:
         failure = {"status": "INVALID_INFRA_OR_RUNNER_ERROR", "run_id": args.run_root.name,
                    "error": f"{type(exc).__name__}: {exc}", "traceback": traceback.format_exc()}

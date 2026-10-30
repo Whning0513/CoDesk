@@ -1,0 +1,13 @@
+# Case 7 paired repeat protocol, frozen before formal runs
+
+Task: Workspace Assembly Lite v1.0.1, unchanged fixture, Gold, Oracle, A/B role prompts, and saved-artifact bridge. Evaluation policy: `--actor-mcp-only` request-level allowlist, `--yield-wait-lifecycle`, no shared desktop input lock. Model: `gpt-6-astra` through `https://api.haogpt.net/v1` via the authenticated run-owned relay. Each Actor has the task's 25 desktop-step budget; model timeout is 1200 seconds. No diagnostic step cap in formal runs.
+
+Collect **two complete Shared/Isolated pairs** as a small exploratory repeat, in this fixed order: Pair 1 Shared then Isolated; Pair 2 Isolated then Shared. Start both Actors concurrently within each run. Every launched episode is retained and reported, including failures and infrastructure errors. Only an independently verified infrastructure failure may be labeled invalid; it is not silently replaced. Report all four outcomes plus the earlier whitelist Pilot separately. Do not pool these with pre-allowlist historical episodes.
+
+Record actual GUI actions, screenshots, Actor sessions, collaboration messages, saved artifact revisions, relay usage, Oracle, reopen, reset, QEMU resources, active overlap, wait/wake events, and focus transitions. Joint success and each role's score are separate endpoints. Focus interference requires action/window evidence, not merely a Shared failure. A two-pair sample is descriptive and cannot estimate a precise success rate or prove that desktop isolation is causal.
+
+Pre-freeze diagnostic note: the first 8-step Shared whitelist Pilot reached real model screenshot and GUI calls in both Actors, but A hit the intentional small step cap before handoff. Its postscore Writer close opened an unsaved-buffer modal and exposed a separate lifecycle bug in the old runner; that Pilot remains diagnostic and is not one of the four formal runs. The generic postscore code now captures the modal, discards only the uncommitted buffer after Oracle, reopens the saved file, and verifies byte identity. This change does not run during Actor execution.
+
+The second 8-step Shared whitelist Pilot completed through scoring, exact reopen, and clean reset. A passed, B failed, and joint success was false at the diagnostic cap. B suspended while waiting for A, consumed no model or GUI calls during its 236.305-second wait, and resumed after A's saved revision and message. Actor tool audit found no calls outside the GUI/collaboration allowlist. This is a valid diagnostic failure, not part of the four formal episodes.
+
+The frozen formal driver starts one read-only QEMU process sampler per run, filtered to the exact run label, then stops that sampler after that run. Resource samples are not used by the Actor or Oracle.

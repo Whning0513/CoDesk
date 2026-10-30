@@ -11,6 +11,8 @@ import hashlib
 import io
 import json
 import shlex
+import shutil
+import subprocess
 import threading
 import time
 import zipfile
@@ -125,7 +127,20 @@ class SavedArtifactBridge:
             if self._read(actor, path) != data:
                 raise RuntimeError("artifact changed during save; retry after saving completes")
             expected = self.mime_types[actor]
-            if expected is not None:
+            if expected == "application/x-blender":
+                from oscombo.collab.model_and_review.blend_format import (
+                    ZSTD_MAGIC, has_blend_container_header)
+                if not has_blend_container_header(data):
+                    raise RuntimeError("saved artifact is not a Blender project container")
+                if data.startswith(ZSTD_MAGIC):
+                    zstd = shutil.which("zstd")
+                    if not zstd:
+                        raise RuntimeError("zstd is required to verify compressed Blender saves")
+                    checked = subprocess.run([zstd, "-tq", "-"], input=data,
+                                             capture_output=True, timeout=30)
+                    if checked.returncode:
+                        raise RuntimeError("compressed Blender save has an incomplete Zstd frame")
+            elif expected is not None:
                 with zipfile.ZipFile(io.BytesIO(data)) as archive:
                     if archive.testzip() is not None:
                         raise RuntimeError("saved artifact has an invalid ZIP checksum")

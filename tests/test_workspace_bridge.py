@@ -206,6 +206,49 @@ def test_text_output_contract_rejects_non_utf8_and_syncs_saved_source(tmp_path):
     assert b.files["/task/outputs/app.js"] == a.files["/task/outputs/app.js"]
 
 
+def test_blender_binary_revision_is_synced_without_text_decoding(tmp_path):
+    outputs = {"A": "outputs/scene.blend", "B": "outputs/review.txt"}
+    scene_path = "/task/outputs/scene.blend"
+    initial = b"BLENDER" + b"\x00\xffinitial"
+    edited = b"BLENDER" + b"\x00\xffedited"
+    files = {scene_path: initial, "/task/outputs/review.txt": b"Pending\n"}
+    a, b = Files(files), Files(files)
+    bridge = SavedArtifactBridge(tmp_path / "versions", "blender-case", "/task",
+                                 {"A": a, "B": b}, {"A": "A", "B": "B"},
+                                 outputs=outputs,
+                                 mime_types={"A": "application/x-blender", "B": None},
+                                 peer_read_only=True)
+    bridge.sync()
+    a.files[scene_path] = b"not a Blender file"
+    with pytest.raises(RuntimeError, match="Blender project"):
+        bridge.publish("A")
+    a.files[scene_path] = edited
+    assert bridge.publish("A")["revision"] == 1
+    assert b.files[scene_path] == edited
+    assert b.modes[scene_path] == "444"
+
+
+def test_compressed_blender_partial_frame_is_rejected_before_sync(tmp_path):
+    fixture = (Path(__file__).resolve().parents[1] /
+               "oscombo/collab/model_and_review_lite_v1/fixtures/Lamp_Review.blend").read_bytes()
+    outputs = {"A": "outputs/scene.blend", "B": "outputs/review.txt"}
+    scene_path = "/task/outputs/scene.blend"
+    files = {scene_path: b"BLENDERinitial", "/task/outputs/review.txt": b"Pending\n"}
+    a, b = Files(files), Files(files)
+    bridge = SavedArtifactBridge(tmp_path / "versions", "blender-zstd", "/task",
+                                 {"A": a, "B": b}, {"A": "A", "B": "B"},
+                                 outputs=outputs,
+                                 mime_types={"A": "application/x-blender", "B": None})
+    bridge.sync()
+    a.files[scene_path] = fixture[:100]
+    with pytest.raises(RuntimeError, match="incomplete Zstd frame"):
+        bridge.publish("A")
+    assert b.files[scene_path] == b"BLENDERinitial"
+    a.files[scene_path] = fixture
+    assert bridge.publish("A")["revision"] == 1
+    assert b.files[scene_path] == fixture
+
+
 def test_new_file_is_published_only_after_owner_creates_it(tmp_path):
     fixture = tmp_path / "fixture"
     build_fixture(fixture)

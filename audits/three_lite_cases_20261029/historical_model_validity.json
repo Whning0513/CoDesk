@@ -1,0 +1,421 @@
+[
+  {
+    "run_id": "bv-lite-v1p4-model-full-isolated-20261029T171430Z",
+    "case_id": "CDD-BV-LITE-001",
+    "condition": "collaborative_isolated",
+    "status": "INVALID_INFRA",
+    "oracle_joint_success": false,
+    "complete_reopen_reset": false,
+    "outside_contract_calls": {
+      "A": {
+        "get_goal": 1,
+        "list_mcp_resources": 1,
+        "read_mcp_resource": 1
+      },
+      "B": {
+        "get_goal": 1
+      }
+    },
+    "strict_comparable": false
+  },
+  {
+    "run_id": "bv-lite-v1p4-model-full-shared-20261029T164830Z",
+    "case_id": "CDD-BV-LITE-001",
+    "condition": "collaborative_shared",
+    "status": "INVALID_INFRA",
+    "oracle_joint_success": false,
+    "complete_reopen_reset": false,
+    "outside_contract_calls": {
+      "A": {
+        "apply_patch": 1,
+        "view_image": 1
+      },
+      "B": {
+        "request_user_input": 1
+      }
+    },
+    "strict_comparable": false
+  },
+  {
+    "run_id": "bv-lite-v1p4-model-pilot-isolated-20261029T162800Z",
+    "case_id": "CDD-BV-LITE-001",
+    "condition": "collaborative_isolated",
+    "status": "FAIL",
+    "oracle_joint_success": false,
+    "complete_reopen_reset": true,
+    "outside_contract_calls": {
+      "B": {
+        "read_mcp_resource": 1
+      }
+    },
+    "strict_comparable": false
+  },
+  {
+    "run_id": "cdd-lite-v1-model-isolated-20261027T093906Z",
+    "case_id": "CDD-LITE-001",
+    "condition": "collaborative_isolated",
+    "status": "INVALID_INFRA",
+    "oracle_joint_success": false,
+    "complete_reopen_reset": false,
+    "outside_contract_calls": {
+      "A": {
+        "get_goal": 1
+      },
+      "B": {
+        "get_goal": 4,
+        "read_mcp_resource": 1
+      }
+    },
+    "strict_comparable": false
+  },
+  {
+    "run_id": "cdd-lite-v1-model-pilot-fixed-20261027T085000Z",
+    "case_id": "CDD-LITE-001",
+    "condition": "collaborative_shared",
+    "status": "FAIL",
+    "oracle_joint_success": false,
+    "complete_reopen_reset": true,
+    "outside_contract_calls": {
+      "A": {
+        "get_goal": 1
+      },
+      "B": {
+        "read_mcp_resource": 1
+      }
+    },
+    "strict_comparable": false
+  },
+  {
+    "run_id": "cdd-lite-v1-model-pilot-shared-20261027T083600Z",
+    "case_id": "CDD-LITE-001",
+    "condition": "collaborative_shared",
+    "status": "FAIL",
+    "oracle_joint_success": false,
+    "complete_reopen_reset": true,
+    "outside_contract_calls": {},
+    "strict_comparable": true
+  },
+  {
+    "run_id": "cdd-lite-v1-model-shared-20261027T091100Z",
+    "case_id": "CDD-LITE-001",
+    "condition": "collaborative_shared",
+    "status": "INVALID_INFRA",
+    "oracle_joint_success": false,
+    "complete_reopen_reset": false,
+    "outside_contract_calls": {
+      "A": {
+        "apply_patch": 1,
+        "list_mcp_resources": 1
+      },
+      "B": {
+        "get_goal": 3,
+        "list_mcp_resources": 2
+      }
+    },
+    "strict_comparable": false
+  },
+  {
+    "run_id": "cdd-lite-v1-repair-model-isolated-20261027T124400Z",
+    "case_id": "CDD-LITE-001",
+    "condition": "collaborative_isolated",
+    "status": "FAIL",
+    "oracle_joint_success": false,
+    "complete_reopen_reset": true,
+    "outside_contract_calls": {
+      "A": {
+        "apply_patch": 2,
+        "interrupt_agent": 1,
+        "spawn_agent": 1,
+        "update_goal": 2
+      },
+      "B": {
+        "create_goal": 1,
+        "get_goal": 1,
+        "list_mcp_resource_templates": 1,
+        "list_mcp_resources": 4,
+        "update_goal": 1
+      }
+    },
+    "strict_comparable": false
+  },
+  {
+    "run_id": "cdd-lite-v1-repair-model-shared-20261027T121500Z",
+    "case_id": "CDD-LITE-001",
+    "condition": "collaborative_shared",
+    "status": "FAIL",
+    "oracle_joint_success": false,
+    "complete_reopen_reset": false,
+    "outside_contract_calls": {
+      "A": {
+        "create_goal": 1,
+        "get_goal": 1,
+        "read_mcp_resource": 1
+      },
+      "B": {
+        "get_goal": 10,
+        "list_mcp_resources": 2,
+        "wait_agent": 2
+      }
+    },
+    "strict_comparable": false
+  },
+  {
+    "run_id": "cdd-lite-v2-life-isolated-20261028T092900Z",
+    "case_id": "CDD-LITE-002",
+    "condition": "collaborative_isolated",
+    "status": "PASS",
+    "oracle_joint_success": true,
+    "complete_reopen_reset": true,
+    "outside_contract_calls": {
+      "B": {
+        "apply_patch": 1,
+        "get_goal": 1,
+        "read_mcp_resource": 4
+      }
+    },
+    "strict_comparable": false
+  },
+  {
+    "run_id": "cdd-lite-v2-life-pilot-isolated-20261028T083300Z",
+    "case_id": "CDD-LITE-002",
+    "condition": "collaborative_isolated",
+    "status": "FAIL",
+    "oracle_joint_success": false,
+    "complete_reopen_reset": false,
+    "outside_contract_calls": {},
+    "strict_comparable": false
+  },
+  {
+    "run_id": "cdd-lite-v2-life-shared-20261028T090600Z",
+    "case_id": "CDD-LITE-002",
+    "condition": "collaborative_shared",
+    "status": "FAIL",
+    "oracle_joint_success": false,
+    "complete_reopen_reset": true,
+    "outside_contract_calls": {
+      "A": {
+        "apply_patch": 1
+      }
+    },
+    "strict_comparable": false
+  },
+  {
+    "run_id": "cdd-lite-v2-model-isolated-20261027T155400Z",
+    "case_id": "CDD-LITE-002",
+    "condition": "collaborative_isolated",
+    "status": "FAIL",
+    "oracle_joint_success": false,
+    "complete_reopen_reset": true,
+    "outside_contract_calls": {
+      "A": {
+        "get_goal": 1
+      },
+      "B": {
+        "read_mcp_resource": 2
+      }
+    },
+    "strict_comparable": false
+  },
+  {
+    "run_id": "cdd-lite-v2-model-pilot-isolated-20261027T150120Z",
+    "case_id": "CDD-LITE-002",
+    "condition": "collaborative_isolated",
+    "status": "PASS",
+    "oracle_joint_success": true,
+    "complete_reopen_reset": true,
+    "outside_contract_calls": {
+      "A": {
+        "get_goal": 2
+      },
+      "B": {
+        "create_goal": 1,
+        "followup_task": 1,
+        "list_agents": 1,
+        "read_mcp_resource": 1,
+        "request_user_input": 1,
+        "update_goal": 2
+      }
+    },
+    "strict_comparable": false
+  },
+  {
+    "run_id": "cdd-lite-v2-model-shared-20261027T153100Z",
+    "case_id": "CDD-LITE-002",
+    "condition": "collaborative_shared",
+    "status": "FAIL",
+    "oracle_joint_success": false,
+    "complete_reopen_reset": true,
+    "outside_contract_calls": {
+      "A": {
+        "get_goal": 3,
+        "list_mcp_resources": 1
+      },
+      "B": {
+        "read_mcp_resource": 8
+      }
+    },
+    "strict_comparable": false
+  },
+  {
+    "run_id": "cdd-lite-v2-wake-guest-smoke-20261028T151200Z",
+    "case_id": "CDD-LITE-002",
+    "condition": "collaborative_isolated",
+    "status": "PASS",
+    "oracle_joint_success": true,
+    "complete_reopen_reset": true,
+    "outside_contract_calls": {
+      "A": {
+        "get_goal": 2,
+        "list_mcp_resources": 1,
+        "read_mcp_resource": 1
+      }
+    },
+    "strict_comparable": false
+  },
+  {
+    "run_id": "sh-lite-v1-model-full-isolated-20261029T163535Z",
+    "case_id": "CDD-SH-LITE-001",
+    "condition": "collaborative_isolated",
+    "status": "FAIL",
+    "oracle_joint_success": false,
+    "complete_reopen_reset": true,
+    "outside_contract_calls": {},
+    "strict_comparable": true
+  },
+  {
+    "run_id": "sh-lite-v1-model-full-shared-20261029T154540Z",
+    "case_id": "CDD-SH-LITE-001",
+    "condition": "collaborative_shared",
+    "status": "INVALID_INFRA",
+    "oracle_joint_success": true,
+    "complete_reopen_reset": false,
+    "outside_contract_calls": {
+      "B": {
+        "read_mcp_resource": 2
+      }
+    },
+    "strict_comparable": false
+  },
+  {
+    "run_id": "sh-lite-v1-model-full-shared-20261029T161300Z",
+    "case_id": "CDD-SH-LITE-001",
+    "condition": "collaborative_shared",
+    "status": "INVALID_INFRA",
+    "oracle_joint_success": false,
+    "complete_reopen_reset": false,
+    "outside_contract_calls": {
+      "A": {
+        "get_goal": 3,
+        "list_mcp_resource_templates": 1,
+        "list_mcp_resources": 1,
+        "update_goal": 1
+      },
+      "B": {
+        "apply_patch": 1,
+        "create_goal": 1,
+        "list_agents": 1,
+        "list_mcp_resources": 1,
+        "read_mcp_resource": 1,
+        "update_goal": 1,
+        "wait_agent": 6
+      }
+    },
+    "strict_comparable": false
+  },
+  {
+    "run_id": "sh-lite-v1-model-pilot-shared-20261029T151330Z",
+    "case_id": "CDD-SH-LITE-001",
+    "condition": "collaborative_shared",
+    "status": "FAIL",
+    "oracle_joint_success": false,
+    "complete_reopen_reset": true,
+    "outside_contract_calls": {
+      "A": {
+        "update_goal": 1
+      }
+    },
+    "strict_comparable": false
+  },
+  {
+    "run_id": "wa-lite-v1-model-full-isolated-20261029T163550Z",
+    "case_id": "CDD-WA-LITE-001",
+    "condition": "collaborative_isolated",
+    "status": "FAIL",
+    "oracle_joint_success": false,
+    "complete_reopen_reset": true,
+    "outside_contract_calls": {
+      "A": {
+        "get_goal": 2
+      }
+    },
+    "strict_comparable": false
+  },
+  {
+    "run_id": "wa-lite-v1-model-full-shared-20261029T161035Z",
+    "case_id": "CDD-WA-LITE-001",
+    "condition": "collaborative_shared",
+    "status": "FAIL",
+    "oracle_joint_success": false,
+    "complete_reopen_reset": false,
+    "outside_contract_calls": {
+      "B": {
+        "list_mcp_resources": 1,
+        "read_mcp_resource": 2,
+        "update_goal": 1
+      }
+    },
+    "strict_comparable": false
+  },
+  {
+    "run_id": "wa-lite-v1-model-pilot-isolated-20261029T155235Z",
+    "case_id": "CDD-WA-LITE-001",
+    "condition": "collaborative_isolated",
+    "status": "FAIL",
+    "oracle_joint_success": false,
+    "complete_reopen_reset": false,
+    "outside_contract_calls": {
+      "B": {
+        "read_mcp_resource": 1
+      }
+    },
+    "strict_comparable": false
+  },
+  {
+    "run_id": "wa-lite-v1p1-model-full-isolated-20261030T055400Z",
+    "case_id": "CDD-WA-LITE-001",
+    "condition": "collaborative_isolated",
+    "status": "FAIL",
+    "oracle_joint_success": false,
+    "complete_reopen_reset": false,
+    "outside_contract_calls": {
+      "A": {
+        "apply_patch": 1,
+        "list_mcp_resources": 1
+      },
+      "B": {
+        "list_mcp_resources": 1
+      }
+    },
+    "strict_comparable": false
+  },
+  {
+    "run_id": "wa-lite-v1p1-model-full-shared-20261029T174100Z",
+    "case_id": "CDD-WA-LITE-001",
+    "condition": "collaborative_shared",
+    "status": "PASS",
+    "oracle_joint_success": true,
+    "complete_reopen_reset": true,
+    "outside_contract_calls": {},
+    "strict_comparable": true
+  },
+  {
+    "run_id": "wa-lite-v1p1-whitelist-pilot-shared-20261030T090500Z",
+    "case_id": "CDD-WA-LITE-001",
+    "condition": "collaborative_shared",
+    "status": "INVALID_INFRA",
+    "oracle_joint_success": false,
+    "complete_reopen_reset": false,
+    "outside_contract_calls": {},
+    "strict_comparable": false
+  }
+]

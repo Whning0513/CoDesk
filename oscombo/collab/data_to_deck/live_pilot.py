@@ -540,6 +540,37 @@ def _activate_ready_document(guest: LoggedGuest, path: str, phase: str) -> None:
         "window": guest._window_sample(phase), "atomic": False})
 
 
+def _discard_postscore_unsaved_dialog(guest: LoggedGuest, phase: str) -> bool:
+    """Close a LibreOffice dirty-buffer prompt after saved bytes were scored.
+
+    Keep a screenshot before discarding the uncommitted buffer. The caller
+    checks that the already collected saved file is byte-identical after GUI
+    reopen. This is never called while an Actor is active.
+    """
+    active = guest.active_window() or ""
+    if "Save Document?" not in active:
+        return False
+    import struct
+    shot = guest.screenshot(patience=45)
+    if not shot.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise RuntimeError("cannot verify postscore unsaved dialog screenshot")
+    width, height = struct.unpack(">II", shot[16:24])
+    if (width, height) != (1920, 1080):
+        raise RuntimeError(f"unsupported postscore dialog geometry: {width}x{height}")
+    path = guest.root / "screenshots" / f"{phase}-unsaved-dialog.png"
+    path.write_bytes(shot)
+    guest.actor = "system"
+    guest.run_pyautogui("import pyautogui, time; pyautogui.click(783, 614); time.sleep(2)")
+    after = guest.active_window() or ""
+    _append(guest.root / "observations.jsonl", {"actor": "system", "guest_key": guest.guest_key,
+        "time_utc": _stamp(), "phase": phase, "unsaved_dialog_discarded_after_scoring": True,
+        "before_window": active, "after_window": after,
+        "screenshot": str(path.relative_to(guest.root)), "atomic": False})
+    if "Save Document?" in after:
+        raise RuntimeError("postscore unsaved dialog did not close")
+    return True
+
+
 def _prepare_saved_document_reopen(guest: LoggedGuest, path: str, phase: str,
                                    application: str, log_path: str,
                                    model_episode: bool) -> bool:
@@ -550,6 +581,14 @@ def _prepare_saved_document_reopen(guest: LoggedGuest, path: str, phase: str,
     window had to be opened from the saved file before the normal close/reopen
     check.
     """
+    # An Actor may leave LibreOffice's file-open chooser in front of a saved
+    # output. Cancel that chooser only after scoring; Escape cannot modify the
+    # collected artifact. Never answer an unsaved-document prompt here.
+    if model_episode:
+        _discard_postscore_unsaved_dialog(guest, phase)
+    if model_episode and (guest.active_window() or "").strip() == "Open":
+        guest.actor = "system"
+        guest.run_pyautogui("import pyautogui, time; pyautogui.press('esc'); time.sleep(1)")
     try:
         _activate_ready_document(guest, path, phase)
         return False
@@ -557,7 +596,10 @@ def _prepare_saved_document_reopen(guest: LoggedGuest, path: str, phase: str,
         if not model_episode or "could not activate" not in str(exc):
             raise
         if "Save Document?" in (guest.active_window() or ""):
-            raise
+            _discard_postscore_unsaved_dialog(guest, phase)
+        if (guest.active_window() or "").strip() == "Open":
+            guest.actor = "system"
+            guest.run_pyautogui("import pyautogui, time; pyautogui.press('esc'); time.sleep(1)")
         _launch(guest, application, path, log_path)
         _activate_ready_document(guest, path, phase + "-restored")
         return True
@@ -868,7 +910,8 @@ def _start_local_qwen_gateway(run_root: Path, python: Path, worker: Path, model_
 
 
 def _start_codex_compat_relay(run_root: Path, upstream: str, api_key_env: str,
-                              client_token: str, client_token_env: str) -> tuple[subprocess.Popen, str]:
+                              client_token: str, client_token_env: str,
+                              actor_mcp_only: bool = False) -> tuple[subprocess.Popen, str]:
     """Start one run-owned loopback relay; keep the provider key out of Codex."""
     import requests
     ready = run_root / "codex_relay_ready.json"
@@ -878,6 +921,8 @@ def _start_codex_compat_relay(run_root: Path, upstream: str, api_key_env: str,
            "--client-token-env", client_token_env,
            "--ready-file", str(ready),
            "--event-log", str(run_root / "codex_relay_events.jsonl")]
+    if actor_mcp_only:
+        cmd.append("--actor-mcp-only")
     relay_env = {name: os.environ[name] for name in (
         "PATH", "HOME", "PYTHONPATH", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
         "http_proxy", "https_proxy", "no_proxy", "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE")
@@ -925,6 +970,7 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
               qwen_visible_gpus: str = "6,7", qwen_max_new_tokens: int = 512,
               diagnostic_step_limit: int | None = None,
               codex_compat_relay: bool = False,
+              actor_mcp_only: bool = False,
               case_lite_v1: bool = False,
               case_lite_v2: bool = False,
               case_lite_v2_1: bool = False,
@@ -972,6 +1018,8 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
         raise ValueError("local Qwen mode requires python, worker script, and model path")
     if codex_compat_relay and (not model or local_qwen):
         raise ValueError("Codex compatibility relay requires a remote model endpoint")
+    if actor_mcp_only and (not model or local_qwen):
+        raise ValueError("Actor tool allowlist requires a remote model")
     # Remote provider credentials stay in the coordinator/relay process only.
     # Actors receive a disposable loopback capability, never the provider key.
     if model and not local_qwen:
@@ -997,8 +1045,11 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
                 "model_request_retries": model_request_retries if model else None,
                 "model_tool_cooldown_sec": model_tool_cooldown_sec if model else None,
                 "codex_compat_relay": codex_compat_relay,
-                "codex_compat_relay_policy": "strip Codex metadata headers; forward request body unchanged"
+                "codex_compat_relay_policy": "strip Codex metadata headers; allowlisted MCP tools only"
+                if codex_compat_relay and actor_mcp_only else
+                "strip Codex metadata headers; forward request body unchanged"
                 if codex_compat_relay else None,
+                "actor_mcp_only": actor_mcp_only,
                 "mcp_python": mcp_python if model else None,
                 "local_qwen": local_qwen,
                 "qwen_python": str(qwen_python.resolve()) if local_qwen and qwen_python else None,
@@ -1080,7 +1131,8 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
             os.environ[relay_client_token_env] = relay_token
             model_token_envs.append(relay_client_token_env)
             relay_process, model_base_url = _start_codex_compat_relay(
-                run_root, base_url, api_key_env, relay_token, relay_client_token_env)
+                run_root, base_url, api_key_env, relay_token, relay_client_token_env,
+                actor_mcp_only=actor_mcp_only)
             ledger.metadata["codex_compat_relay_process"] = {
                 "pid": relay_process.pid, "base_url": model_base_url,
                 "loopback_only": True, "created_at": _stamp()}
@@ -1419,7 +1471,7 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
                 # and proceed to the run-owned reset without answering it.
                 active_after_close = guest.active_window() or ""
                 if model and "Save Document?" in active_after_close:
-                    raise RuntimeError("postscore reopen blocked by unsaved document dialog")
+                    _discard_postscore_unsaved_dialog(guest, f"reopen-{role}-close")
                 _shell(guest, f"for i in $(seq 1 30); do "
                               f"wmctrl -l | grep -Fq {shlex.quote(Path(guest_path).name)} || exit 0; "
                               "sleep 1; done; exit 1", timeout=40)
@@ -1639,6 +1691,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--base-url", default="https://api.openai.com/v1")
     parser.add_argument("--codex-compat-relay", action="store_true",
                         help="run-owned loopback relay strips Codex metadata headers for compatible providers")
+    parser.add_argument("--actor-mcp-only", action="store_true",
+                        help="model sees only the desktop and collaboration MCP tools")
     parser.add_argument("--api-key-env", default="AIGCBEST_API_KEY")
     parser.add_argument("--mcp-python", help="Python executable with MCP, requests and Pillow installed")
     parser.add_argument("--effort", default="medium", choices=("low", "medium", "high", "xhigh"))
@@ -1674,6 +1728,7 @@ def main(argv: list[str] | None = None) -> None:
                            qwen_max_new_tokens=args.qwen_max_new_tokens,
                            diagnostic_step_limit=args.diagnostic_step_limit,
                            codex_compat_relay=args.codex_compat_relay,
+                           actor_mcp_only=args.actor_mcp_only,
                            case_lite_v1=args.case_lite_v1,
                            case_lite_v2=args.case_lite_v2,
                            case_lite_v2_1=args.case_lite_v2_1,

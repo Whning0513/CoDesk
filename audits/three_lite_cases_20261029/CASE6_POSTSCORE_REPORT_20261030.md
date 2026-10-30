@@ -1,0 +1,11 @@
+# Case 6 postscore recovery validation
+
+The first historical Case 6 Shared full model run had saved A/B artifacts and a joint Oracle PASS, but the episode lacked a complete result because the old postscore path required A's Calc window to remain open. Another Shared full run met an `Open` file chooser during postscore reopen and timed out. Neither is reclassified as a valid full run.
+
+The common postscore recovery now runs **after both Actors and the independent Oracle**. If a scored document's window was closed, it opens the saved file and checks byte identity. If a stale LibreOffice `Open` chooser is in front, it cancels that chooser and continues. If a `Save Document?` dirty-buffer prompt blocks close, it first saves a real screenshot, then discards only the uncommitted buffer and checks the previously scored file's hash after GUI reopen. No step takes a Shared input lock or changes an Actor-time action.
+
+The real Guest scripted positive control `sh-lite-v1-postscore-open-control-20261030T091200Z` reached joint Oracle PASS. A's and B's scored `.ods` files were closed and reopened in the GUI with identical bytes. A deliberately injected postscore `Ctrl+O` yielded an active window titled `Open`; the recovery canceled it and activated the saved B file. `postscore_open_control.json`, `screenshots/postscore-open-control.png`, `reopen_evidence.json`, `oracle.json`, `result.json` and the run-owned reset evidence record this sequence. The final result is PASS, `reopen_complete=true`, `workspace_clean=true`; elapsed wall time is about 897 seconds including TCG Guest setup and reset. Exact run-labeled containers were cleaned.
+
+The earlier diagnostic `sh-lite-v1-postscore-open-control-20261030T085800Z` reached joint Oracle PASS but its diagnostic screenshot helper used a relative path after OSWorld changed cwd; it failed before the injected recovery and is retained as infrastructure-invalid. The helper now resolves its run root before boot. This diagnostic does not change the Case 6 task, fixture or Oracle.
+
+This validates postscore recovery on a scripted real GUI control. It does not retroactively complete historical full model runs, and no new Case 6 full model pair has been collected on this branch.

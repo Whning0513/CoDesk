@@ -1,0 +1,3 @@
+Shade width: [measure A's saved scene] m
+Radial clearance: [compute] m
+Verdict: [pass or fail]

@@ -8,7 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pytest
 import requests
 
-from oscombo.responses_tool_image_relay import make_server, move_latest_tool_image
+from oscombo.responses_tool_image_relay import make_server, move_latest_tool_image, restrict_actor_tools
 from oscombo.harness.base import AgentContext
 from oscombo.harness.external import CodexHarness
 
@@ -24,6 +24,31 @@ def test_move_latest_tool_image_keeps_tool_text_and_prior_observation():
     assert latest["output"] == [{"type": "input_text", "text": "OK."}]
     assert previous["output"][0]["image_url"].endswith("old")
     assert body["input"][-1]["content"][-1]["image_url"].endswith("new")
+
+
+def test_restrict_actor_tools_keeps_only_desktop_and_collaboration():
+    body = {"tool_choice": "auto", "tools": [
+        {"type": "function", "name": "apply_patch"},
+        {"type": "namespace", "name": "mcp__desktop", "tools": [
+            {"type": "function", "name": "screenshot"},
+            {"type": "function", "name": "click"},
+            {"type": "function", "name": "host_shell"}]},
+        {"type": "namespace", "name": "mcp__collaboration", "tools": [
+            {"type": "function", "name": "read_messages"},
+            {"type": "function", "name": "send_message"}]},
+        {"type": "namespace", "name": "collaboration", "tools": [
+            {"type": "function", "name": "spawn_agent"}]},
+    ]}
+    filtered, removed = restrict_actor_tools(body)
+    assert body["tools"][0]["name"] == "apply_patch"  # caller-owned body is unchanged
+    assert [t["name"] for t in filtered["tools"]] == ["mcp__desktop", "mcp__collaboration"]
+    assert [t["name"] for t in filtered["tools"][0]["tools"]] == ["screenshot", "click"]
+    assert set(removed) == {"apply_patch", "mcp__desktop.host_shell", "collaboration"}
+
+
+def test_restrict_actor_tools_rejects_missing_desktop():
+    with pytest.raises(ValueError, match="desktop or collaboration MCP namespace"):
+        restrict_actor_tools({"tools": [{"type": "function", "name": "apply_patch"}]})
 
 
 @pytest.mark.parametrize("route,actor", [("/v1/responses", None), ("/actor/A/v1/responses", "A")])
@@ -86,6 +111,50 @@ def test_default_relay_keeps_body_and_strips_codex_headers(tmp_path, route, acto
 def test_relay_cannot_bind_non_loopback():
     with pytest.raises(ValueError, match="loopback"):
         make_server("0.0.0.0", 0, "https://example.com/v1", "secret", client_token="run-token")
+
+
+def test_allowlist_relay_filters_actual_forwarded_request(tmp_path):
+    captured = {}
+
+    class Upstream(BaseHTTPRequestHandler):
+        def log_message(self, *_args):
+            pass
+
+        def do_POST(self):
+            captured.update(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"ok")
+
+    upstream = ThreadingHTTPServer(("127.0.0.1", 0), Upstream)
+    relay = make_server("127.0.0.1", 0, f"http://127.0.0.1:{upstream.server_port}/v1",
+                        "provider-secret", tmp_path / "events.jsonl",
+                        actor_mcp_only=True, client_token="run-token")
+    threads = [threading.Thread(target=server.serve_forever, daemon=True)
+               for server in (upstream, relay)]
+    for thread in threads:
+        thread.start()
+    try:
+        body = {"model": "test", "tool_choice": "auto", "input": [], "tools": [
+            {"type": "function", "name": "apply_patch"},
+            {"type": "namespace", "name": "mcp__desktop", "tools": [
+                {"type": "function", "name": "screenshot"}]},
+            {"type": "namespace", "name": "mcp__collaboration", "tools": [
+                {"type": "function", "name": "send_message"}]}]}
+        result = requests.post(f"http://127.0.0.1:{relay.server_port}/v1/responses",
+                               json=body, headers={"Authorization": "Bearer run-token"}, timeout=5)
+        assert result.status_code == 200
+        assert [tool["name"] for tool in captured["tools"]] == ["mcp__desktop", "mcp__collaboration"]
+        event = json.loads((tmp_path / "events.jsonl").read_text())
+        assert event["actor_mcp_only"] is True
+        assert event["removed_tool_names"] == ["apply_patch"]
+        assert "provider-secret" not in (tmp_path / "events.jsonl").read_text()
+    finally:
+        for server in (relay, upstream):
+            server.shutdown()
+            server.server_close()
+        for thread in threads:
+            thread.join(timeout=5)
 
 
 def test_codex_loopback_mode_does_not_inherit_provider_key(tmp_path, monkeypatch):

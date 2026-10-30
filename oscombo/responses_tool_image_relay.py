@@ -24,6 +24,59 @@ from urllib.parse import urlparse
 import requests
 
 
+ACTOR_MCP_TOOLS = {
+    "mcp__desktop": frozenset({
+        "screenshot", "click", "drag", "move", "type_text", "key", "scroll",
+        "wait", "declare_infeasible",
+    }),
+    "mcp__collaboration": frozenset({
+        "send_message", "read_messages", "send_attachment", "read_attachment",
+        "publish_saved_artifact", "list_saved_artifacts",
+    }),
+}
+
+
+def restrict_actor_tools(body: dict) -> tuple[dict, list[str]]:
+    """Expose only the pinned desktop/collaboration MCP tools to a GUI Actor.
+
+    The Codex CLI includes built-in file, resource, goal, and agent tools even
+    when shell/unified exec are disabled. Filter the request that the model
+    actually sees; do not rely on a prompt-only instruction or the sandbox.
+    """
+    tools = body.get("tools")
+    if not isinstance(tools, list):
+        raise ValueError("Responses request has no tool definitions")
+    allowed = []
+    removed = []
+    seen = set()
+    for tool in tools:
+        if not isinstance(tool, dict):
+            raise ValueError("invalid Responses tool definition")
+        name = tool.get("name")
+        if tool.get("type") != "namespace" or name not in ACTOR_MCP_TOOLS:
+            removed.append(str(name or tool.get("type", "<unnamed>")))
+            continue
+        if name in seen:
+            raise ValueError(f"duplicate Actor MCP namespace: {name}")
+        children = tool.get("tools")
+        if not isinstance(children, list):
+            raise ValueError(f"{name} has no tool list")
+        kept = [child for child in children if isinstance(child, dict)
+                and child.get("type") == "function"
+                and child.get("name") in ACTOR_MCP_TOOLS[name]]
+        removed.extend(f"{name}.{child.get('name', '<unnamed>')}" for child in children
+                       if child not in kept and isinstance(child, dict))
+        if not kept:
+            raise ValueError(f"{name} has no allowed Actor tools")
+        allowed.append({**tool, "tools": kept})
+        seen.add(name)
+    if seen != set(ACTOR_MCP_TOOLS):
+        raise ValueError("desktop or collaboration MCP namespace is missing from Actor request")
+    if body.get("tool_choice") not in (None, "auto", "required"):
+        raise ValueError("unsupported forced tool choice in Actor request")
+    return {**body, "tools": allowed}, removed
+
+
 def move_latest_tool_image(body: dict) -> bool:
     """Move one latest tool screenshot to a standard image-bearing user turn."""
     history = body.get("input")
@@ -51,6 +104,7 @@ def move_latest_tool_image(body: dict) -> bool:
 def make_server(host: str, port: int, upstream: str, api_key: str,
                 event_log: Path | None = None,
                 promote_tool_image: bool = False,
+                actor_mcp_only: bool = False,
                 client_token: str | None = None) -> ThreadingHTTPServer:
     if host not in {"127.0.0.1", "localhost"}:
         raise ValueError("the image relay must bind to loopback")
@@ -98,13 +152,16 @@ def make_server(host: str, port: int, upstream: str, api_key: str,
                     self.send_error(413)
                     return
                 raw = self.rfile.read(length)
-                model = json.loads(raw).get("model")
+                body = json.loads(raw)
+                model = body.get("model")
                 moved = False
+                removed_tools = []
                 if promote_tool_image:
-                    body = json.loads(raw)
                     moved = move_latest_tool_image(body)
-                    if moved:
-                        raw = json.dumps(body, separators=(",", ":")).encode("utf-8")
+                if actor_mcp_only:
+                    body, removed_tools = restrict_actor_tools(body)
+                if moved or actor_mcp_only:
+                    raw = json.dumps(body, separators=(",", ":")).encode("utf-8")
                 with requests.post(target, headers={
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
@@ -142,6 +199,8 @@ def make_server(host: str, port: int, upstream: str, api_key: str,
                         log.write(json.dumps({"time": time.time(), "started_at": started_at,
                                               "first_byte_at": first_byte_at, "actor": actor,
                                               "model": model, "usage": usage, "image_moved": moved,
+                                              "actor_mcp_only": actor_mcp_only,
+                                              "removed_tool_names": removed_tools,
                                               "request_bytes": len(raw), "upstream_status": status,
                                               "elapsed_s": round(time.monotonic() - started, 3)}) + "\n")
             except Exception as exc:
@@ -170,6 +229,8 @@ def main() -> None:
     parser.add_argument("--event-log", type=Path)
     parser.add_argument("--promote-tool-image", action="store_true",
                         help="diagnostic only: move the latest tool image into a user message")
+    parser.add_argument("--actor-mcp-only", action="store_true",
+                        help="remove Codex built-in tools from model-visible Actor requests")
     args = parser.parse_args()
     key = os.environ.get(args.api_key_env)
     if not key:
@@ -179,6 +240,7 @@ def main() -> None:
         parser.error(f"{args.client_token_env} is unset")
     server = make_server(args.host, args.port, args.upstream, key, args.event_log,
                          promote_tool_image=args.promote_tool_image,
+                         actor_mcp_only=args.actor_mcp_only,
                          client_token=client_token)
     if args.ready_file:
         args.ready_file.write_text(json.dumps({"pid": os.getpid(),

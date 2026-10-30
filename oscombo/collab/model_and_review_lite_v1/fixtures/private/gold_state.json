@@ -1,0 +1,13 @@
+{
+  "case_id": "CDD-MAR-LITE-001",
+  "case_version": "1.0.0",
+  "scene_name": "Lamp_Lite_Review",
+  "shade_outside_dimensions_m": [1.46, 1.46, 0.6],
+  "bulb_width_m": 0.5,
+  "radial_clearance_m": 0.48,
+  "minimum_radial_clearance_m": 0.4,
+  "review_verdict": "pass",
+  "protected_objects": ["Lamp_Base", "Lamp_Bulb", "Camera_Main"],
+  "reference_blend": "gold.blend",
+  "reference_blend_sha256": "892ee38a866a90f4f9e45b28adfa958a0594079ffd1b3009b80c852cbc9485d7"
+}
