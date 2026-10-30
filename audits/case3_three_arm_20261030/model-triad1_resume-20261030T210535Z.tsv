@@ -1,0 +1,3 @@
+mode	arm	max_gui_calls_per_actor	active_model_seconds	run_id	exit_code
+triad1_resume	shared	25	1200	bv-lite-v1p6-triad1_resume-shared-20261030T210535Z	2
+triad1_resume	shared_lock	25	1200	bv-lite-v1p6-triad1_resume-shared_lock-20261030T210535Z	2
