@@ -1,0 +1,3 @@
+condition	run_id	exit_code
+shared	sh-lite-v1-whitelist-shared-20261030T130038Z	2
+isolated	sh-lite-v1-whitelist-isolated-20261030T130038Z	2

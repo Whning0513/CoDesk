@@ -8,4 +8,4 @@ The real Guest scripted positive control `sh-lite-v1-postscore-open-control-2026
 
 The earlier diagnostic `sh-lite-v1-postscore-open-control-20261030T085800Z` reached joint Oracle PASS but its diagnostic screenshot helper used a relative path after OSWorld changed cwd; it failed before the injected recovery and is retained as infrastructure-invalid. The helper now resolves its run root before boot. This diagnostic does not change the Case 6 task, fixture or Oracle.
 
-This validates postscore recovery on a scripted real GUI control. It does not retroactively complete historical full model runs, and no new Case 6 full model pair has been collected on this branch.
+This validates postscore recovery on a scripted real GUI control. It does not retroactively complete historical full model runs. A new frozen Case 6 full model pair was subsequently collected with the GUI/collaboration tool whitelist; both episodes reached independent Oracle, saved-file GUI reopen and clean reset. Their task scores and causal trace audit are in [CASE6_WHITELIST_PAIR_RESULTS_20261030.md](CASE6_WHITELIST_PAIR_RESULTS_20261030.md).
