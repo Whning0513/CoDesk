@@ -2,7 +2,14 @@
 set -u
 cd "$(dirname "$0")/../.."
 source env.local.sh
-: "${AIGCBEST_API_KEY:?Set AIGCBEST_API_KEY in the coordinator environment}"
+credential_file="${CODESK_MODEL_KEY_FILE:-/data3/whn/Project2/.codesk-secrets/haogpt_20261027.key}"
+if [[ ! -r "$credential_file" ]]; then
+    echo "Model credential file is not readable: ${credential_file}" >&2
+    exit 3
+fi
+IFS= read -r AIGCBEST_API_KEY < "$credential_file"
+: "${AIGCBEST_API_KEY:?Model credential file is empty}"
+export AIGCBEST_API_KEY
 trap 'unset AIGCBEST_API_KEY' EXIT
 
 mode="${1:-}"
