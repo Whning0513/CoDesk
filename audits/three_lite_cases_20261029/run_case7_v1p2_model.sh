@@ -18,7 +18,7 @@ case "$arm" in
     *) echo 'Usage: run_case7_v1p2_model.sh pilot|isolated|shared|shared_lock' >&2; exit 2 ;;
 esac
 
-stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+stamp="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 run_id="wa-lite-v1p2-${arm}-${stamp}"
 run_root="runs/${run_id}"
 log="audits/three_lite_cases_20261029/${run_id}-driver.log"

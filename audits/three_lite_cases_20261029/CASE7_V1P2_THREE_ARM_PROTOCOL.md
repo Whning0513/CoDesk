@@ -4,7 +4,7 @@ Status: **not yet frozen**. Real Guest v1.0.2 scripted controls and a bounded Is
 
 ## Task and fair comparison
 
-The public attachment, Writer draft, Gold and Oracle retain v1.0.1 semantics. v1.0.2 changes A's workflow to move the note before reading the delivered file and maximizes the initial Files window in both topologies. B keeps the same wait/yield/wake instruction. The intended scripted critical path remains about 10–15 GUI actions across A and B; no hard model step cap follows from that design target.
+The public attachment, Writer draft, Gold and Oracle retain v1.0.1 semantics. v1.0.2 changes A's workflow to move the note before reading the delivered file and maximizes the initial Files window in both topologies. B keeps the same wait/yield/wake instruction and is now explicitly told to open the delivered file through GUI before editing Writer; a message alone is not verification. The intended scripted critical path remains about 10–15 GUI actions across A and B; no hard model step cap follows from that design target.
 
 All formal arms use `gpt-6-astra`, identical v1.0.2 role prompts, public fixture, 25 desktop calls per role, 1200 seconds of active model budget, request-level desktop/collaboration tool allowlist, the same file bridge and independent Oracle. Each run starts two independent model Actors concurrently. Shared uses one Guest with no lock. Isolated uses two Guests. Shared+Lock uses one Guest with the same prompts and a cross-process `flock` around each actual mouse/keyboard input call. Screenshots and model reasoning remain outside that simple lock, so it does not guarantee an atomic observe–act transaction. No arm may get a condition-specific instruction or evaluator data.
 
