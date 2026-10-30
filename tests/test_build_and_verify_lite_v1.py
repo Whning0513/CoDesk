@@ -8,7 +8,8 @@ from oscombo.collab.build_and_verify_lite_v1.fixtures import build_fixture
 from oscombo.collab.build_and_verify_lite_v1.oracle import evaluate
 from oscombo.collab.lite_file_guest_pilot import (
     _browser_trace_audit, _discard_shared_gedit_dirty_tab,
-    _editor_has_unsaved_buffer, _gedit_discard_dialog_visible, run)
+    _editor_has_unsaved_buffer, _gedit_discard_button,
+    _gedit_discard_dialog_visible, run)
 
 
 def test_positive_and_negative_artifacts(tmp_path):
@@ -59,10 +60,10 @@ def test_unsaved_editor_buffer_is_detected_before_postscore_reopen():
     assert not _editor_has_unsaved_buffer("qa_note.txt (/tmp/task) - gedit", path)
 
 
-def _dialog_png(red: bool) -> bytes:
+def _dialog_png(red: bool, left: int = 674, top: int = 590) -> bytes:
     image = Image.new("RGB", (1920, 1080), "white")
     if red:
-        ImageDraw.Draw(image).rectangle((674, 590, 888, 633), fill=(210, 28, 45))
+        ImageDraw.Draw(image).rectangle((left, top, left + 214, top + 43), fill=(210, 28, 45))
     stream = io.BytesIO()
     image.save(stream, format="PNG")
     return stream.getvalue()
@@ -76,6 +77,7 @@ def test_gedit_unsaved_dialog_guard_requires_window_class_and_red_button():
         def _window_sample(self, _phase): return {"output": self.window_class}
     guest = Guest()
     assert _gedit_discard_dialog_visible(guest, _dialog_png(True))
+    assert _gedit_discard_button(guest, _dialog_png(True, 274, 390)) == (380, 411)
     assert not _gedit_discard_dialog_visible(guest, _dialog_png(False))
     guest.window_class = "google-chrome.Google-chrome"
     assert not _gedit_discard_dialog_visible(guest, _dialog_png(True))
@@ -96,25 +98,32 @@ def test_postscore_discard_finds_dirty_inactive_b_tab_and_preserves_saved_files(
         actor = "B"
         title = "orderdesk.html - gedit"
         phase = "editing"
+        dialog_shots = 0
         calls = []
         env = SimpleNamespace(controller=Controller())
         def active_window(self): return "" if self.phase == "dialog" else self.title
         def _window_sample(self, _phase): return {"output": "gedit.Gedit"}
-        def screenshot(self, patience=None): return _dialog_png(self.phase == "dialog")
+        def screenshot(self, patience=None):
+            if self.phase == "dialog":
+                self.dialog_shots += 1
+                return _dialog_png(self.dialog_shots > 1, 274, 390)
+            return _dialog_png(False)
         def run_pyautogui(self, code):
             self.calls.append(code)
             if "pageup" in code: self.title = "*qa_note.txt - gedit"
             elif "ctrl','w" in code: self.phase = "dialog"
-            elif "click(783,614)" in code:
+            elif "click(" in code:
                 self.phase = "editing"; self.title = "orderdesk.html - gedit"
     (tmp_path / "screenshots").mkdir()
     monkeypatch.setattr(pilot, "_guest_script", lambda *_args, **_kwargs: {"status": "success"})
+    monkeypatch.setattr(pilot.time, "sleep", lambda _seconds: None)
     guest = Guest()
     role = _discard_shared_gedit_dirty_tab(guest, {"A": "/a/orderdesk.html",
                                                  "B": "/b/qa_note.txt"})
     assert role == "B"
     assert any("pageup" in code for code in guest.calls)
-    assert any("click(783,614)" in code for code in guest.calls)
+    assert any("click(380,411)" in code for code in guest.calls)
+    assert guest.dialog_shots >= 2
     assert (tmp_path / "screenshots/postscore-B-gedit-unsaved-dialog.png").is_file()
 
 
