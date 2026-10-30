@@ -1,11 +1,46 @@
 """Offline Oracle controls; real Blender and Guest checks are recorded separately."""
 from copy import deepcopy
+from io import BytesIO
 import os
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 from oscombo.collab.model_and_review_lite_v1.oracle import evaluate_snapshots, evaluate
+from oscombo.collab.lite_file_guest_pilot import (
+    _blender_frame_ready, _blender_quick_setup_visible, _blender_welcome_visible,
+)
+
+
+def test_blender_readiness_rejects_black_viewport():
+    for color, expected in (((0, 0, 0), False), ((255, 255, 255), False),
+                            ((66, 66, 66), True)):
+        frame = Image.new("RGB", (1280, 720), color)
+        buffer = BytesIO()
+        frame.save(buffer, format="PNG")
+        assert _blender_frame_ready(buffer.getvalue()) is expected
+
+
+def test_blender_first_run_splash_detection():
+    frame = Image.new("RGB", (1920, 1080), (63, 63, 63))
+    buffer = BytesIO()
+    frame.save(buffer, format="PNG")
+    assert not _blender_quick_setup_visible(buffer.getvalue())
+    frame.putpixel((800, 350), (1, 15, 30))
+    frame.putpixel((900, 450), (15, 30, 45))
+    buffer = BytesIO()
+    frame.save(buffer, format="PNG")
+    assert _blender_quick_setup_visible(buffer.getvalue())
+
+
+def test_blender_welcome_card_detection():
+    frame = Image.new("RGB", (1920, 1080), (63, 63, 63))
+    frame.putpixel((800, 350), (248, 248, 248))
+    frame.putpixel((900, 450), (10, 28, 42))
+    buffer = BytesIO()
+    frame.save(buffer, format="PNG")
+    assert _blender_welcome_visible(buffer.getvalue())
 
 
 def scenes():

@@ -94,24 +94,118 @@ def _launch(guest, app: str, path: str, run_id: str):
     if not binary.startswith("/"):
         raise RuntimeError(f"Guest {app} application not found")
     args = ("--no-first-run --no-default-browser-check " if app == "browser" else
-            "--disable-autoexec " if app == "blender" else "")
+            "--gpu-backend vulkan --disable-autoexec " if app == "blender" else "")
+    # This QEMU Guest has no accelerated GPU. Probe Mesa's software Vulkan
+    # device for Blender's visible GUI. Host-side background scoring is
+    # independent of the Guest graphics backend.
+    env_prefix = ("env VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json "
+                  if app == "blender" else "")
     uri = "file://" + path if app == "browser" else path
     _guest_script(guest, f"mkdir -p /tmp/{shlex.quote(run_id)}; "
-                  f"nohup {shlex.quote(binary)} {args}{shlex.quote(uri)} "
+                  f"nohup {env_prefix}{shlex.quote(binary)} {args}{shlex.quote(uri)} "
                   f">/tmp/{shlex.quote(run_id)}/{app}.log 2>&1 </dev/null &", timeout=15)
-    deadline = time.monotonic() + (300 if app == "blender" else 120)
+    deadline = time.monotonic() + (480 if app == "blender" else 120)
     hint = ("OrderDesk Lite" if app == "browser" else
             "Blender" if app == "blender" else Path(path).name)
+    last_shot = None
     while time.monotonic() < deadline:
         active = guest.active_window() or ""
         shot = guest.screenshot(patience=45)
-        if hint.casefold() in active.casefold() and core._desktop_frame_ready(shot):
+        last_shot = shot
+        active_after = guest.active_window() or ""
+        if (hint.casefold() in active.casefold() and core._desktop_frame_ready(shot)
+                and hint.casefold() in active_after.casefold()
+                and (app != "blender" or _blender_frame_ready(shot))):
             dest = guest.root / "screenshots" / f"{guest.guest_key}-{app}-ready-{time.time_ns()}.png"
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(shot)
+            if app == "blender" and not getattr(guest, "_blender_setup_complete", False):
+                # Fresh OSWorld profiles show Blender's first-run Quick Setup
+                # over the scene. Resolve it during environment setup, before
+                # either Actor starts. Its central splash has colored pixels
+                # where the unobstructed viewport is gray.
+                guest.actor = "system"
+                ready = shot
+                for _ in range(4):
+                    if not _blender_quick_setup_visible(ready):
+                        break
+                    guest.run_pyautogui("import pyautogui, time; "
+                        "pyautogui.click(995,770); time.sleep(15)")
+                    ready = guest.screenshot(patience=45)
+                if _blender_quick_setup_visible(ready):
+                    raise RuntimeError("Blender first-run Quick Setup did not close")
+                for _ in range(4):
+                    if not _blender_welcome_visible(ready):
+                        break
+                    guest.run_pyautogui("import pyautogui, time; "
+                        "pyautogui.press('esc'); time.sleep(8)")
+                    ready = guest.screenshot(patience=45)
+                if _blender_welcome_visible(ready):
+                    raise RuntimeError("Blender welcome splash did not close")
+                # Reselect the shade in the outliner so both Actor conditions
+                # begin from the same visible public fixture state.
+                guest.run_pyautogui("import pyautogui, time; "
+                    "pyautogui.click(1700,205); time.sleep(4)")
+                ready = guest.screenshot(patience=45)
+                (guest.root / "screenshots" / f"{guest.guest_key}-blender-setup-complete.png").write_bytes(ready)
+                if (not _blender_frame_ready(ready) or _blender_quick_setup_visible(ready)
+                        or _blender_welcome_visible(ready)):
+                    raise RuntimeError("Blender first-run setup did not leave a visible GUI")
+                guest._blender_setup_complete = True
             return
         time.sleep(3)
+    if app == "blender":
+        if last_shot:
+            (guest.root / "screenshots" / "blender-unready.png").write_bytes(last_shot)
+        result = _guest_script(guest, f"cat /tmp/{shlex.quote(run_id)}/blender.log", timeout=15)
+        (guest.root / "guest_blender_launch.log").write_text(result.get("output", ""))
     raise RuntimeError(f"{app} did not become the visible Guest window: {hint}")
+
+
+def _blender_frame_ready(screenshot: bytes) -> bool:
+    """Reject a titled but black Blender window under software graphics."""
+    from io import BytesIO
+    from PIL import Image
+
+    with Image.open(BytesIO(screenshot)) as image:
+        frame = image.convert("RGB")
+        w, h = frame.size
+        region = frame.crop((int(w * .2), int(h * .18), int(w * .8), int(h * .82)))
+        sampled = region.resize((32, 24))
+        pixels = list(sampled.getdata())
+        midtone = sum(35 < max(pixel) < 210 for pixel in pixels)
+        near_white = sum(min(pixel) > 220 for pixel in pixels)
+        # Blender's default dark interface has broad gray panels. A blank
+        # viewport is near-black; the light Text Editor behind a briefly
+        # focused Blender window is mostly white and must not pass.
+        return midtone >= 300 and near_white <= 80
+
+
+def _blender_quick_setup_visible(screenshot: bytes) -> bool:
+    """Detect the colorful first-run splash over the fixed OSWorld viewport."""
+    from io import BytesIO
+    from PIL import Image
+
+    with Image.open(BytesIO(screenshot)) as image:
+        frame = image.convert("RGB")
+        w, h = frame.size
+        points = ((800, 350), (900, 450), (1110, 590))
+        samples = [frame.getpixel((round(x * w / 1920), round(y * h / 1080)))
+                   for x, y in points]
+        return sum(max(pixel) - min(pixel) > 10 for pixel in samples) >= 2
+
+
+def _blender_welcome_visible(screenshot: bytes) -> bool:
+    """Detect the post-setup welcome card over the fixed OSWorld viewport."""
+    from io import BytesIO
+    from PIL import Image
+
+    with Image.open(BytesIO(screenshot)) as image:
+        frame = image.convert("RGB")
+        w, h = frame.size
+        logo = frame.getpixel((round(800 * w / 1920), round(350 * h / 1080)))
+        artwork = frame.getpixel((round(900 * w / 1920), round(450 * h / 1080)))
+        return min(logo) > 200 and max(artwork) - min(artwork) > 10
 
 
 def _activate(guest, app: str, path: str):
@@ -258,12 +352,15 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
         model_timeout: float, diagnostic_step_limit: int | None, negative: bool,
         yield_wait_lifecycle: bool = False,
         actor_mcp_only: bool = False,
-        blender_bin: str | None = None) -> dict:
+        blender_bin: str | None = None,
+        gui_input_lock: bool = False) -> dict:
     spec, fixtures, oracle = _profile(case)
     if case == "model_review" and (not blender_bin or not Path(blender_bin).is_file()):
         raise ValueError("Model-and-Review Lite needs a local Blender scorer executable")
     if condition not in spec.CONDITIONS:
         raise ValueError(condition)
+    if gui_input_lock and (condition != "collaborative_shared" or not model):
+        raise ValueError("GUI input lock is a model-only Shared ablation")
     run_root.mkdir(parents=True, exist_ok=False)
     run_id = run_root.name
     fixture = run_root / "fixtures"
@@ -276,6 +373,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 "role_budget_contract": spec.ROLE_BUDGET,
                 "yield_wait_lifecycle": bool(yield_wait_lifecycle),
                 "actor_mcp_only": bool(actor_mcp_only),
+                "gui_input_lock": bool(gui_input_lock),
                 "blender_scorer": blender_bin if case == "model_review" else None,
                 "scripted_negative_control": negative}
     ledger = RunLedger(run_root, metadata)
@@ -367,7 +465,8 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                     timeout=model_timeout, relay_client_token_env=relay_env,
                     workspace_bridge=True, handoff_from=spec.HANDOFF_DEPENDENCIES.get(role),
                     yield_wait=yield_wait_lifecycle,
-                    case_id=spec.CASE_ID)
+                    case_id=spec.CASE_ID,
+                    gui_input_lock_path=str(run_root / "gui_input.lock") if gui_input_lock else None)
             with ThreadPoolExecutor(max_workers=2, thread_name_prefix="lite-file-actor") as pool:
                 futures = {role: pool.submit(actor, role) for role in "AB"}
                 for role, future in futures.items():
@@ -623,6 +722,8 @@ def main(argv: list[str] | None = None):
                         help="pause B's active model budget after it voluntarily yields for A's handoff")
     parser.add_argument("--actor-mcp-only", action="store_true",
                         help="model sees only the desktop and collaboration MCP tools")
+    parser.add_argument("--gui-input-lock", action="store_true",
+                        help="Shared model ablation: serialize only GUI input actions across Actors")
     parser.add_argument("--blender-bin", help="host-side Blender scorer for model_review")
     args = parser.parse_args(argv)
     run_root = args.run_root.resolve()
@@ -633,7 +734,8 @@ def main(argv: list[str] | None = None):
                      args.provider.resolve(), args.image, args.runtime,
                      args.model, args.base_url, args.api_key_env, args.mcp_python,
                      args.model_timeout, args.diagnostic_step_limit, args.scripted_negative,
-                     args.yield_wait_lifecycle, args.actor_mcp_only, args.blender_bin)
+                     args.yield_wait_lifecycle, args.actor_mcp_only, args.blender_bin,
+                     args.gui_input_lock)
     except Exception as exc:
         failure = {"status": "INVALID_INFRA_OR_RUNNER_ERROR", "run_id": args.run_root.name,
                    "error": f"{type(exc).__name__}: {exc}", "traceback": traceback.format_exc()}
