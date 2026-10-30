@@ -14,12 +14,6 @@ for entry in '1 shared' '1 isolated' '2 isolated' '2 shared'; do
     run_root="runs/${run_id}"
     log="audits/three_lite_cases_20261029/${run_id}-driver.log"
     echo "Starting ${run_id} at $(date -u +%FT%TZ)"
-    mkdir -p "$run_root"
-    /data3/whn/Project2/OSWorld-V2/.venv/bin/python \
-        audits/three_lite_cases_20261029/sample_qemu.py "$run_root" \
-        --interval 5 --max-seconds 3600 \
-        > "audits/three_lite_cases_20261029/${run_id}-qemu-sampler.log" 2>&1 &
-    sampler_pid=$!
     /data3/whn/Project2/OSWorld-V2/.venv/bin/python \
         -m oscombo.collab.workspace_assembly_lite_v1.live_pilot \
         --condition "collaborative_${side}" --run-root "$run_root" \
@@ -28,10 +22,27 @@ for entry in '1 shared' '1 isolated' '2 isolated' '2 shared'; do
         --base-url https://api.haogpt.net/v1 --api-key-env AIGCBEST_API_KEY \
         --mcp-python /data3/whn/Project2/OSWorld-V2/.venv/bin/python \
         --model-timeout 1200 --yield-wait-lifecycle --actor-mcp-only \
-        > "$log" 2>&1
+        > "$log" 2>&1 &
+    driver_pid=$!
+    for _ in {1..100}; do
+        [[ -d "$run_root" ]] && break
+        kill -0 "$driver_pid" 2>/dev/null || break
+        sleep 0.1
+    done
+    sampler_pid=""
+    if [[ -d "$run_root" ]] && kill -0 "$driver_pid" 2>/dev/null; then
+        /data3/whn/Project2/OSWorld-V2/.venv/bin/python \
+            audits/three_lite_cases_20261029/sample_qemu.py "$run_root" \
+            --interval 5 --max-seconds 3600 \
+            > "audits/three_lite_cases_20261029/${run_id}-qemu-sampler.log" 2>&1 &
+        sampler_pid=$!
+    fi
+    wait "$driver_pid"
     exit_code=$?
-    kill "$sampler_pid" 2>/dev/null || true
-    wait "$sampler_pid" 2>/dev/null || true
+    if [[ -n "$sampler_pid" ]]; then
+        kill "$sampler_pid" 2>/dev/null || true
+        wait "$sampler_pid" 2>/dev/null || true
+    fi
     printf '%s\t%s\t%s\t%s\n' "$pair" "$side" "$run_id" "$exit_code" >> "$manifest"
     if [[ -s "$run_root/qemu_process_resources.jsonl" ]]; then
         /data3/whn/Project2/OSWorld-V2/.venv/bin/python \
