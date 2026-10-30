@@ -424,7 +424,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
     if condition not in spec.CONDITIONS:
         raise ValueError(condition)
     if gui_input_lock and (condition != "collaborative_shared" or not model):
-        raise ValueError("GUI input lock is a model-only Shared ablation")
+        raise ValueError("GUI input lock requires a Shared model run")
     run_root.mkdir(parents=True, exist_ok=False)
     run_id = run_root.name
     fixture = run_root / "fixtures"
