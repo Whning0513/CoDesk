@@ -2,7 +2,16 @@ import json
 
 from PIL import Image, ImageDraw
 
-from oscombo.collab.lite_file_guest_pilot import _browser_trace_audit, _postscore_lifecycle_ok
+from oscombo.collab.lite_file_guest_pilot import (
+    _browser_trace_audit, _postscore_lifecycle_ok, _result_exit_code,
+)
+
+
+def test_result_exit_codes_distinguish_task_failure_from_invalid_run():
+    assert _result_exit_code("PASS") == 0
+    assert _result_exit_code("FAIL") == 2
+    assert _result_exit_code("INVALID_INFRA_OR_RUNNER_ERROR") == 3
+    assert _result_exit_code("unexpected_status") == 3
 
 
 def test_postscore_lifecycle_separates_missing_task_output_from_reopen_fault():
