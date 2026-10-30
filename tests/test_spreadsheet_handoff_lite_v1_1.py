@@ -8,7 +8,9 @@ import pytest
 
 from oscombo.collab.data_to_deck.fixtures import _ods
 from oscombo.collab.data_to_deck.live_pilot import run_pilot
-from oscombo.collab.spreadsheet_handoff_lite_v1_1 import audit_handoff, fixtures, live_pilot, oracle, spec
+from oscombo.collab.spreadsheet_handoff_lite_v1_1 import (
+    audit_handoff, fixtures, live_pilot, oracle, spec, summarize_lock,
+)
 from oscombo.collab.spreadsheet_handoff_lite_v1_1.private.gold import expected_plan, write_gold
 
 
@@ -62,6 +64,21 @@ def test_handoff_audit_requires_actual_b_reads_and_post_handoff_save(tmp_path):
     assert audit_handoff.audit(tmp_path)["trace_consistent_handoff"]
     write_rows(stdout, [{"type": "item.started", "item": {"server": "desktop", "tool": "type_text"}}])
     assert not audit_handoff.audit(tmp_path)["trace_consistent_handoff"]
+
+
+def test_lock_summary_counts_wait_and_input_overlap(tmp_path):
+    for role, start, end, wait in (("A", 1.0, 3.0, 0.25), ("B", 2.0, 4.0, 1.5)):
+        path = tmp_path / "actor_runs" / role / role / "actions.jsonl"
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps({"executed": True, "code": "pyautogui.click(1,1)",
+            "action_started_at": start, "action_ended_at": end,
+            "input_lock": {"enabled": True, "wait_s": wait, "held_s": end-start}}) + "\n")
+    summary = summarize_lock.summarize(tmp_path)
+    assert summary["roles"]["A"]["lock_wait_total_s"] == 0.25
+    assert summary["roles"]["B"]["lock_wait_total_s"] == 1.5
+    assert summary["cross_actor_gui_input_overlap_s"] == 1.0
+    assert summary["lock_enabled_for_all_input_calls"]
+    assert summary["lock_serialization_violated"]
 
 
 def _case(tmp_path: Path):

@@ -77,6 +77,9 @@ for arm in "${arms[@]}"; do
         /data3/whn/Project2/OSWorld-V2/.venv/bin/python \
             audits/three_lite_cases_20261029/audit_actor_tool_boundary.py "$run_root" \
             > "$run_root/actor_tool_boundary_audit.json" 2>&1 || true
+        /data3/whn/Project2/OSWorld-V2/.venv/bin/python \
+            -m oscombo.collab.spreadsheet_handoff_lite_v1_1.summarize_lock "$run_root" \
+            > "$run_root/gui_lock_metrics.json" 2>&1 || true
     fi
     echo "Finished ${run_id} exit=${code} at $(date -u +%FT%TZ)"
 done
