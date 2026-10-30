@@ -47,6 +47,8 @@ def main(root: Path) -> None:
                                    if x.get("started_at") and x.get("time")]
         action_intervals[role] = [(x["action_started_at"], x["action_ended_at"]) for x in actions
                                   if x.get("executed") and x.get("action_started_at") and x.get("action_ended_at")]
+        locked_actions = [x.get("input_lock") or {} for x in actions
+                          if x.get("executed") and (x.get("input_lock") or {}).get("enabled")]
         per_actor[role] = {
             "actor_status": actors.get(role, {}).get("status"),
             "actor_elapsed_s": actors.get(role, {}).get("elapsed_s"),
@@ -54,6 +56,10 @@ def main(root: Path) -> None:
             "executed_gui_actions": sum(bool(x.get("executed")) for x in actions),
             "gui_action_s": round(sum(x.get("action_ended_at", 0) - x.get("action_started_at", 0)
                                       for x in actions if x.get("executed")), 3),
+            "gui_input_lock_actions": len(locked_actions),
+            "gui_input_lock_wait_s": round(sum(x.get("wait_s", 0) for x in locked_actions), 3),
+            "gui_input_lock_max_wait_s": round(max((x.get("wait_s", 0) for x in locked_actions), default=0), 3),
+            "gui_input_lock_held_s": round(sum(x.get("held_s", 0) for x in locked_actions), 3),
             "screenshot_s": round(sum(x.get("screenshot_s", 0) for x in actions), 3),
             "model_requests": len(requests),
             "model_request_s": round(sum(x.get("elapsed_s", 0) for x in requests), 3),
