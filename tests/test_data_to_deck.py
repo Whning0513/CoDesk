@@ -361,6 +361,12 @@ def test_model_episode_with_no_actor_execution_is_invalid_infrastructure():
     assert _episode_result_status(False, True, {
         "A": {"status": "max_steps", "steps": 60},
     }, True) == "FAIL"
+    assert _episode_result_status(True, False, {
+        "A": {"status": "done", "steps": 10},
+    }, True) == "INVALID_INFRA_OR_RUNNER_ERROR"
+    assert _episode_result_status(False, False, {
+        "A": {"status": "max_steps", "steps": 60},
+    }, True) == "INVALID_INFRA_OR_RUNNER_ERROR"
 
 
 def test_live_pilot_anchors_mcp_venv_path_before_guest_chdir(tmp_path):
