@@ -20,8 +20,12 @@ manifest="audits/case3_three_arm_20261030/model-${mode}-${stamp}.tsv"
 printf 'mode\tarm\tmax_gui_calls_per_actor\tactive_model_seconds\trun_id\texit_code\n' > "$manifest"
 for side in "${sides[@]}"; do
     free_kib="$(df -Pk . | awk 'NR==2 {print $4}')"
-    if (( free_kib < 15 * 1024 * 1024 )); then
-        echo "Stopping before $side: less than 15 GiB free" >&2
+    if (( free_kib < 18 * 1024 * 1024 )); then
+        echo "Stopping before $side: less than 18 GiB free" >&2
+        exit 4
+    fi
+    if docker ps --filter label=oscombo=1 -q | grep -q .; then
+        echo "Stopping before $side: another Guest is still active" >&2
         exit 4
     fi
     condition="collaborative_${side}"
