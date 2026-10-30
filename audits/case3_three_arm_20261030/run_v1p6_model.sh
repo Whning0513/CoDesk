@@ -11,8 +11,9 @@ case "$mode" in
     pilot) sides=(isolated); max_steps=8; active_seconds=360; budget_flag=(--diagnostic-step-limit 8) ;;
     feasibility) sides=(isolated); max_steps=25; active_seconds=1200; budget_flag=() ;;
     triad1) sides=(isolated shared shared_lock); max_steps=25; active_seconds=1200; budget_flag=() ;;
+    triad1_resume) sides=(shared shared_lock); max_steps=25; active_seconds=1200; budget_flag=() ;;
     triad2) sides=(shared_lock shared isolated); max_steps=25; active_seconds=1200; budget_flag=() ;;
-    *) echo 'Usage: run_v1p6_model.sh pilot|feasibility|triad1|triad2' >&2; exit 2 ;;
+    *) echo 'Usage: run_v1p6_model.sh pilot|feasibility|triad1|triad1_resume|triad2' >&2; exit 2 ;;
 esac
 
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
