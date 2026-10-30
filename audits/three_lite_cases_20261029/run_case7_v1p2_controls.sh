@@ -1,15 +1,22 @@
 #!/usr/bin/env bash
-set -u
+set -uo pipefail
 cd "$(dirname "$0")/../.."
 if [[ -f env.local.sh ]]; then
     source env.local.sh
-else
+elif [[ -f ../CoDesk/env.local.sh ]]; then
     source ../CoDesk/env.local.sh
+else
+    echo 'Missing env.local.sh for Guest paths' >&2
+    exit 3
 fi
+: "${OSWORLD_DIR:?Set OSWORLD_DIR}"
+: "${OSCOMBO_GUEST_IMAGE:?Set OSCOMBO_GUEST_IMAGE}"
+: "${OSCOMBO_RUNTIME_IMAGE:?Set OSCOMBO_RUNTIME_IMAGE}"
 
 stamp="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 manifest="audits/three_lite_cases_20261029/case7-v1p2-controls-${stamp}.tsv"
-printf 'control\tcondition\trun_id\texit_code\n' > "$manifest"
+printf 'control\tcondition\trun_id\texit_code\tstatus\tverdict\n' > "$manifest"
+overall=0
 for entry in 'positive shared' 'positive isolated' 'negative shared'; do
     read -r control side <<< "$entry"
     run_id="wa-lite-v1p2-scripted-${control}-${side}-${stamp}"
@@ -24,7 +31,26 @@ for entry in 'positive shared' 'positive isolated' 'negative shared'; do
         --provider "$OSWORLD_DIR" --image "$OSCOMBO_GUEST_IMAGE" \
         --runtime "$OSCOMBO_RUNTIME_IMAGE" "${negative_flag[@]}" > "$log" 2>&1
     exit_code=$?
-    printf '%s\t%s\t%s\t%s\n' "$control" "$side" "$run_id" "$exit_code" >> "$manifest"
-    echo "Finished ${run_id} with exit ${exit_code} at $(date -u +%FT%TZ)"
+    status="NO_RESULT"
+    if [[ -f "$run_root/result.json" ]]; then
+        status=$(/data3/whn/Project2/OSWorld-V2/.venv/bin/python -c \
+            'import json,sys; print(json.load(open(sys.argv[1])).get("status","NO_STATUS"))' \
+            "$run_root/result.json") || status="UNREADABLE_RESULT"
+    fi
+    expected_status=PASS
+    expected_exit=0
+    if [[ "$control" == "negative" ]]; then
+        expected_status=FAIL
+        expected_exit=2
+    fi
+    verdict=EXPECTED
+    if [[ "$status" != "$expected_status" || "$exit_code" -ne "$expected_exit" ]]; then
+        verdict=UNEXPECTED
+        overall=1
+    fi
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$control" "$side" "$run_id" "$exit_code" "$status" "$verdict" >> "$manifest"
+    echo "Finished ${run_id}: exit ${exit_code}, status ${status}, ${verdict} at $(date -u +%FT%TZ)"
 done
 echo "Manifest: ${manifest}"
+exit "$overall"

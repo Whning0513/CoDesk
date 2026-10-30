@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
-set -u
+set -uo pipefail
 cd "$(dirname "$0")/../.."
 if [[ -f env.local.sh ]]; then
     source env.local.sh
-else
+elif [[ -f ../CoDesk/env.local.sh ]]; then
     source ../CoDesk/env.local.sh
+else
+    echo 'Missing env.local.sh for Guest paths' >&2
+    exit 3
 fi
+: "${OSWORLD_DIR:?Set OSWORLD_DIR}"
+: "${OSCOMBO_GUEST_IMAGE:?Set OSCOMBO_GUEST_IMAGE}"
+: "${OSCOMBO_RUNTIME_IMAGE:?Set OSCOMBO_RUNTIME_IMAGE}"
 : "${AIGCBEST_API_KEY:?Set AIGCBEST_API_KEY in the coordinator environment}"
 trap 'unset AIGCBEST_API_KEY' EXIT
 
