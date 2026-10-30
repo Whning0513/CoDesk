@@ -22,14 +22,15 @@ class CollaborationClient:
         if actor not in {"A", "B", "S"}:
             raise ValueError(f"invalid actor identity: {actor}")
 
-    def _request(self, path: str, method: str = "GET", payload: dict | None = None) -> tuple[Any, bytes]:
+    def _request(self, path: str, method: str = "GET", payload: dict | None = None,
+                 timeout: float | None = None) -> tuple[Any, bytes]:
         data = json.dumps(payload).encode() if payload is not None else None
         request = urllib.request.Request(
             self.base_url + path, data=data, method=method,
             headers={"Authorization": f"Bearer {self.token}",
                      "Content-Type": "application/json"})
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+            with urllib.request.urlopen(request, timeout=self.timeout if timeout is None else timeout) as response:
                 body = response.read()
                 if response.headers.get_content_type() == "application/octet-stream":
                     return None, body
@@ -67,7 +68,10 @@ class CollaborationClient:
                 "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()}
 
     def publish_saved_artifact(self) -> dict[str, Any]:
-        result, _ = self._request("/artifacts/publish", "POST", {})
+        # A verified publication may need two Guest reads plus an Isolated
+        # transfer. This is filesystem I/O, not a short message lookup.
+        result, _ = self._request("/artifacts/publish", "POST", {},
+                                  timeout=max(self.timeout, 120))
         return result
 
     def list_saved_artifacts(self) -> dict[str, Any]:

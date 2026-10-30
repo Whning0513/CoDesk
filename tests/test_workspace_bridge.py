@@ -274,3 +274,15 @@ def test_new_file_is_published_only_after_owner_creates_it(tmp_path):
         assert b.modes[a_path] == "444"
     finally:
         bridge.stop()
+
+
+def test_public_snapshot_does_not_wait_for_slow_guest_io_lock(tmp_path):
+    bridge, _, _ = setup_bridge(tmp_path)
+    observed = []
+    with bridge._lock:
+        reader = threading.Thread(target=lambda: observed.append(bridge.snapshot()), daemon=True)
+        reader.start()
+        reader.join(timeout=0.5)
+        assert not reader.is_alive(), "public handoff snapshot blocked behind Guest I/O"
+    assert set(observed[0]) == {"A", "B"}
+    assert observed[0]["A"]["revision"] == 0

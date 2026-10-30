@@ -190,8 +190,14 @@ class SavedArtifactBridge:
             return dict(self.current[actor])
 
     def snapshot(self) -> dict:
-        with self._lock:
-            return {role: dict(value) for role, value in self.current.items()}
+        # publish() can hold _lock while a slow Guest read or peer transfer is
+        # in progress. Public handoff polling must not wait for that I/O: the
+        # atomically replaced manifest exposes only fully committed revisions.
+        try:
+            committed = json.loads((self.root / "current.json").read_text())
+        except FileNotFoundError:
+            return {}
+        return {role: dict(value) for role, value in committed.items()}
 
     def sync(self):
         for role in ("A", "B"):
