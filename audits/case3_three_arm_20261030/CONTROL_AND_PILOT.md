@@ -19,4 +19,12 @@ The Pilot's Oracle A/B/joint FAIL follows from the 8-call diagnostic limit. Its 
 
 Usage was 93,815 input and 1,388 output tokens. Total wall time was 1,344.8 s, including 636.3 s before Actor start and later GUI reopen/reset. Sampled peak two-Guest QEMU RSS was 9.243 GiB and sampled QEMU CPU delta 5,677 s. Model HTTP intervals overlapped for 16.486 s. `model_metrics.json` reports 40.017 s of effective Actor overlap after excluding B's voluntary suspension. The generic `actor_execution_overlap_s=344.027` is wall-clock overlap containing B's wait and must not be interpreted as active overlap. GUI input actions did not overlap in this Isolated Pilot.
 
-The next diagnostic is a separate full-budget Isolated feasibility episode (25 calls per role, 1,200 active seconds). All attempts remain in the audit, regardless of score.
+## Full-budget Isolated feasibility (diagnostic, outside formal triads)
+
+`bv-lite-v1p6-feasibility-isolated-20261030T190848Z` used the same model, role prompts, fixture and Oracle with 25 desktop calls per role and 1,200 active seconds. It is a complete, valid task FAIL: Oracle A/B/joint false, GUI reopen complete with unchanged saved bytes, `postscore_lifecycle_ok=true`, both run-owned Guests reset clean, no workspace sync error, all 16 provider requests HTTP 200 with the request-level Actor allowlist, and no provider key bytes in run files.
+
+A voluntarily ended after 11 desktop calls. Its Gedit trajectory searched for correctly spelled `delivered`, pressed Escape, then Ctrl+S, but did not replace the option value typo `delievered`; the saved file stayed at bridge revision 0. A sent B a message claiming “published revision 0.” B had requested the handoff and suspended after 2 calls. The public message arrived but the required saved revision did not, so the common lifecycle correctly kept B suspended and then marked `blocked_on_peer` five seconds after A ended. This is A's mistaken claim of completion and missing artifact change, not an early coordinator termination of B or a workspace bridge transfer fault.
+
+Actor active overlap excluding B's suspension was 62.012 s; their wall-clock phase overlap including that wait was 292.024 s. Model HTTP intervals overlapped for 7.901 s. A used 109,794 total tokens and B 23,274. Total wall time was 1,269.1 s, including 636.3 s of setup before Actor start and later GUI reopen/reset. The diagnostic outcome does not change the frozen v1.0.6 task or select formal samples by score.
+
+The first formal triad follows the preregistered Isolated → Shared → Shared+Lock order. All attempts remain in the audit, regardless of score.
