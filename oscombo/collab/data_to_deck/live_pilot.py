@@ -659,7 +659,8 @@ def _run_model_actor(role: str, guest: LoggedGuest, instruction: str, run_root: 
                      workspace_bridge: bool = False,
                      handoff_from: str | None = None,
                      yield_wait: bool = False,
-                     case_id: str = spec.CASE_ID) -> dict[str, Any]:
+                     case_id: str = spec.CASE_ID,
+                     gui_input_lock_path: str | None = None) -> dict[str, Any]:
     """Run the existing CodexHarness against a real Guest and the case message API."""
     from oscombo.harness.base import AgentContext
     from oscombo.harness.external import CodexHarness
@@ -673,6 +674,8 @@ def _run_model_actor(role: str, guest: LoggedGuest, instruction: str, run_root: 
                "desktop_tool_cooldown_sec": tool_cooldown_sec}
     if relay_client_token_env:
         options["redact_env_keys"] = [api_key_env]
+    if gui_input_lock_path:
+        options["gui_input_lock_path"] = gui_input_lock_path
     if collab_url and token_env:
         options["collaboration"] = {"actor": role, "url": collab_url, "token_env": token_env,
                                     "workspace_bridge": workspace_bridge,
