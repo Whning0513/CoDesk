@@ -1,0 +1,16 @@
+# Case 5 Lite v1: Blender Guest controls
+
+Case version `CDD-MAR-LITE-001` keeps the original Case 5 files unchanged. The public fixture is `oscombo/collab/model_and_review_lite_v1/fixtures/Lamp_Review.blend`; the private Gold and Oracle remain on the scoring host. Both topologies use the same Blender 5.0 fixture, Guest image, role instructions, save bridge and scorer. The Guest runs below use real screenshots and GUI input. Scripted controls establish that the application and scorer work; they are not model success samples.
+
+The host Blender 5.0 real-file controls passed (`6 passed` in `tests/test_model_and_review_lite_v1.py` with `CODESK_BLENDER_BIN` set). The full offline suite after the startup fix passed `227 passed, 2 skipped`.
+
+| Run ID | Condition | Outcome | Evidence |
+|---|---|---|---|
+| `mar-lite-v1-scripted-positive-shared-20261030T153908Z` | Shared positive | Valid PASS | Real Blender GUI saved shade X/Y 1.46 m; independent Oracle A/B/joint true, clearance 0.48 m; both saved files reopened byte-identically, one Guest reset cleanly. |
+| `mar-lite-v1-scripted-positive-isolated-20261030T153908Z` | Isolated positive attempt | **Infrastructure invalid** | Second OSWorld Guest never reached the screenshot endpoint and timed out after the configured 1800 s. No Actor action or Oracle. Run-owned containers were removed. Do not count as an Isolated task failure. |
+| `mar-lite-v1-scripted-negative-shared-20261030T153908Z` | Shared wrong-width negative | Valid task FAIL, expected | Saved shade X/Y 1.30 m; truthful B report said width 1.30 m and clearance 0.40 m. Oracle A false, B true, joint false; both files reopened byte-identically, one Guest reset cleanly. Exit code 2 means expected Oracle rejection. |
+| `mar-lite-v1-scripted-positive-isolated-retry-20261030T164620Z` | Isolated positive retry | Artifact Oracle PASS; **process validation invalid** | Both Guests booted, A's saved `.blend` revision 1 transferred to B with matching SHA-256 and read-only mode in 2.26 s; host Oracle A/B/joint true. Yet the scripted B Blender screenshot still displayed the initial 1.20 m because the adapter matched its already-open old window before a new instance finished loading. This does not prove B reviewed the delivered scene in the GUI. Preserve this episode; rerun only after fixing the scripted reload check. |
+
+Earlier diagnostic run IDs remain separate. `mar-lite-v1-startupfix-scripted-shared-20261030T150748Z` reached joint Oracle PASS but included one manual GUI diagnostic action, so it is **not** the clean positive above. The first Blender attempts with a black viewport or unhandled first-run popup are infrastructure diagnostics, not model failures. The final adapter waits for a visible rendered Blender frame and clears Quick Setup and welcome cards during common environment setup, before either Actor starts; it does not lock model-time GUI input.
+
+The adapter now drives Blender's Revert command in B's existing window and checks a pinned dimension-display screenshot region changed from the initial GUI frame. It still independently compares the saved file hash and lets the host Blender Oracle score the actual geometry. This code has offline tests but needs a new clean Isolated Guest control before a strong-model Pilot or frozen pair.

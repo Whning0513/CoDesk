@@ -208,6 +208,25 @@ def _blender_welcome_visible(screenshot: bytes) -> bool:
         return min(logo) > 200 and max(artwork) - min(artwork) > 10
 
 
+def _blender_dimension_region_change(before: bytes, after: bytes) -> float:
+    """Screen-level check that B's dimension display left its initial state.
+
+    This is a pinned 1920x1080 OSWorld Blender layout check for the scripted
+    control only. The independent Oracle still measures the saved .blend.
+    """
+    from io import BytesIO
+    from PIL import Image, ImageChops, ImageStat
+
+    with Image.open(BytesIO(before)) as initial, Image.open(BytesIO(after)) as current:
+        a, b = initial.convert("RGB"), current.convert("RGB")
+        if a.size != b.size:
+            raise RuntimeError("Blender scripted peer screenshots changed resolution")
+        w, h = a.size
+        box = tuple(round(v * dim / standard) for v, dim, standard in
+                    ((1500, w, 1920), (465, h, 1080), (1550, w, 1920), (505, h, 1080)))
+        return round(ImageStat.Stat(ImageChops.difference(a.crop(box), b.crop(box))).mean[0], 3)
+
+
 def _activate(guest, app: str, path: str):
     if app == "writer":
         return core._activate_ready_document(guest, path, "lite-file-reopen")
@@ -508,16 +527,34 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 # Scripted control observes the published scene in the real
                 # Blender GUI; model B must choose its own reload/read action.
                 if condition.endswith("isolated"):
-                    _launch(guest_b, "blender", a_path, run_id)
+                    # B already has the initial project open. Launching a
+                    # second Blender can match that old window before the new
+                    # process loads, falsely claiming a peer GUI read. Use
+                    # Blender's own Revert command on the existing window.
+                    initial_blender = (run_root / "screenshots" /
+                                       f"{guest_b.guest_key}-blender-setup-complete.png").read_bytes()
+                    _activate(guest_b, "blender", a_path)
+                    guest_b.actor = "system"
+                    guest_b.run_pyautogui("import pyautogui, time; "
+                        "pyautogui.moveTo(900,500); pyautogui.press('f3'); time.sleep(1); "
+                        "pyautogui.write('Revert', 0.12); pyautogui.press('enter'); time.sleep(3)")
+                    guest_b.run_pyautogui("import pyautogui, time; "
+                        "pyautogui.press('enter'); time.sleep(8)")
                 else:
                     _activate(guest_b, "blender", a_path)
                 peer_shot = run_root / "screenshots" / "scripted-peer-blender-after-handoff.png"
-                peer_shot.write_bytes(guest_b.screenshot(patience=45))
+                peer_png = guest_b.screenshot(patience=45)
+                peer_shot.write_bytes(peer_png)
+                display_change = (_blender_dimension_region_change(initial_blender, peer_png)
+                                  if condition.endswith("isolated") else None)
+                if display_change is not None and display_change < 3.0:
+                    raise RuntimeError("B Blender GUI still shows the pre-handoff dimensions")
                 (run_root / "scripted_peer_blender_read.json").write_text(json.dumps({
                     "published_A_revision": a_revision["revision"],
                     "guest_key": guest_b.guest_key,
                     "active_window": guest_b.active_window(),
                     "screenshot": str(peer_shot.relative_to(run_root)),
+                    "dimension_region_change": display_change,
                     "saved_sha256": a_revision["sha256"]}, indent=2) + "\n")
                 _activate(guest_b, "editor", b_path)
             else:

@@ -9,7 +9,8 @@ from PIL import Image
 
 from oscombo.collab.model_and_review_lite_v1.oracle import evaluate_snapshots, evaluate
 from oscombo.collab.lite_file_guest_pilot import (
-    _blender_frame_ready, _blender_quick_setup_visible, _blender_welcome_visible,
+    _blender_dimension_region_change, _blender_frame_ready,
+    _blender_quick_setup_visible, _blender_welcome_visible,
 )
 
 
@@ -41,6 +42,17 @@ def test_blender_welcome_card_detection():
     buffer = BytesIO()
     frame.save(buffer, format="PNG")
     assert _blender_welcome_visible(buffer.getvalue())
+
+
+def test_scripted_peer_gui_read_rejects_stale_blender_frame():
+    initial = Image.new("RGB", (1920, 1080), (60, 60, 60))
+    before = BytesIO()
+    initial.save(before, format="PNG")
+    assert _blender_dimension_region_change(before.getvalue(), before.getvalue()) == 0
+    initial.paste((250, 250, 250), (1510, 475, 1530, 495))
+    after = BytesIO()
+    initial.save(after, format="PNG")
+    assert _blender_dimension_region_change(before.getvalue(), after.getvalue()) > 3
 
 
 def scenes():
