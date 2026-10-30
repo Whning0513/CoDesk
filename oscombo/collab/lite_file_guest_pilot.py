@@ -277,20 +277,43 @@ def _editor_has_unsaved_buffer(title: str, path: str) -> bool:
     return f"*{Path(path).name}".casefold() in title.casefold()
 
 
-def _gedit_discard_dialog_visible(guest, png: bytes) -> bool:
-    """Recognize the Gedit dirty-tab close dialog before a postscore click."""
+def _gedit_discard_button(guest, png: bytes) -> tuple[int, int] | None:
+    """Find the red discard button in a Gedit modal after scoring."""
     from PIL import Image
     if guest.active_window():
-        return False
+        return None
     if "gedit.Gedit" not in guest._window_sample("postscore-discard-check").get("output", ""):
-        return False
+        return None
     with Image.open(io.BytesIO(png)) as image:
         if image.size != (1920, 1080):
-            return False
+            return None
         rgb = image.convert("RGB")
-        samples = [rgb.getpixel((x, y)) for x in range(700, 861, 20)
-                   for y in (600, 610, 620)]
-    return sum(r > 150 and g < 90 and b < 100 for r, g, b in samples) >= 20
+        rows = []
+        for y in range(180, 901, 3):
+            red_x = []
+            for x in range(100, 1801, 3):
+                r, g, b = rgb.getpixel((x, y))
+                if r > 150 and g < 90 and b < 100:
+                    red_x.append(x)
+            if len(red_x) >= 40:
+                rows.append((y, red_x))
+    groups = []
+    for row in rows:
+        if not groups or row[0] != groups[-1][-1][0] + 3:
+            groups.append([])
+        groups[-1].append(row)
+    for group in groups:
+        if len(group) < 8:
+            continue
+        _, widest = max(group, key=lambda row: len(row[1]))
+        if 180 <= widest[-1] - widest[0] <= 260:
+            return ((widest[0] + widest[-1]) // 2,
+                    (group[0][0] + group[-1][0]) // 2)
+    return None
+
+
+def _gedit_discard_dialog_visible(guest, png: bytes) -> bool:
+    return _gedit_discard_button(guest, png) is not None
 
 
 def _discard_shared_gedit_dirty_tab(guest, paths: dict[str, str]) -> str | None:
@@ -310,13 +333,27 @@ def _discard_shared_gedit_dirty_tab(guest, paths: dict[str, str]) -> str | None:
     saved = {role: guest.env.controller.get_file(path) for role, path in paths.items()}
     guest.actor = "system"
     guest.run_pyautogui("import pyautogui, time; pyautogui.hotkey('ctrl','w'); time.sleep(2)")
-    prompt = guest.screenshot(patience=45)
-    if not _gedit_discard_dialog_visible(guest, prompt):
-        raise RuntimeError("dirty Gedit tab did not show the verified close-without-saving dialog")
+    prompt = b""
+    button = None
+    for _ in range(6):
+        prompt = guest.screenshot(patience=45)
+        button = _gedit_discard_button(guest, prompt)
+        if button is not None:
+            break
+        time.sleep(2)
+    else:
+        diagnostic = guest.root / "screenshots" / f"postscore-{dirty_role}-gedit-unexpected.png"
+        diagnostic.write_bytes(prompt)
+        raise RuntimeError("dirty Gedit tab did not show the verified close-without-saving dialog; "
+                           f"last screenshot: {diagnostic.relative_to(guest.root)}")
     shot = guest.root / "screenshots" / f"postscore-{dirty_role}-gedit-unsaved-dialog.png"
     shot.write_bytes(prompt)
-    guest.run_pyautogui("import pyautogui, time; pyautogui.click(783,614); time.sleep(2)")
-    if _gedit_discard_dialog_visible(guest, guest.screenshot(patience=45)):
+    guest.run_pyautogui(f"import pyautogui, time; pyautogui.click({button[0]},{button[1]}); time.sleep(2)")
+    for _ in range(6):
+        if not _gedit_discard_dialog_visible(guest, guest.screenshot(patience=45)):
+            break
+        time.sleep(2)
+    else:
         raise RuntimeError("Gedit close-without-saving dialog remained after postscore discard")
     if any(guest.env.controller.get_file(path) != saved[role] for role, path in paths.items()):
         raise RuntimeError("saved role output changed while discarding uncommitted Gedit buffer")
