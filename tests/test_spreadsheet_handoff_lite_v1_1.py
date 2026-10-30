@@ -3,8 +3,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from oscombo.collab.data_to_deck.fixtures import _ods
-from oscombo.collab.spreadsheet_handoff_lite_v1_1 import fixtures, oracle, spec
+from oscombo.collab.data_to_deck.live_pilot import run_pilot
+from oscombo.collab.spreadsheet_handoff_lite_v1_1 import fixtures, live_pilot, oracle, spec
 from oscombo.collab.spreadsheet_handoff_lite_v1_1.private.gold import expected_plan, write_gold
 
 
@@ -17,6 +20,18 @@ def test_version_and_units_are_unambiguous_without_gold_leakage():
     assert "73" not in spec.AGENT_B_INSTRUCTION
     assert "80" not in spec.AGENT_B_INSTRUCTION
     assert "2240" not in spec.AGENT_B_INSTRUCTION
+
+
+def test_versioned_entrypoint_and_lock_scope(monkeypatch, tmp_path):
+    seen = []
+    monkeypatch.setattr(live_pilot, "shared_runner_main", lambda argv: seen.extend(argv))
+    live_pilot.main(["--condition", "collaborative_shared"])
+    assert seen[:1] == ["--case-spreadsheet-lite-v1-1"]
+    with pytest.raises(ValueError, match="separate Shared model ablation"):
+        run_pilot("collaborative_isolated", tmp_path / "should-not-create", "unused", tmp_path,
+                  "unused", model="dummy", case_spreadsheet_lite_v1_1=True,
+                  gui_input_lock=True)
+    assert not (tmp_path / "should-not-create").exists()
 
 
 def _case(tmp_path: Path):
