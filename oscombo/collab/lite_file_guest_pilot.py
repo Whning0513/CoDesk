@@ -28,11 +28,16 @@ from oscombo.collab.data_to_deck.provenance import RunLedger, collect_artifacts
 from oscombo.collab.data_to_deck.workspace_bridge import SavedArtifactBridge
 
 
+WORKSPACE_ASSEMBLY_CASES = {"workspace_assembly", "workspace_assembly_v1p2"}
+
+
 def _profile(case: str):
     if case == "build_verify":
         from oscombo.collab.build_and_verify_lite_v1 import spec, fixtures, oracle
     elif case == "workspace_assembly":
         from oscombo.collab.workspace_assembly_lite_v1 import spec, fixtures, oracle
+    elif case == "workspace_assembly_v1p2":
+        from oscombo.collab.workspace_assembly_lite_v1p2 import spec, fixtures, oracle
     elif case == "model_review":
         from oscombo.collab.model_and_review_lite_v1 import spec, fixtures, oracle
     else:
@@ -61,7 +66,7 @@ def _install(guest, fixture: Path, task_root: str, case: str, spec):
             commands.append(f"cp {shlex.quote(task_root + '/input/' + names[key])} "
                             f"{shlex.quote(task_root + '/' + spec.OUTPUTS[role])}")
             commands.append(f"chmod u+w {shlex.quote(task_root + '/' + spec.OUTPUTS[role])}")
-    elif case == "workspace_assembly":
+    elif case in WORKSPACE_ASSEMBLY_CASES:
         commands.append(f"cp {shlex.quote(task_root + '/input/' + names['asset'])} "
                         f"{shlex.quote(task_root + '/incoming/' + names['asset'])}")
         commands.append(f"chmod u+w {shlex.quote(task_root + '/incoming/' + names['asset'])}")
@@ -226,6 +231,22 @@ def _blender_dimension_region_change(before: bytes, after: bytes) -> float:
                     ((1500, w, 1920), (465, h, 1080), (1550, w, 1920), (505, h, 1080)))
         return round(ImageStat.Stat(ImageChops.difference(a.crop(box), b.crop(box))).mean[0], 3)
 
+def _maximize_case7_files(guest):
+    """Set the same broad Files viewport before either model Actor starts."""
+    result = _guest_script(guest,
+        "wmctrl -r incoming -b add,maximized_vert,maximized_horz; "
+        "sleep 2; wmctrl -lG", timeout=15)
+    windows = (result.get("output") or "").splitlines()
+    incoming = [line.split() for line in windows if line.rstrip().endswith(" incoming")]
+    if not incoming or len(incoming[-1]) < 8:
+        raise RuntimeError("Case 7 Files window not found after maximize")
+    # wmctrl -lG: id, desktop, x, y, width, height, host, title.
+    width, height = map(int, incoming[-1][4:6])
+    if width < 1500 or height < 800:
+        raise RuntimeError(f"Case 7 Files window was not maximized: {width}x{height}")
+    shot = guest.screenshot(patience=45)
+    (guest.root / "screenshots" / f"{guest.guest_key}-files-maximized.png").write_bytes(shot)
+
 
 def _activate(guest, app: str, path: str):
     if app == "writer":
@@ -274,13 +295,18 @@ def _scripted_actions(case: str, role: str, task_root: str, fixtures, negative: 
             "import pyautogui, time; pyautogui.hotkey('ctrl','a'); time.sleep(1)",
             f"import pyautogui, time; pyautogui.write({note!r}, 0.03); time.sleep(1)",
             "import pyautogui, time; pyautogui.hotkey('ctrl','s'); time.sleep(3)", "DONE"]
-    if case == "workspace_assembly" and role == "A":
-        return [
+    if case in WORKSPACE_ASSEMBLY_CASES and role == "A":
+        actions = [
             "import pyautogui, time; pyautogui.hotkey('ctrl','a'); time.sleep(2)",
             "import pyautogui, time; pyautogui.hotkey('ctrl','x'); time.sleep(2)",
             f"import pyautogui, time; pyautogui.hotkey('ctrl','l'); pyautogui.write({(task_root + '/outputs/agent_A')!r}, 0.01); pyautogui.press('enter'); time.sleep(2)",
-            "import pyautogui, time; pyautogui.hotkey('ctrl','v'); time.sleep(3)", "DONE"]
-    if case == "workspace_assembly" and role == "B":
+            "import pyautogui, time; pyautogui.hotkey('ctrl','v'); time.sleep(3)"]
+        if case == "workspace_assembly_v1p2":
+            actions += [
+                "import pyautogui, time; pyautogui.hotkey('ctrl','a'); pyautogui.press('enter'); time.sleep(8)",
+                "import pyautogui, time; pyautogui.hotkey('alt','f4'); time.sleep(2)"]
+        return actions + ["DONE"]
+    if case in WORKSPACE_ASSEMBLY_CASES and role == "B":
         sentence = ("The delivered inspection attachment is inspection_note.txt with inspection tag " +
                     ("WRONG." if negative else "RIVER-27."))
         text = "Aurora Supply Handoff\n" + sentence + "\nPrepared for operations review."
@@ -300,6 +326,25 @@ def _scripted_actions(case: str, role: str, task_root: str, fixtures, negative: 
                 f"import pyautogui, time; pyautogui.write({text!r}, 0.02); time.sleep(1)",
                 "import pyautogui, time; pyautogui.hotkey('ctrl','s'); time.sleep(3)", "DONE"]
     raise ValueError((case, role))
+
+
+def _audit_case7_scripted_delivered_read(run_root: Path) -> dict:
+    """Require the control's A to view the moved note through a GUI app."""
+    action_path = run_root / "gui_actions.jsonl"
+    actions = [json.loads(line) for line in action_path.read_text().splitlines() if line.strip()]
+    candidates = []
+    for action in actions:
+        if action.get("actor") != "A" or "hotkey('alt','f4')" not in (action.get("code") or ""):
+            continue
+        title = (action.get("window_before") or {}).get("output", "")
+        if "inspection_note.txt" in title and "/outputs/agent_A" in title and "gedit" in title:
+            candidates.append({"action_id": action["action_id"],
+                               "window_before": title, "screenshot": action.get("screenshot")})
+    result = {"delivered_note_opened_in_GUI": bool(candidates), "evidence": candidates}
+    (run_root / "scripted_A_delivered_read.json").write_text(json.dumps(result, indent=2) + "\n")
+    if not candidates:
+        raise RuntimeError("Case 7 v1.0.2 scripted A did not open the delivered note in Text Editor")
+    return result
 
 
 def _browser_trace_audit(run_root: Path, *, write: bool = True) -> dict:
@@ -437,7 +482,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
         bridge = SavedArtifactBridge(run_root / "workspace_versions", run_id, task_root,
                                      controllers, ids, case_id=spec.CASE_ID,
                                      outputs=spec.OUTPUTS, mime_types=mime,
-                                     allow_initial_missing={"A"} if case == "workspace_assembly" else None,
+                                     allow_initial_missing={"A"} if case in WORKSPACE_ASSEMBLY_CASES else None,
                                      peer_read_only=True)
         server.workspace_bridge = bridge
         bridge.start()
@@ -456,6 +501,8 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
             a_app, b_app = "blender", "editor"
         else:
             _launch(guest_a, "files", f"{task_root}/incoming", run_id)
+            if case == "workspace_assembly_v1p2":
+                _maximize_case7_files(guest_a)
             _launch(guest_b, "writer", b_path, run_id)
             a_app, b_app = "files", "writer"
         outcomes = {}
@@ -496,7 +543,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                     _activate_editor_tab(guest_a, "A", True)
                 else:
                     _activate(guest_a, "editor", a_path)
-            elif case == "workspace_assembly":
+            elif case in WORKSPACE_ASSEMBLY_CASES:
                 _activate(guest_a, "files", f"{task_root}/incoming")
             else:
                 _activate(guest_a, "blender", a_path)
@@ -505,7 +552,9 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 max_steps=25, case_id=spec.CASE_ID)
             if outcomes["A"]["status"] != "done":
                 raise RuntimeError("scripted A GUI failed")
-            if case == "workspace_assembly":
+            if case == "workspace_assembly_v1p2":
+                _audit_case7_scripted_delivered_read(run_root)
+            if case in WORKSPACE_ASSEMBLY_CASES:
                 probe = _guest_script(guest_a,
                     f"find {shlex.quote(task_root + '/incoming')} "
                     f"{shlex.quote(task_root + '/outputs/agent_A')} -maxdepth 1 -type f "
@@ -741,7 +790,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
 
 def main(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--case", required=True, choices=("build_verify", "workspace_assembly", "model_review"))
+    parser.add_argument("--case", required=True, choices=("build_verify", "workspace_assembly", "workspace_assembly_v1p2", "model_review"))
     parser.add_argument("--condition", required=True,
                         choices=("collaborative_shared", "collaborative_isolated"))
     parser.add_argument("--run-root", type=Path, required=True)
