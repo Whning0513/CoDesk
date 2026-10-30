@@ -378,6 +378,48 @@ def test_driver_exit_code_distinguishes_task_failure_and_invalid_infra():
     assert _result_exit_code("INVALID_INFRA") == 3
 
 
+def test_isolated_system_actions_keep_distinct_screenshots(tmp_path):
+    from types import SimpleNamespace
+    from oscombo.collab.data_to_deck.live_pilot import LoggedGuest
+
+    class FakeBase:
+        def __init__(self, frame):
+            self.frame = frame
+
+        def execute(self, argv, timeout):
+            return {"output": "ACTIVE_WINDOW_ID=1\nACTIVE_WINDOW_TITLE=Calc\nWINDOWS_BEGIN\nWINDOWS_END"}
+
+        def run_pyautogui(self, code):
+            return {"status": "success"}
+
+        def screenshot(self, patience=None):
+            return self.frame
+
+    def guest(key):
+        value = object.__new__(LoggedGuest)
+        value.base = FakeBase(key.encode())
+        value.ledger = SimpleNamespace(record=lambda *args, **kwargs: None)
+        value.root = tmp_path
+        value.guest_key = key
+        value.actor = "system"
+        value.action_n = 0
+        return value
+
+    a, b = guest("A"), guest("B")
+    a.run_pyautogui("pyautogui.press('esc')")
+    b.run_pyautogui("pyautogui.press('esc')")
+    rows = [json.loads(line) for line in (tmp_path / "gui_actions.jsonl").read_text().splitlines()]
+    assert [row["action_id"] for row in rows] == ["A-system-001", "B-system-001"]
+    assert (tmp_path / rows[0]["screenshot"]).read_bytes() == b"A"
+    assert (tmp_path / rows[1]["screenshot"]).read_bytes() == b"B"
+
+    a.actor = "A"
+    a.run_pyautogui("pyautogui.press('enter')")
+    actor_row = json.loads((tmp_path / "gui_actions.jsonl").read_text().splitlines()[-1])
+    assert actor_row["action_id"] == "A-002"
+    assert actor_row["screenshot"] == "screenshots/A-002.png"
+
+
 def test_cli_yield_wait_lifecycle_reaches_runner_without_guest(monkeypatch, tmp_path):
     from oscombo.collab.data_to_deck import live_pilot
 
