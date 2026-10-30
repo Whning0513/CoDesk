@@ -239,6 +239,12 @@ def _postscore_lifecycle_ok(reopen: list[dict]) -> bool:
         (item.get("same_bytes") is True and
          item.get("gui_reopen") != "skipped_unsaved_buffer") for item in reopen)
 
+
+def _result_exit_code(status: str) -> int:
+    """Preserve task failure vs. invalid-run distinction for shell drivers."""
+    return {"PASS": 0, "FAIL": 2}.get(status, 3)
+
+
 def _maximize_case7_files(guest):
     """Set the same broad Files viewport before either model Actor starts."""
     result = _guest_script(guest,
@@ -842,7 +848,7 @@ def main(argv: list[str] | None = None):
         print(json.dumps(failure, indent=2), file=sys.stderr)
         raise SystemExit(3)
     print(json.dumps(result, indent=2))
-    raise SystemExit(0 if result["status"] == "PASS" else 2)
+    raise SystemExit(_result_exit_code(result["status"]))
 
 
 if __name__ == "__main__":
