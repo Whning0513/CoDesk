@@ -1,0 +1,122 @@
+{
+  "A_saved_revision_time": 1793294933.5952382,
+  "candidates": [
+    {
+      "action_id": "model-B-013",
+      "screenshot": "actor_runs/B/B/shots/013.png",
+      "horizontal_borders": [
+        236,
+        265,
+        294,
+        324,
+        353
+      ],
+      "visible_rows": 3,
+      "after_A_revision": true
+    },
+    {
+      "action_id": "model-B-014",
+      "screenshot": "actor_runs/B/B/shots/014.png",
+      "horizontal_borders": [
+        236,
+        265,
+        294,
+        324,
+        353
+      ],
+      "visible_rows": 3,
+      "after_A_revision": true
+    },
+    {
+      "action_id": "model-B-015",
+      "screenshot": "actor_runs/B/B/shots/015.png",
+      "horizontal_borders": [
+        236,
+        265,
+        294,
+        324,
+        353
+      ],
+      "visible_rows": 3,
+      "after_A_revision": true
+    },
+    {
+      "action_id": "model-B-016",
+      "screenshot": "actor_runs/B/B/shots/016.png",
+      "horizontal_borders": [
+        236,
+        265,
+        294,
+        324,
+        353
+      ],
+      "visible_rows": 3,
+      "after_A_revision": true
+    },
+    {
+      "action_id": "model-B-017",
+      "screenshot": "actor_runs/B/B/shots/017.png",
+      "horizontal_borders": [
+        236,
+        265,
+        294,
+        324,
+        353
+      ],
+      "visible_rows": 3,
+      "after_A_revision": true
+    },
+    {
+      "action_id": "model-B-018",
+      "screenshot": "actor_runs/B/B/shots/018.png",
+      "horizontal_borders": [
+        236,
+        265,
+        294,
+        324,
+        353
+      ],
+      "visible_rows": 3,
+      "after_A_revision": true
+    },
+    {
+      "action_id": "model-B-019",
+      "screenshot": "actor_runs/B/B/shots/019.png",
+      "horizontal_borders": [
+        236,
+        265,
+        294,
+        324,
+        353
+      ],
+      "visible_rows": 3,
+      "after_A_revision": true
+    },
+    {
+      "action_id": "model-B-020",
+      "screenshot": "actor_runs/B/B/shots/020.png",
+      "horizontal_borders": [
+        236,
+        265,
+        294,
+        324,
+        353
+      ],
+      "visible_rows": 3,
+      "after_A_revision": true
+    },
+    {
+      "action_id": "model-B-021",
+      "screenshot": "actor_runs/B/B/shots/021.png",
+      "horizontal_borders": [
+        236,
+        265,
+        294
+      ],
+      "visible_rows": 1,
+      "after_A_revision": true
+    }
+  ],
+  "browser_one_visible_row_after_handoff": true,
+  "scope": "visible row count only; inspect query/status text and action chronology separately"
+}

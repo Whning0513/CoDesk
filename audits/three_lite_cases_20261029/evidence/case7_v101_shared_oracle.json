@@ -1,0 +1,29 @@
+{
+  "actors": {
+    "A": {
+      "checks": {
+        "attachment_bytes_preserved": true,
+        "delivered_name": true,
+        "incoming_source_moved": true,
+        "source_fixture_intact": true
+      },
+      "success": true
+    },
+    "B": {
+      "checks": {
+        "asset_verified_for_handoff": true,
+        "attachment_named": true,
+        "correct_delivered_tag": true,
+        "draft_intact": true,
+        "placeholder_resolved": true,
+        "real_writer_report": true,
+        "title_and_closing_preserved": true
+      },
+      "success": true
+    }
+  },
+  "behavioral_handoff": "Audit A's file-manager move, revision transfer, B's GUI read and message chronology separately",
+  "case_id": "CDD-WA-LITE-001",
+  "case_version": "1.0.1",
+  "joint_success": true
+}
