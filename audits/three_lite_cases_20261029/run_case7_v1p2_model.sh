@@ -12,6 +12,11 @@ fi
 : "${OSWORLD_DIR:?Set OSWORLD_DIR}"
 : "${OSCOMBO_GUEST_IMAGE:?Set OSCOMBO_GUEST_IMAGE}"
 : "${OSCOMBO_RUNTIME_IMAGE:?Set OSCOMBO_RUNTIME_IMAGE}"
+osworld_python="${OSWORLD_DIR%/}/.venv/bin/python"
+if [[ ! -x "$osworld_python" ]]; then
+    echo "OSWorld Python is not executable: ${osworld_python}" >&2
+    exit 3
+fi
 : "${AIGCBEST_API_KEY:?Set AIGCBEST_API_KEY in the coordinator environment}"
 trap 'unset AIGCBEST_API_KEY' EXIT
 
@@ -29,13 +34,13 @@ run_id="wa-lite-v1p2-${arm}-${stamp}"
 run_root="runs/${run_id}"
 log="audits/three_lite_cases_20261029/${run_id}-driver.log"
 echo "Starting ${run_id} at $(date -u +%FT%TZ)"
-/data3/whn/Project2/OSWorld-V2/.venv/bin/python \
+"$osworld_python" \
     -m oscombo.collab.workspace_assembly_lite_v1p2.live_pilot \
     --condition "collaborative_${side}" --run-root "$run_root" \
     --provider "$OSWORLD_DIR" --image "$OSCOMBO_GUEST_IMAGE" \
     --runtime "$OSCOMBO_RUNTIME_IMAGE" --model gpt-6-astra \
     --base-url https://api.haogpt.net/v1 --api-key-env AIGCBEST_API_KEY \
-    --mcp-python /data3/whn/Project2/OSWorld-V2/.venv/bin/python \
+    --mcp-python "$osworld_python" \
     --yield-wait-lifecycle --actor-mcp-only "${extra[@]}" > "$log" 2>&1 &
 driver_pid=$!
 for _ in {1..100}; do
@@ -45,7 +50,7 @@ for _ in {1..100}; do
 done
 sampler_pid=""
 if [[ -d "$run_root" ]] && kill -0 "$driver_pid" 2>/dev/null; then
-    /data3/whn/Project2/OSWorld-V2/.venv/bin/python \
+    "$osworld_python" \
         audits/three_lite_cases_20261029/sample_qemu.py "$run_root" \
         --interval 5 --max-seconds 3600 \
         > "audits/three_lite_cases_20261029/${run_id}-qemu-sampler.log" 2>&1 &
@@ -58,12 +63,12 @@ if [[ -n "$sampler_pid" ]]; then
     wait "$sampler_pid" 2>/dev/null || true
 fi
 if [[ -s "$run_root/qemu_process_resources.jsonl" ]]; then
-    /data3/whn/Project2/OSWorld-V2/.venv/bin/python \
+    "$osworld_python" \
         audits/three_lite_cases_20261029/summarize_qemu.py "$run_root" \
         > "audits/three_lite_cases_20261029/${run_id}-qemu-metrics.json" 2>&1 || true
 fi
 if [[ -f "$run_root/actors.jsonl" ]]; then
-    /data3/whn/Project2/OSWorld-V2/.venv/bin/python \
+    "$osworld_python" \
         audits/lite_v2_lifecycle_20261028/summarize_lifecycle.py "$run_root" \
         > "audits/three_lite_cases_20261029/${run_id}-metrics.log" 2>&1 || true
 fi

@@ -12,11 +12,15 @@ fi
 : "${OSWORLD_DIR:?Set OSWORLD_DIR}"
 : "${OSCOMBO_GUEST_IMAGE:?Set OSCOMBO_GUEST_IMAGE}"
 : "${OSCOMBO_RUNTIME_IMAGE:?Set OSCOMBO_RUNTIME_IMAGE}"
+osworld_python="${OSWORLD_DIR%/}/.venv/bin/python"
+if [[ ! -x "$osworld_python" ]]; then
+    echo "OSWorld Python is not executable: ${osworld_python}" >&2
+    exit 3
+fi
 
 stamp="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 manifest="audits/three_lite_cases_20261029/case7-v1p2-controls-${stamp}.tsv"
 printf 'control\tcondition\trun_id\texit_code\tstatus\tverdict\n' > "$manifest"
-overall=0
 for entry in 'positive shared' 'positive isolated' 'negative shared'; do
     read -r control side <<< "$entry"
     run_id="wa-lite-v1p2-scripted-${control}-${side}-${stamp}"
@@ -25,7 +29,7 @@ for entry in 'positive shared' 'positive isolated' 'negative shared'; do
     negative_flag=()
     [[ "$control" == "negative" ]] && negative_flag=(--scripted-negative)
     echo "Starting ${run_id} at $(date -u +%FT%TZ)"
-    /data3/whn/Project2/OSWorld-V2/.venv/bin/python \
+    "$osworld_python" \
         -m oscombo.collab.workspace_assembly_lite_v1p2.live_pilot \
         --condition "collaborative_${side}" --run-root "$run_root" \
         --provider "$OSWORLD_DIR" --image "$OSCOMBO_GUEST_IMAGE" \
@@ -33,7 +37,7 @@ for entry in 'positive shared' 'positive isolated' 'negative shared'; do
     exit_code=$?
     status="NO_RESULT"
     if [[ -f "$run_root/result.json" ]]; then
-        status=$(/data3/whn/Project2/OSWorld-V2/.venv/bin/python -c \
+        status=$("$osworld_python" -c \
             'import json,sys; print(json.load(open(sys.argv[1])).get("status","NO_STATUS"))' \
             "$run_root/result.json") || status="UNREADABLE_RESULT"
     fi
@@ -46,11 +50,13 @@ for entry in 'positive shared' 'positive isolated' 'negative shared'; do
     verdict=EXPECTED
     if [[ "$status" != "$expected_status" || "$exit_code" -ne "$expected_exit" ]]; then
         verdict=UNEXPECTED
-        overall=1
     fi
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
         "$control" "$side" "$run_id" "$exit_code" "$status" "$verdict" >> "$manifest"
     echo "Finished ${run_id}: exit ${exit_code}, status ${status}, ${verdict} at $(date -u +%FT%TZ)"
+    if [[ "$verdict" == "UNEXPECTED" ]]; then
+        echo "Stopped after unexpected control; manifest: ${manifest}" >&2
+        exit 1
+    fi
 done
 echo "Manifest: ${manifest}"
-exit "$overall"
