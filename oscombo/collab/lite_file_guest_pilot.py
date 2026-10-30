@@ -122,6 +122,13 @@ def _postscore_lifecycle_ok(reopen: list[dict]) -> bool:
          item.get("gui_reopen") != "skipped_unsaved_buffer") for item in reopen)
 
 
+
+def _result_exit_code(status: str) -> int:
+    """Preserve task failure vs. invalid-run distinction for shell drivers."""
+    return {"PASS": 0, "FAIL": 2}.get(status, 3)
+
+
+
 def _activate(guest, app: str, path: str):
     if app == "writer":
         return core._activate_ready_document(guest, path, "lite-file-reopen")
@@ -662,7 +669,7 @@ def main(argv: list[str] | None = None):
         print(json.dumps(failure, indent=2), file=sys.stderr)
         raise SystemExit(3)
     print(json.dumps(result, indent=2))
-    raise SystemExit(0 if result["status"] == "PASS" else 2)
+    raise SystemExit(_result_exit_code(result["status"]))
 
 
 if __name__ == "__main__":
