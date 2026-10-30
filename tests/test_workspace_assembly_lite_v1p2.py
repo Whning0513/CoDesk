@@ -41,6 +41,7 @@ def test_v1p2_workflow_is_independent_and_gui_read_is_in_control():
     assert "First move" in spec.AGENT_A_INSTRUCTION
     assert "Then open the delivered note" in spec.AGENT_A_INSTRUCTION
     assert "coordinator will wake this same conversation" in spec.AGENT_B_INSTRUCTION
+    assert "A's message alone is not a file check" in spec.AGENT_B_INSTRUCTION
     steps = _scripted_actions("workspace_assembly_v1p2", "A", "/tmp/case", None, False)
     assert "ctrl','v" in steps[3]
     assert "press('enter')" in steps[4]
