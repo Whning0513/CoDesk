@@ -36,4 +36,20 @@ In Isolated, A's revision 1 was transferred to B's Guest with matching SHA-256 a
 
 The first visible causal error is A's click outside the File Manager while `inspection_note.txt` was selected. The following `Ctrl+X` acted on the desktop instead of the selected file. A then made repeated attempts to restore Files; screenshots show a bare desktop and a Files loading indicator. This supports an A GUI localization/recovery failure. It does not establish that the bridge failed: no A revision existed to transfer. The later app responsiveness may have contributed, but no second Actor touched A's isolated desktop. A/B total upstream tokens were 244,130/19,455, setup until Actor start 624.528 seconds, total wall time 2182.501 seconds, peak summed QEMU process RSS 9.367 GiB and sampled QEMU CPU delta 8188.79 seconds.
 
-Pair 2 Shared is still running and will be appended without selecting by outcome. Full raw screenshots, actions, model requests, messages, revisions, artifacts, Oracle and reset are in the exact local `runs/<run_id>/` directories. Resource figures are run-labeled QEMU process samples, not total host use; Isolated's two Guest boots contribute to its longer wall time.
+## Pair 2 Shared and complete cohort
+
+`wa-lite-v1p1-whitelist-pair2-shared-20261030T101059Z` completed with result PASS and independent Oracle A/B/joint PASS. A saved and published revision 1, sent the handoff message, and B woke after a 408.026-second suspension. B read the delivered note and saved Writer revision 1. Both outputs reopened with exact bytes, one Guest reset cleanly, the bridge reported no sync error, and neither Actor used an outside-contract tool. A/B used 13/12 desktop calls and 330,499/273,444 upstream tokens. Setup until Actor start was 343.495 seconds; total wall time including postscore/reset was 1347.714 seconds. Active overlap excluding B wait was 70.004 seconds, model-request overlap 34.294 seconds, and GUI action overlap zero. Peak sampled QEMU process RSS was 4.915 GiB and CPU delta 3868.46 seconds. A had no GUI actions after B woke, so this run does not show the Pair 1 Shared focus collision.
+
+| Frozen outcome across two pairs | Shared | Isolated |
+|---|---:|---:|
+| Valid model episodes | 2 | 2 |
+| A success | 2/2 | 1/2 |
+| B success | 2/2 | 1/2 |
+| Joint success | 2/2 | 1/2 |
+| Observed B suspend/wake | 2/2 | 1 wake, 1 blocked on A |
+| Runs with concrete cross-Agent window interference | 1/2 | 0/2 |
+| Calls outside GUI/collaboration tool contract | 0 | 0 |
+
+The single Isolated failure began with A's own wrong-window click and ended with no A revision; it is not evidence that separation harmed collaboration or that the bridge lost a saved file. Shared Pair 1 had concrete window interference yet recovered and passed. Shared Pair 2 had no simultaneous GUI action. With two pairs and different observed A behavior, the 2/2 versus 1/2 counts are descriptive only; they do not estimate a stable causal topology effect. No controlled Shared input-lock ablation has been run, so this cohort also cannot establish whether such a lock would help.
+
+Full raw screenshots, actions, model requests, messages, revisions, artifacts, Oracle and reset are in the exact local `runs/<run_id>/` directories. Resource figures are run-labeled QEMU process samples, not total host use; Isolated's two Guest boots contribute to its longer wall time. The pre-repair infrastructure attempts and the 8-step whitelist Pilots remain separate from this valid cohort.
