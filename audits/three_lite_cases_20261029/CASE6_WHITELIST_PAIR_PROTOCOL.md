@@ -1,0 +1,7 @@
+# Case 6 Lite v1.0.0 postscore/Actor-boundary validation pair
+
+The historical Case 6 Shared full model episode with joint Oracle success could not complete postscore GUI reopen, and the matching Isolated episode failed B's order-unit interpretation. The common postscore repair has since passed a real Guest scripted positive with a deliberately stale `Open` chooser. This new pair checks the full model trace and recovery under the enforced GUI/collaboration Actor tool boundary.
+
+Freeze one Shared then one Isolated full episode with unique run IDs. Both use the unchanged Spreadsheet Handoff Lite v1.0.0 task, fixture, role prompts, Gold, Oracle and 25 GUI-call budget; `gpt-6-astra` medium, 1200-second role time, the same artifact/message bridge and public handoff lifecycle, and `--actor-mcp-only`. Shared has no mouse/keyboard input lock. Keep both outcomes and any infrastructure errors. A joint PASS requires independent Oracle, saved-file GUI reopen and clean run-owned Guest reset. A task failure with an absent output may be valid even though that absent file cannot be reopened; classify from the complete result and error evidence.
+
+Record A/B/joint score, saved revisions and sync, Actor tool audit, focus/window chronology, active overlap, model tokens/timing, QEMU process RSS/CPU, reopen and reset. Do not mix this cohort with pre-allowlist episodes or infer a topology effect from one pair.
