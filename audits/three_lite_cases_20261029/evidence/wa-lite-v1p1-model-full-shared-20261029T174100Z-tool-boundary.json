@@ -1,0 +1,13 @@
+{
+  "run_id": "wa-lite-v1p1-model-full-shared-20261029T174100Z",
+  "actors": {
+    "A": {
+      "total_tool_calls": 15,
+      "outside_gui_collaboration_contract": {}
+    },
+    "B": {
+      "total_tool_calls": 19,
+      "outside_gui_collaboration_contract": {}
+    }
+  }
+}

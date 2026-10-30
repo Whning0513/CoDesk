@@ -1,0 +1,19 @@
+{
+  "run_id": "bv-lite-v1p4-model-full-isolated-20261029T171430Z",
+  "actors": {
+    "A": {
+      "total_tool_calls": 17,
+      "outside_gui_collaboration_contract": {
+        "get_goal": 1,
+        "list_mcp_resources": 1,
+        "read_mcp_resource": 1
+      }
+    },
+    "B": {
+      "total_tool_calls": 37,
+      "outside_gui_collaboration_contract": {
+        "get_goal": 1
+      }
+    }
+  }
+}

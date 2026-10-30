@@ -1,0 +1,14 @@
+{
+  "actors": {
+    "A": {
+      "success": false
+    },
+    "B": {
+      "success": false
+    }
+  },
+  "case_id": "CDD-WA-LITE-001",
+  "case_version": "1.0.1",
+  "invalid_artifact": "FileNotFoundError",
+  "joint_success": false
+}

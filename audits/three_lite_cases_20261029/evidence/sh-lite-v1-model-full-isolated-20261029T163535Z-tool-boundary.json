@@ -1,0 +1,13 @@
+{
+  "run_id": "sh-lite-v1-model-full-isolated-20261029T163535Z",
+  "actors": {
+    "A": {
+      "total_tool_calls": 17,
+      "outside_gui_collaboration_contract": {}
+    },
+    "B": {
+      "total_tool_calls": 29,
+      "outside_gui_collaboration_contract": {}
+    }
+  }
+}

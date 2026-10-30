@@ -22,7 +22,8 @@ def main(root: Path) -> None:
     for suspended in [x for x in events if x.get("event") == "suspended_for_peer_handoff"]:
         role = suspended["actor"]
         terminal = next((x for x in events if x.get("actor") == role and x.get("time", 0) > suspended["time"]
-                         and x.get("event") in {"woken_by_peer_handoff", "peer_handoff_wait_expired"}), None)
+                         and x.get("event") in {"woken_by_peer_handoff", "peer_handoff_wait_expired",
+                                                "peer_finished_without_handoff"}), None)
         if terminal and role in actors:
             active[role] = [(actors[role]["started_at"], suspended["time"])]
             if terminal["event"] == "woken_by_peer_handoff":

@@ -1,0 +1,83 @@
+{
+  "actor_active_overlap_excluding_handoff_wait_s": 64.02,
+  "actor_execution_overlap_s": 310.022,
+  "actor_handoff_wait_s": {
+    "B": 252.281
+  },
+  "actor_lifecycle_events": [
+    {
+      "actor": "B",
+      "event": "suspended_for_peer_handoff",
+      "peer": "A",
+      "time": 1793340301.1096985
+    },
+    {
+      "actor": "B",
+      "event": "peer_finished_without_handoff",
+      "peer": "A",
+      "time": 1793340553.3910456
+    }
+  ],
+  "actor_phase_s": 316.303,
+  "actors": {
+    "A": {
+      "actor_elapsed_s": 310.02,
+      "actor_status": "done",
+      "cached_input_tokens": 2253,
+      "desktop_tool_calls": 5,
+      "executed_gui_actions": 3,
+      "gui_action_s": 12.621,
+      "input_tokens": 455196,
+      "model_http_statuses": {
+        "200": 8
+      },
+      "model_request_s": 208.972,
+      "model_requests": 8,
+      "output_tokens": 896,
+      "screenshot_s": 73.44,
+      "total_tokens": 456092
+    },
+    "B": {
+      "actor_elapsed_s": 316.3,
+      "actor_status": "blocked_on_peer",
+      "cached_input_tokens": 3712,
+      "desktop_tool_calls": 1,
+      "executed_gui_actions": 0,
+      "gui_action_s": 0,
+      "input_tokens": 155820,
+      "model_http_statuses": {
+        "200": 5
+      },
+      "model_request_s": 56.372,
+      "model_requests": 5,
+      "output_tokens": 133,
+      "screenshot_s": 4.529,
+      "total_tokens": 155953
+    }
+  },
+  "case_id": "CDD-WA-LITE-001",
+  "condition": "collaborative_isolated",
+  "desktop_calls_during_handoff_wait": 0,
+  "gui_action_overlap_s": 0.0,
+  "model": "gpt-6-astra",
+  "model_request_overlap_s": 41.668,
+  "model_requests_during_handoff_wait": 0,
+  "oracle_actor_success": {
+    "A": false,
+    "B": false
+  },
+  "oracle_joint_success": false,
+  "qemu_cpu_seconds_sampled": 0,
+  "qemu_peak_sampled_sum_rss_gib": 0.0,
+  "qemu_peak_single_rss_gib": 0.0,
+  "qemu_process_count": 0,
+  "reset_guests": 2,
+  "result_status": "FAIL",
+  "role_step_budget": null,
+  "run_id": "wa-lite-v1p1-model-full-isolated-20261030T055400Z",
+  "scope": "Actor/API/GUI overlap is measured from timestamps; it does not by itself prove focus interference.",
+  "setup_until_actor_s": 608.387,
+  "total_elapsed_s": 1277.352659702301,
+  "workspace_sync_errors": [],
+  "workspace_transfers": 0
+}

@@ -1,6 +1,6 @@
 # Three independent Lite cases: Build-and-Verify, Spreadsheet Handoff, Workspace Assembly
 
-Date: 2026-10-29. Branch: `experiment/codesk-three-lite-cases-20261029`.
+Run window: 2026-10-29 to 2026-10-30 UTC. Branch: `experiment/codesk-three-lite-cases-20261029`.
 
 ## Environment
 
@@ -33,6 +33,8 @@ The expected numbers in the Case 6 row are **evaluator-only report context**; th
 - Case 7 v1.0.1 scripted Shared `wa-lite-v1p1-scripted-shared-pos-20261029T171130Z`: real Guest joint Oracle PASS, GUI move and Writer save, reopen and one-Guest reset PASS. The matching Isolated control is recorded separately.
 - Case 7 v1.0.1 scripted Isolated `wa-lite-v1p1-scripted-isolated-pos-20261029T171145Z`: full run PASS, including A/B/joint Oracle, real File Manager move, revision transfer, Writer save/reopen and two-Guest reset.
 
+The real GUI wrong-value Shared controls on 2026-10-30 used separate run IDs: `bv-lite-v1p5-scripted-shared-neg-20261030T061700Z`, `sh-lite-v1-scripted-shared-neg-20261030T061700Z` and `wa-lite-v1p1-scripted-shared-neg-20261030T061700Z`. All three independent Oracles rejected the injected wrong artifact (joint FAIL). Each run has `result.json` status FAIL, two saved files reopened, one-Guest reset PASS and **no** `failure.json`. Case 3 rejected the uncorrected Delivered option and false QA result; Case 6 rejected A's wrong net need and B's mismatch; Case 7 rejected B's wrong inspection tag while A's file move passed. The committed [`scripted_guest_controls.json`](evidence/scripted_guest_controls.json) lists all six real positive and three real negative control verdicts, reopen counts and reset counts.
+
 ## Completed model evidence before the Case 7 lifecycle patch
 
 | Case / run ID | Condition | A / B / joint artifact Oracle | Run status and causal finding |
@@ -48,10 +50,27 @@ The expected numbers in the Case 6 row are **evaluator-only report context**; th
 | Case 3 `bv-lite-v1p4-model-full-shared-20261029T164830Z` | Shared | FAIL / FAIL / FAIL | Both Actors reached 25 steps without a saved revision. Browser/editor focus repeatedly changed; B's URL text entered A's editor, and A's edit actions sometimes landed in Chrome. A postscore editor reopen also raised `INVALID_INFRA_OR_RUNNER_ERROR`, recorded separately from the already-failing Oracle. |
 | Case 3 `bv-lite-v1p4-model-full-isolated-20261029T171430Z` | Isolated | PASS / FAIL / FAIL | A repaired the HTML in 11 desktop calls, published revision 1 and messaged B. B's own Chrome screenshot after handoff shows exactly one `OD-104` row for `North + Delivered`. B typed the correct QA note into Gedit but hit its 25-step limit before saving, so the artifact Oracle read the unchanged template. The frozen browser audit missed model screenshots; `browser_trace_reaudit.json` records the one-row observation retrospectively. Postscore attempted to close B's dirty editor, opened an unsaved-changes modal and raised a separate infra error. |
 | Case 7 v1.0.1 `wa-lite-v1p1-model-full-shared-20261029T174100Z` | Shared | PASS / PASS / PASS | Full valid result: A moved and published the note; B requested a handoff, voluntarily yielded at 54 s, slept 265 s with zero model requests or desktop calls, woke on A's revision plus message, opened the note through GUI, saved Writer revision 1 and sent completion. Both outputs reopened and one-Guest reset passed. No input misrouting was observed in this sample. |
+| Case 7 v1.0.1 `wa-lite-v1p1-model-full-isolated-20261030T055400Z` | Isolated | FAIL / FAIL / FAIL | Full valid result with two-Guest reset. A stopped after 5 calls, having cut but not pasted the file; no A revision/message existed. B voluntarily yielded after 64 s, waited 252 s without model or desktop calls, then was correctly marked `blocked_on_peer` when A finished without handoff. A's original instruction was present in its Codex session, but its response drifted to an unrelated README edit and then claimed it had no task context. The attempted built-in patch failed in the restricted Actor work directory. This is a model/tool-boundary anomaly, not a bridge-sync or desktop-focus failure. |
 
 All model episodes above used `gpt-6-astra` through the same relay, identical role prompts and budgets within each version's Shared/Isolated pair, and separate Actors started concurrently. The strong model API key was provided to the coordinator process only, never the Actor or Git. The Case 7 v1.0.1 change introduces an explicit B yield/wake instruction and opt-in coordinator behavior in **both** topologies. It pauses B's active model budget while waiting for A's public saved revision/message, then resumes B's own conversation; it neither performs B's decision nor locks Shared GUI input. Both v1.0.0 runs and scores remain frozen.
 
+Case 7 v1.0.1 did not repeat a small-budget model Pilot: v1.0.0 already had a real two-Actor Pilot and full runs proving API/tool compatibility, the new lifecycle was unit-tested, and both v1.0.1 scripted topologies passed before the frozen full-model pair. This choice avoids another expensive diagnostic episode; it is a limitation when assessing the lifecycle's reliability across repeated seeds.
+
 The Case 3 model pair used v1.0.4. Its post-run visual extractor looked only at scripted 1920×1080 screenshots, while model screenshots are 1280×720 under each Actor's trace. Its reopen routine also treated a model's unsaved Gedit buffer as a broken application launch. The v1.0.5 adapter patch reads both screenshot sources and records dirty buffers without opening a modal. It has offline regression tests plus retrospective analysis of preserved v1.0.4 screenshots. The frozen v1.0.4 Oracle and failure files are not overwritten; Case 3's Isolated artifact failure is the unsaved QA note, not the browser filter.
+
+### Actor tool boundary audit
+
+The Codex CLI Actor config disables shell and unified exec, sets a read-only sandbox and allowlists only desktop/collaboration MCP tools, but this CLI version still exposed several built-in tools to the model. A read-only audit of the actual Codex session rollouts (`audit_actor_tool_boundary.py`, compact JSON in `evidence/`) found:
+
+| Model run | Calls outside the GUI/collaboration contract |
+|---|---|
+| Case 7 v1.0.1 Shared | none for A or B |
+| Case 7 v1.0.1 Isolated | A: `apply_patch` 1, `list_mcp_resources` 1; B: `list_mcp_resources` 1 |
+| Case 3 v1.0.4 Shared | A: `apply_patch` 1, `view_image` 1; B: `request_user_input` 1 |
+| Case 3 v1.0.4 Isolated | A: `get_goal` 1, `list_mcp_resources` 1, `read_mcp_resource` 1; B: `get_goal` 1 |
+| Case 6 v1.0.0 Isolated | none for A or B |
+
+The Case 7 Isolated `apply_patch` attempt targeted an absent `README.md` in the Actor's restricted host work directory and failed. It did not edit the Guest or expose Gold. The session's original A task instruction was present, yet the model generated unrelated `CommentComment`/README content and later claimed it had no task context. The evidence supports a model response/tool-selection anomaly; it does **not** show that the coordinator dropped the prompt, nor that the file bridge caused the failure. This exposed built-in tool set is a general benchmark boundary limitation. A future harness change should enforce the intended model-visible tool set at request time and be validated symmetrically before any new formal pair; the frozen runs here are not rescored or rerun for that reason.
 
 ## Measurement interpretation
 
@@ -69,6 +88,7 @@ Some Case 3/6/7 episodes overlapped in **host** time while different run-owned G
 | Case 3 Shared full (postscore invalid) | 25 / 25 | 759,546 / 993,127 | 910 s | 7.6 s |
 | Case 3 Isolated full (postscore invalid) | 11 / 25 | 229,495 / 1,356,701 | 402 s | 4.8 s |
 | Case 7 v1.0.1 Shared full | 13 / 13 | 266,382 / 734,660 | 334 s wall; 68.9 s excluding B's 265 s wait | 0 s |
+| Case 7 v1.0.1 Isolated full | 5 / 1 | 456,092 / 155,953 | 310 s wall; 64.0 s excluding B's 252 s wait | 0 s |
 
 Tokens include screenshot-heavy context and may include cached input tokens; they are the relay's upstream usage figures, not a price estimate. The `model_metrics.json` in each run contains HTTP timing and screenshot/action timing separately. For Case 7 Isolated, use `actor_active_overlap_excluding_handoff_wait_s` (369 s) when comparing meaningful concurrent work; the 1200 s interval includes suspended B time.
 
@@ -78,6 +98,16 @@ The separate run-labeled QEMU process sampler observed a 9.849 GiB peak summed R
 
 Case 7 v1.0.1 Shared used one Guest with 4.897 GiB peak sampled QEMU RSS. Setup until both Actor threads started was 358 s; Actor phase was 657 s; full run including reopen and reset was 1232 s. The 265 s B suspension consumed no model requests or GUI calls. A/B model HTTP time was 191/257 s, screenshot time 59/58 s, and executed GUI action time 48/41 s. These measures separate waiting and model/API latency from desktop actions.
 
+Case 7 v1.0.1 Isolated used two Guests with 9.212 GiB peak sampled summed QEMU RSS. Setup until both Actors started was 608 s; Actor phase was 316 s; full run including reopen/reset was 1277 s. The 252 s B suspension likewise consumed no model requests or GUI calls. A/B model HTTP time was 209/56 s and total upstream tokens were 456,092/155,953. The shorter Actor phase reflects A's premature end, not a speed advantage of Isolated. The sampler measured about 6128 QEMU CPU-seconds across both Guests versus about 3323 CPU-seconds for the one-Guest Shared run; these deltas exclude early boot/tail intervals.
+
+## Design judgment before further expansion
+
+- **Case 3:** The code fix and browser retest are a genuine dependency, and the Isolated browser screenshot shows the task is technically solvable. The 25-step B budget stopped a correct unsaved QA buffer; Shared focus misrouting was separately observed. Keep the frozen results. If Case 3 is used in a larger matrix, pre-register a new version with a shorter QA editing path or more room for recovery, then repeat both topologies and their controls. Do not rescore the frozen pair as a success.
+- **Case 6:** One SKU preserves the forecast-to-order dependency at about 14 scripted GUI calls. The `cases` versus `units` mistake occurred in Isolated and one Shared episode, so final success cannot be read as a pure desktop effect. A future version could make the target unit more legible in the public spreadsheet; that would change the fixture/task and needs new Gold, controls and both topology runs.
+- **Case 7:** One attachment and one Writer sentence preserve a usable handoff with roughly 10–15 scripted GUI calls. The yield/wake lifecycle is a general coordinator improvement: v1.0.1 Shared proved real wake, file use and joint success; Isolated proved B can suspend without token use and terminate as `blocked_on_peer` when A never publishes. The Isolated A response was unrelated to its present task, and a built-in patch tool remained visible despite the GUI-only instruction. This pair does not support a claim that Shared is easier or Isolated is harder. Because the incoming note is initially in the common workspace, behavioral trace review remains necessary to reject early B reads of the source. A later version may tighten information visibility and tool exposure, but must do so symmetrically between topologies.
+
+The Lite pattern is worth reusing only with a short GUI path, a single indispensable saved handoff, an explicit waiting lifecycle, positive/negative scorer controls and trace-based collaboration audit. Neither fewer scripted actions nor an artifact Oracle alone guarantees model solvability or a fair Shared/Isolated comparison. No other original case was modified in this work.
+
 Raw runs remain locally under `runs/<run_id>/`, including actions, screenshots, model relay usage, public messages, file revisions, final files, Oracle and reset evidence. Run directories are intentionally not committed wholesale because they include large QEMU/GUI artifacts; the curated verdicts and run IDs in this report are commit-safe. Retain the raw run tree for independent inspection before any cleanup.
 
-Selected real Guest frames and compact scoring evidence are committed in [`evidence/`](evidence/): Case 3 Shared's URL entered into A's editor, Case 3 Isolated's one-row browser result and unsaved QA buffer, Case 7 v1.0.0 Shared's file path entered into Writer, and Case 7 v1.0.1 Shared's Oracle/metrics. The images are original run captures, not reconstructed illustrations. Their filenames and matching raw run IDs identify the source episode; the complete frame/action sequence remains only in the local run directory.
+Selected real Guest frames and compact scoring evidence are committed in [`evidence/`](evidence/): Case 3 Shared's URL entered into A's editor, Case 3 Isolated's one-row browser result and unsaved QA buffer, Case 6 Shared's A action landing in B's Calc window and producing a reference modal, Case 7 v1.0.0 Shared's file path entered into Writer, the Case 7 v1.0.1 pair's Oracle, metrics, B lifecycle and A response drift summary, and all nine scripted Guest control verdicts. The images are original run captures, not reconstructed illustrations. Their filenames and matching raw run IDs identify the source episode; the complete frame/action sequence remains only in the local run directory.

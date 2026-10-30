@@ -1,0 +1,18 @@
+{
+  "run_id": "bv-lite-v1p4-model-full-shared-20261029T164830Z",
+  "actors": {
+    "A": {
+      "total_tool_calls": 27,
+      "outside_gui_collaboration_contract": {
+        "apply_patch": 1,
+        "view_image": 1
+      }
+    },
+    "B": {
+      "total_tool_calls": 37,
+      "outside_gui_collaboration_contract": {
+        "request_user_input": 1
+      }
+    }
+  }
+}
