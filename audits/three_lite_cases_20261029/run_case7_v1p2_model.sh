@@ -33,6 +33,17 @@ stamp="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 run_id="wa-lite-v1p2-${arm}-${stamp}"
 run_root="runs/${run_id}"
 log="audits/three_lite_cases_20261029/${run_id}-driver.log"
+min_free_kib=$((15 * 1024 * 1024))
+free_kib=$(df -Pk "$PWD" 2>/dev/null | awk 'NR==2 {print $4}') || free_kib=""
+if [[ ! "$free_kib" =~ ^[0-9]+$ ]] || (( free_kib < min_free_kib )); then
+    status=NOT_STARTED_LOW_DISK
+    [[ "$free_kib" =~ ^[0-9]+$ ]] || status=NOT_STARTED_DISK_CHECK_ERROR
+    preflight="audits/three_lite_cases_20261029/${run_id}-preflight.tsv"
+    printf 'run_id\tstatus\tfree_kib\trequired_kib\n%s\t%s\t%s\t%s\n' \
+        "$run_id" "$status" "$free_kib" "$min_free_kib" > "$preflight"
+    echo "${status}: ${run_id}; free_kib=${free_kib:-unknown}; required_kib=${min_free_kib}; preflight=${preflight}" >&2
+    exit 3
+fi
 echo "Starting ${run_id} at $(date -u +%FT%TZ)"
 "$osworld_python" \
     -m oscombo.collab.workspace_assembly_lite_v1p2.live_pilot \

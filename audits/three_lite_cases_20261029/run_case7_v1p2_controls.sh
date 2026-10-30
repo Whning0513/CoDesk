@@ -20,12 +20,22 @@ fi
 
 stamp="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 manifest="audits/three_lite_cases_20261029/case7-v1p2-controls-${stamp}.tsv"
-printf 'control\tcondition\trun_id\texit_code\tstatus\tverdict\n' > "$manifest"
+printf 'control\tcondition\trun_id\texit_code\tstatus\tverdict\tfree_kib\n' > "$manifest"
+min_free_kib=$((15 * 1024 * 1024))
 for entry in 'positive shared' 'positive isolated' 'negative shared'; do
     read -r control side <<< "$entry"
     run_id="wa-lite-v1p2-scripted-${control}-${side}-${stamp}"
     run_root="runs/${run_id}"
     log="audits/three_lite_cases_20261029/${run_id}-driver.log"
+    free_kib=$(df -Pk "$PWD" 2>/dev/null | awk 'NR==2 {print $4}') || free_kib=""
+    if [[ ! "$free_kib" =~ ^[0-9]+$ ]] || (( free_kib < min_free_kib )); then
+        status=NOT_STARTED_LOW_DISK
+        [[ "$free_kib" =~ ^[0-9]+$ ]] || status=NOT_STARTED_DISK_CHECK_ERROR
+        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+            "$control" "$side" "$run_id" '-' "$status" NOT_STARTED "$free_kib" >> "$manifest"
+        echo "${status}: ${run_id}; free_kib=${free_kib:-unknown}; required_kib=${min_free_kib}; manifest=${manifest}" >&2
+        exit 3
+    fi
     negative_flag=()
     [[ "$control" == "negative" ]] && negative_flag=(--scripted-negative)
     echo "Starting ${run_id} at $(date -u +%FT%TZ)"
@@ -51,8 +61,8 @@ for entry in 'positive shared' 'positive isolated' 'negative shared'; do
     if [[ "$status" != "$expected_status" || "$exit_code" -ne "$expected_exit" ]]; then
         verdict=UNEXPECTED
     fi
-    printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-        "$control" "$side" "$run_id" "$exit_code" "$status" "$verdict" >> "$manifest"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$control" "$side" "$run_id" "$exit_code" "$status" "$verdict" "$free_kib" >> "$manifest"
     echo "Finished ${run_id}: exit ${exit_code}, status ${status}, ${verdict} at $(date -u +%FT%TZ)"
     if [[ "$verdict" == "UNEXPECTED" ]]; then
         echo "Stopped after unexpected control; manifest: ${manifest}" >&2
