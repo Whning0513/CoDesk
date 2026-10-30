@@ -369,6 +369,15 @@ def test_model_episode_with_no_actor_execution_is_invalid_infrastructure():
     }, True) == "INVALID_INFRA_OR_RUNNER_ERROR"
 
 
+def test_driver_exit_code_distinguishes_task_failure_and_invalid_infra():
+    from oscombo.collab.data_to_deck.live_pilot import _result_exit_code
+
+    assert _result_exit_code("PASS") == 0
+    assert _result_exit_code("FAIL") == 2
+    assert _result_exit_code("INVALID_INFRA_OR_RUNNER_ERROR") == 3
+    assert _result_exit_code("INVALID_INFRA") == 3
+
+
 def test_live_pilot_anchors_mcp_venv_path_before_guest_chdir(tmp_path):
     import os
     from pathlib import Path

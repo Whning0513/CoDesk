@@ -89,6 +89,11 @@ def _episode_result_status(score_success: bool, reset_success: bool,
     return "PASS" if score_success and reset_success else "FAIL"
 
 
+def _result_exit_code(status: str) -> int:
+    """Keep invalid infrastructure runs distinct from scored task failures."""
+    return {"PASS": 0, "FAIL": 2}.get(status, 3)
+
+
 def _absolute_existing_command(command: str | None) -> str | None:
     """Anchor project-relative executables before Guest startup changes cwd.
 
@@ -1774,7 +1779,7 @@ def main(argv: list[str] | None = None) -> None:
         print(json.dumps(failure, indent=2), file=sys.stderr)
         raise SystemExit(3)
     print(json.dumps(result, indent=2, sort_keys=True))
-    raise SystemExit(0 if result["status"] == "PASS" else 2)
+    raise SystemExit(_result_exit_code(result["status"]))
 
 
 if __name__ == "__main__":
