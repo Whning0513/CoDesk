@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+import io
 import json
 import os
 import secrets
@@ -143,6 +144,56 @@ def _editor_has_unsaved_buffer(title: str, path: str) -> bool:
     return f"*{Path(path).name}".casefold() in title.casefold()
 
 
+def _gedit_discard_dialog_visible(guest, png: bytes) -> bool:
+    """Recognize the Gedit dirty-tab close dialog before a postscore click."""
+    from PIL import Image
+    if guest.active_window():
+        return False
+    if "gedit.Gedit" not in guest._window_sample("postscore-discard-check").get("output", ""):
+        return False
+    with Image.open(io.BytesIO(png)) as image:
+        if image.size != (1920, 1080):
+            return False
+        rgb = image.convert("RGB")
+        samples = [rgb.getpixel((x, y)) for x in range(700, 861, 20)
+                   for y in (600, 610, 620)]
+    return sum(r > 150 and g < 90 and b < 100 for r, g, b in samples) >= 20
+
+
+def _discard_shared_gedit_dirty_tab(guest, paths: dict[str, str]) -> str | None:
+    """After scoring, inspect both role tabs, discard a dirty one, verify bytes."""
+    _guest_script(guest, "wmctrl -a orderdesk.html || wmctrl -a qa_note.txt", timeout=15)
+    dirty_role = None
+    for _ in range(2):
+        title = guest.active_window() or ""
+        dirty_role = next((role for role, path in paths.items()
+                           if _editor_has_unsaved_buffer(title, path)), None)
+        if dirty_role:
+            break
+        guest.actor = "system"
+        guest.run_pyautogui("import pyautogui, time; pyautogui.hotkey('ctrl','pageup'); time.sleep(1)")
+    if dirty_role is None:
+        return None
+    saved = {role: guest.env.controller.get_file(path) for role, path in paths.items()}
+    guest.actor = "system"
+    guest.run_pyautogui("import pyautogui, time; pyautogui.hotkey('ctrl','w'); time.sleep(2)")
+    prompt = guest.screenshot(patience=45)
+    if not _gedit_discard_dialog_visible(guest, prompt):
+        raise RuntimeError("dirty Gedit tab did not show the verified close-without-saving dialog")
+    shot = guest.root / "screenshots" / f"postscore-{dirty_role}-gedit-unsaved-dialog.png"
+    shot.write_bytes(prompt)
+    guest.run_pyautogui("import pyautogui, time; pyautogui.click(783,614); time.sleep(2)")
+    if _gedit_discard_dialog_visible(guest, guest.screenshot(patience=45)):
+        raise RuntimeError("Gedit close-without-saving dialog remained after postscore discard")
+    if any(guest.env.controller.get_file(path) != saved[role] for role, path in paths.items()):
+        raise RuntimeError("saved role output changed while discarding uncommitted Gedit buffer")
+    core._append(guest.root / "observations.jsonl", {"actor": "system", "guest_key": guest.guest_key,
+        "phase": "postscore-gedit-discard", "role": dirty_role,
+        "unsaved_dialog_discarded_after_scoring": True,
+        "screenshot": str(shot.relative_to(guest.root)), "time_utc": core._stamp()})
+    return dirty_role
+
+
 def _activate_editor_tab(guest, role: str, shared: bool):
     """Scripted setup for the Text Editor's two tabs on one Shared desktop."""
     if not shared:
@@ -274,7 +325,8 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
         yield_wait_lifecycle: bool = False,
         actor_mcp_only: bool = False,
         blender_bin: str | None = None,
-        gui_input_lock: bool = False) -> dict:
+        gui_input_lock: bool = False,
+        scripted_unsaved_buffer_control: bool = False) -> dict:
     spec, fixtures, oracle = _profile(case)
     if case == "model_review" and (not blender_bin or not Path(blender_bin).is_file()):
         raise ValueError("Model-and-Review Lite needs a local Blender scorer executable")
@@ -282,6 +334,9 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
         raise ValueError(condition)
     if gui_input_lock and (condition != "collaborative_shared" or not model):
         raise ValueError("GUI input lock requires a model run on the Shared desktop")
+    if scripted_unsaved_buffer_control and (case != "build_verify" or
+            condition != "collaborative_shared" or model or negative):
+        raise ValueError("unsaved-buffer control requires scripted positive Case 3 Shared")
     run_root.mkdir(parents=True, exist_ok=False)
     run_id = run_root.name
     fixture = run_root / "fixtures"
@@ -295,6 +350,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 "yield_wait_lifecycle": bool(yield_wait_lifecycle),
                 "actor_mcp_only": bool(actor_mcp_only),
                 "gui_input_lock": bool(gui_input_lock),
+                "scripted_unsaved_buffer_control": bool(scripted_unsaved_buffer_control),
                 "blender_scorer": blender_bin if case == "model_review" else None,
                 "scripted_negative_control": negative}
     ledger = RunLedger(run_root, metadata)
@@ -462,6 +518,15 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
             if outcomes["B"]["status"] != "done":
                 raise RuntimeError("scripted B GUI failed")
             bridge.publish("B")
+            if scripted_unsaved_buffer_control:
+                if Path(b_path).name not in (guest_b.active_window() or ""):
+                    raise RuntimeError("scripted unsaved-buffer control did not focus B editor")
+                guest_b.actor = "system"
+                guest_b.run_pyautogui("import pyautogui, time; pyautogui.write(' UNCOMMITTED_CONTROL'); time.sleep(1)")
+                if not _editor_has_unsaved_buffer(guest_b.active_window() or "", b_path):
+                    raise RuntimeError("scripted unsaved-buffer control did not create a dirty B tab")
+                (run_root / "screenshots" / "scripted-B-unsaved-buffer.png").write_bytes(
+                    guest_b.screenshot(patience=45))
         bridge.stop()
         (run_root / "workspace_sync_result.json").write_text(json.dumps({
             "final_versions": bridge.snapshot(), "transient_errors": bridge.errors,
@@ -506,16 +571,32 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
         (run_root / "oracle.json").write_text(json.dumps(score, indent=2, sort_keys=True) + "\n")
         browser_trace = _browser_trace_audit(run_root) if case == "build_verify" else None
         reopen = []
+        discarded_shared_editor_role = None
+        shared_editor_prep_error = None
+        if case == "build_verify" and condition.endswith("shared"):
+            try:
+                discarded_shared_editor_role = _discard_shared_gedit_dirty_tab(
+                    guest_b, {"A": a_path, "B": b_path})
+            except Exception as exc:
+                shared_editor_prep_error = f"{type(exc).__name__}: {exc}"
+                core._append(run_root / "postscore_errors.jsonl", {"phase": "shared-gedit-discard",
+                    "error": shared_editor_prep_error, "time_utc": core._stamp()})
         for role, guest, app, path in (("A", guest_a, a_app, a_path), ("B", guest_b, b_app, b_path)):
             if role in missing_outputs:
                 reopen.append({"role": role, "guest": guest.guest_key,
                                "same_bytes": False, "missing_output": True})
                 continue
             data_before = guest.env.controller.get_file(path)
+            if shared_editor_prep_error:
+                reopen.append({"role": role, "guest": guest.guest_key,
+                    "same_bytes": False,
+                    "saved_sha256": hashlib.sha256(data_before).hexdigest(),
+                    "postscore_error": shared_editor_prep_error})
+                continue
             try:
                 if app != "files":
                     if case == "build_verify" and condition.endswith("shared"):
-                        _activate_editor_tab(guest, role, True)
+                        _launch(guest, "editor", path, run_id)
                     else:
                         _activate(guest, app, path)
                     # A dirty Text Editor tab may not be safely closed from
@@ -531,8 +612,9 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                     guest.run_pyautogui("import pyautogui, time; pyautogui.hotkey('alt','f4'); time.sleep(2)"
                                         if app == "blender" else
                                         "import pyautogui, time; pyautogui.hotkey('ctrl','w'); time.sleep(2)")
-                    discarded_unsaved = core._discard_postscore_unsaved_dialog(
+                    discarded_after_close = core._discard_postscore_unsaved_dialog(
                         guest, f"reopen-{role}-close")
+                    discarded_unsaved = role == discarded_shared_editor_role or discarded_after_close
                     _launch(guest, app, path, run_id)
                 else:
                     discarded_unsaved = False
@@ -643,6 +725,8 @@ def main(argv: list[str] | None = None):
     parser.add_argument("--model-timeout", type=float, default=1200)
     parser.add_argument("--diagnostic-step-limit", type=int)
     parser.add_argument("--scripted-negative", action="store_true")
+    parser.add_argument("--scripted-unsaved-buffer-control", action="store_true",
+                        help="Case 3 Shared control: leave a dirty QA buffer after saving correct files")
     parser.add_argument("--yield-wait-lifecycle", action="store_true",
                         help="pause B's active model budget after it voluntarily yields for A's handoff")
     parser.add_argument("--actor-mcp-only", action="store_true",
@@ -660,7 +744,7 @@ def main(argv: list[str] | None = None):
                      args.model, args.base_url, args.api_key_env, args.mcp_python,
                      args.model_timeout, args.diagnostic_step_limit, args.scripted_negative,
                      args.yield_wait_lifecycle, args.actor_mcp_only, args.blender_bin,
-                     args.gui_input_lock)
+                     args.gui_input_lock, args.scripted_unsaved_buffer_control)
     except Exception as exc:
         failure = {"status": "INVALID_INFRA_OR_RUNNER_ERROR", "run_id": args.run_root.name,
                    "error": f"{type(exc).__name__}: {exc}", "traceback": traceback.format_exc()}
