@@ -978,19 +978,26 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
               case_lite_v2: bool = False,
               case_lite_v2_1: bool = False,
               case_spreadsheet_lite_v1: bool = False,
+              case_spreadsheet_lite_v1_1: bool = False,
               handoff_lifecycle: bool = False,
-              scripted_negative: bool = False) -> dict[str, Any]:
+              scripted_negative: bool = False,
+              gui_input_lock: bool = False) -> dict[str, Any]:
     if sum(bool(value) for value in (case_lite_v1, case_lite_v2, case_lite_v2_1,
-                                    case_spreadsheet_lite_v1)) > 1:
+                                    case_spreadsheet_lite_v1, case_spreadsheet_lite_v1_1)) > 1:
         raise ValueError("select only one case version")
     lite_v2_family = case_lite_v2 or case_lite_v2_1
-    lite_handoff_family = lite_v2_family or case_spreadsheet_lite_v1
+    spreadsheet_family = case_spreadsheet_lite_v1 or case_spreadsheet_lite_v1_1
+    lite_handoff_family = lite_v2_family or spreadsheet_family
     if scripted_negative and (not lite_handoff_family or model):
         raise ValueError("scripted_negative applies only to supported Lite scripted controls")
     if handoff_lifecycle and (not lite_handoff_family or not model or condition not in
                               {"collaborative_shared", "collaborative_isolated"}):
         raise ValueError("handoff_lifecycle requires a collaborative Lite model run")
-    if case_spreadsheet_lite_v1:
+    if case_spreadsheet_lite_v1_1:
+        from oscombo.collab.spreadsheet_handoff_lite_v1_1 import spec as case_spec
+        from oscombo.collab.spreadsheet_handoff_lite_v1_1.fixtures import build_fixture as case_build_fixture
+        from oscombo.collab.spreadsheet_handoff_lite_v1_1.oracle import evaluate as case_evaluate
+    elif case_spreadsheet_lite_v1:
         from oscombo.collab.spreadsheet_handoff_lite_v1 import spec as case_spec
         from oscombo.collab.spreadsheet_handoff_lite_v1.fixtures import build_fixture as case_build_fixture
         from oscombo.collab.spreadsheet_handoff_lite_v1.oracle import evaluate as case_evaluate
@@ -1023,6 +1030,8 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
         raise ValueError("Codex compatibility relay requires a remote model endpoint")
     if actor_mcp_only and (not model or local_qwen):
         raise ValueError("Actor tool allowlist requires a remote model")
+    if gui_input_lock and (condition != "collaborative_shared" or not model):
+        raise ValueError("GUI input lock is a separate Shared model ablation")
     # Remote provider credentials stay in the coordinator/relay process only.
     # Actors receive a disposable loopback capability, never the provider key.
     if model and not local_qwen:
@@ -1053,6 +1062,7 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
                 "strip Codex metadata headers; forward request body unchanged"
                 if codex_compat_relay else None,
                 "actor_mcp_only": actor_mcp_only,
+                "gui_input_lock": gui_input_lock,
                 "mcp_python": mcp_python if model else None,
                 "local_qwen": local_qwen,
                 "qwen_python": str(qwen_python.resolve()) if local_qwen and qwen_python else None,
@@ -1110,7 +1120,8 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
     relay_client_token_env: str | None = None
     # Guest overlays are episode-private; a fixed public path keeps the role
     # prompts identical across conditions without exposing the treatment name.
-    task_root = ("/tmp/codesk-spreadsheet-handoff-lite-v1" if case_spreadsheet_lite_v1 else
+    task_root = ("/tmp/codesk-spreadsheet-handoff-lite-v1-1" if case_spreadsheet_lite_v1_1 else
+                 "/tmp/codesk-spreadsheet-handoff-lite-v1" if case_spreadsheet_lite_v1 else
                  "/tmp/codesk-data-to-deck-lite-v2-1" if case_lite_v2_1 else
                  "/tmp/codesk-data-to-deck-lite-v2" if case_lite_v2 else
                  "/tmp/codesk-data-to-deck-lite-v1" if case_lite_v1 else
@@ -1150,7 +1161,7 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
                 "run_id": run_id, "guest_key": key, "container_id": cid,
                 "labels": _owned_container(env, run_id)[1], "time_utc": _stamp()})
             _install_fixture(guest, fixture_dir, task_root, case_spec,
-                             ("forecast", "order") if case_spreadsheet_lite_v1 else ("authority", "draft"))
+                             ("forecast", "order") if spreadsheet_family else ("authority", "draft"))
 
         guest_a = guests["shared"] if condition == "collaborative_shared" else (
             guests["solo"] if is_solo else guests["A"])
@@ -1158,7 +1169,7 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
             guests["solo"] if is_solo else guests["B"])
         a_output = f"{task_root}/{case_spec.OUTPUTS['A']}"
         b_output = f"{task_root}/{case_spec.OUTPUTS['B']}"
-        b_application = "calc" if case_spreadsheet_lite_v1 else "impress"
+        b_application = "calc" if spreadsheet_family else "impress"
         if not is_solo:
             from .workspace_bridge import SavedArtifactBridge
             workspace_bridge = SavedArtifactBridge(
@@ -1169,7 +1180,7 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
                 outputs=case_spec.OUTPUTS,
                 mime_types=({"A": "application/vnd.oasis.opendocument.spreadsheet",
                              "B": "application/vnd.oasis.opendocument.spreadsheet"}
-                            if case_spreadsheet_lite_v1 else None))
+                            if spreadsheet_family else None))
             server.workspace_bridge = workspace_bridge
             workspace_bridge.start()
         _launch(guest_a, "calc", a_output,
@@ -1203,7 +1214,7 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
                 "A": case_spec.AGENT_A_INSTRUCTION +
                     f"\nThe open editable output workbook is {a_output}.",
                 "B": case_spec.AGENT_B_INSTRUCTION +
-                    (f"\nThe open editable output workbook is {b_output}." if case_spreadsheet_lite_v1
+                    (f"\nThe open editable output workbook is {b_output}." if spreadsheet_family
                      else f"\nThe open editable output presentation is {b_output}."),
             }
             if is_solo:
@@ -1218,7 +1229,7 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
                            if lite_handoff_family else
                            "Open the other role's file read-only through the GUI; reopen it to read a newly saved revision. ")
                         + "Do not write the other role's output. "
-                        f"Edit documents through {'Calc' if case_spreadsheet_lite_v1 else 'Calc and Impress'}; "
+                        f"Edit documents through {'Calc' if spreadsheet_family else 'Calc and Impress'}; "
                         "do not use Terminal commands, scripts, "
                         "macros or evaluator files to generate document contents.")
             actor_barrier = threading.Barrier(len(actor_roles))
@@ -1241,7 +1252,8 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
                     workspace_bridge=workspace_bridge is not None,
                     handoff_from=(getattr(case_spec, "HANDOFF_DEPENDENCIES", {}).get(role)
                                   if handoff_lifecycle else None),
-                    case_id=case_spec.CASE_ID)
+                    case_id=case_spec.CASE_ID,
+                    gui_input_lock_path=(str(run_root / "gui_input.lock") if gui_input_lock else None))
             if is_solo:
                 outcomes[solo_role] = actor_task(solo_role)
             else:
@@ -1281,12 +1293,16 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
             if outcomes["B"]["status"] != "done":
                 raise RuntimeError(f"Lite v2 B scripted GUI did not finish: {outcomes['B']}")
             workspace_bridge.publish("B")
-        elif case_spreadsheet_lite_v1:
-            from oscombo.collab.spreadsheet_handoff_lite_v1.private.gold import expected_plan
+        elif spreadsheet_family:
+            if case_spreadsheet_lite_v1_1:
+                from oscombo.collab.spreadsheet_handoff_lite_v1_1.private.gold import expected_plan
+                from oscombo.collab.spreadsheet_handoff_lite_v1_1.fixtures import order_rows
+            else:
+                from oscombo.collab.spreadsheet_handoff_lite_v1.private.gold import expected_plan
             need, units, _ = expected_plan()
             outcomes["A"] = _run_actor(
                 "A", guest_a, case_spec.AGENT_A_INSTRUCTION,
-                _spreadsheet_lite_forecast_actions(scripted_negative), run_root,
+                _spreadsheet_lite_forecast_actions(scripted_negative and not case_spreadsheet_lite_v1_1), run_root,
                 max_steps=case_spec.ROLE_BUDGET["A"]["steps"], case_id=case_spec.CASE_ID)
             if outcomes["A"]["status"] != "done":
                 raise RuntimeError(f"Spreadsheet Lite A scripted GUI did not finish: {outcomes['A']}")
@@ -1301,7 +1317,9 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
             _launch(guest_b, "calc", b_output, f"/tmp/{run_id}/order-calc.log")
             outcomes["B"] = _run_actor(
                 "B", guest_b, case_spec.AGENT_B_INSTRUCTION,
-                _spreadsheet_lite_order_actions(units), run_root,
+                _spreadsheet_lite_order_actions(
+                    units // order_rows()[2][1] if scripted_negative and case_spreadsheet_lite_v1_1 else units),
+                run_root,
                 max_steps=case_spec.ROLE_BUDGET["B"]["steps"], case_id=case_spec.CASE_ID)
             if outcomes["B"]["status"] != "done":
                 raise RuntimeError(f"Spreadsheet Lite B scripted GUI did not finish: {outcomes['B']}")
@@ -1419,7 +1437,7 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
         manifest = collect_artifacts(run_root, artifact_items, GuestFiles(guest_controllers))
         (run_root / "guest_save_evidence.json").write_text(
             json.dumps(guest_save_evidence, indent=2, sort_keys=True) + "\n")
-        source_a_key, source_b_key = (("forecast", "order") if case_spreadsheet_lite_v1
+        source_a_key, source_b_key = (("forecast", "order") if spreadsheet_family
                                        else ("authority", "draft"))
         analysis_path = (run_root / "artifacts/A" / Path(a_output).name if "A" in artifact_roles
                          else fixture_dir / case_spec.FIXTURE_NAMES[source_a_key])
@@ -1578,6 +1596,7 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
 
         score_success = oracle["actors"][solo_role]["success"] if is_solo else oracle["joint_success"]
         summary = {"run_id": run_id, "condition": condition, "guest_count": guest_count,
+                   "gui_input_lock": gui_input_lock,
                    "actor_results": outcomes, "artifact_manifest": manifest,
                    "guest_save_evidence": guest_save_evidence,
                    "oracle": oracle, "reset": reset_results,
@@ -1674,10 +1693,12 @@ def main(argv: list[str] | None = None) -> None:
                         help="run Lite v2.1 with the versioned equivalent-unit Oracle")
     parser.add_argument("--case-spreadsheet-lite-v1", action="store_true",
                         help="run the independent Spreadsheet Handoff Lite v1 profile")
+    parser.add_argument("--case-spreadsheet-lite-v1-1", action="store_true",
+                        help="run the versioned Spreadsheet Handoff Lite v1.1 profile")
     parser.add_argument("--handoff-lifecycle", action="store_true",
                         help="suspend a v2 B Actor that exits before A's public handoff, then resume it")
     parser.add_argument("--scripted-negative", action="store_true",
-                        help="v2 scripted control deliberately saves an incorrect Calc result")
+                        help="supported Lite scripted control deliberately saves an incorrect GUI result")
     parser.add_argument("--run-root", type=Path, required=True)
     parser.add_argument("--provider", type=Path, required=True)
     parser.add_argument("--image", required=True)
@@ -1696,6 +1717,8 @@ def main(argv: list[str] | None = None) -> None:
                         help="run-owned loopback relay strips Codex metadata headers for compatible providers")
     parser.add_argument("--actor-mcp-only", action="store_true",
                         help="model sees only the desktop and collaboration MCP tools")
+    parser.add_argument("--gui-input-lock", action="store_true",
+                        help="Shared model ablation: serialize only GUI input calls, not screenshots")
     parser.add_argument("--api-key-env", default="AIGCBEST_API_KEY")
     parser.add_argument("--mcp-python", help="Python executable with MCP, requests and Pillow installed")
     parser.add_argument("--effort", default="medium", choices=("low", "medium", "high", "xhigh"))
@@ -1736,8 +1759,10 @@ def main(argv: list[str] | None = None) -> None:
                            case_lite_v2=args.case_lite_v2,
                            case_lite_v2_1=args.case_lite_v2_1,
                            case_spreadsheet_lite_v1=args.case_spreadsheet_lite_v1,
+                           case_spreadsheet_lite_v1_1=args.case_spreadsheet_lite_v1_1,
                            handoff_lifecycle=args.handoff_lifecycle,
-                           scripted_negative=args.scripted_negative)
+                           scripted_negative=args.scripted_negative,
+                           gui_input_lock=args.gui_input_lock)
     except Exception as exc:
         failure = {"status": "INVALID_INFRA_OR_RUNNER_ERROR", "condition": args.condition,
                    "run_id": run_root.name, "error": f"{type(exc).__name__}: {exc}",
