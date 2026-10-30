@@ -378,6 +378,32 @@ def test_driver_exit_code_distinguishes_task_failure_and_invalid_infra():
     assert _result_exit_code("INVALID_INFRA") == 3
 
 
+def test_cli_yield_wait_lifecycle_reaches_runner_without_guest(monkeypatch, tmp_path):
+    from oscombo.collab.data_to_deck import live_pilot
+
+    provider = tmp_path / "provider"
+    (provider / ".git").mkdir(parents=True)
+    monkeypatch.setenv("AIGCBEST_API_KEY", "offline-placeholder")
+    seen = {}
+
+    def fake_run_pilot(*args, **kwargs):
+        seen.update(kwargs)
+        return {"status": "PASS"}
+
+    monkeypatch.setattr(live_pilot, "run_pilot", fake_run_pilot)
+    with pytest.raises(SystemExit) as exit_info:
+        live_pilot.main([
+            "--condition", "collaborative_isolated", "--case-spreadsheet-lite-v1-1",
+            "--handoff-lifecycle", "--yield-wait-lifecycle",
+            "--run-root", str(tmp_path / "uncreated-run"), "--provider", str(provider),
+            "--image", "offline-image", "--runtime", "offline-runtime", "--model", "offline-model",
+        ])
+    assert exit_info.value.code == 0
+    assert seen["handoff_lifecycle"] is True
+    assert seen["yield_wait_lifecycle"] is True
+    assert not (tmp_path / "uncreated-run").exists()
+
+
 def test_live_pilot_anchors_mcp_venv_path_before_guest_chdir(tmp_path):
     import os
     from pathlib import Path

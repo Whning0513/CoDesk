@@ -10,9 +10,9 @@ min_free_kib=$((15 * 1024 * 1024))
 
 mode="${1:-}"
 case "$mode" in
-    pilot) arms=(isolated); extra=(--diagnostic-step-limit 12 --model-timeout 600) ;;
-    triad1) arms=(isolated shared sharedlock); extra=(--model-timeout 1200) ;;
-    triad2) arms=(sharedlock shared isolated); extra=(--model-timeout 1200) ;;
+    pilot) arms=(isolated); extra=(--diagnostic-step-limit 12 --model-timeout 600); wait_policy=() ;;
+    triad1) arms=(isolated shared sharedlock); extra=(--model-timeout 1200); wait_policy=(--yield-wait-lifecycle) ;;
+    triad2) arms=(sharedlock shared isolated); extra=(--model-timeout 1200); wait_policy=(--yield-wait-lifecycle) ;;
     *) echo 'Usage: run_model.sh pilot|triad1|triad2' >&2; exit 2 ;;
 esac
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -35,10 +35,16 @@ for arm in "${arms[@]}"; do
         echo "Manifest: ${manifest}" >&2
         exit 3
     fi
+    if pgrep -af '^qemu-system-x86_64' >/dev/null ||
+       [[ -n "$(docker ps --filter label=oscombo=1 --format '{{.ID}}' 2>/dev/null)" ]]; then
+        printf '%s\t%s\t%s\t%s\n' "$mode" "$arm" "$run_id" "NOT_STARTED_ACTIVE_GUEST" >> "$manifest"
+        echo "Stopping before ${run_id}: another Guest is still active; manifest retained: ${manifest}" >&2
+        exit 3
+    fi
     echo "Starting ${run_id} at $(date -u +%FT%TZ)"
     "$python_bin" \
         -m oscombo.collab.spreadsheet_handoff_lite_v1_1.live_pilot \
-        --handoff-lifecycle --actor-mcp-only --codex-compat-relay \
+        --handoff-lifecycle "${wait_policy[@]}" --actor-mcp-only --codex-compat-relay \
         --condition "collaborative_${side}" "${lock[@]}" \
         --run-root "$run_root" --provider "$OSWORLD_DIR" \
         --image "$OSCOMBO_GUEST_IMAGE" --runtime "$OSCOMBO_RUNTIME_IMAGE" \

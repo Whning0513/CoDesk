@@ -35,6 +35,11 @@ def test_versioned_entrypoint_and_lock_scope(monkeypatch, tmp_path):
                   "unused", model="dummy", case_spreadsheet_lite_v1_1=True,
                   gui_input_lock=True)
     assert not (tmp_path / "should-not-create").exists()
+    with pytest.raises(ValueError, match="requires handoff_lifecycle"):
+        run_pilot("collaborative_isolated", tmp_path / "should-not-create", "unused", tmp_path,
+                  "unused", model="dummy", case_spreadsheet_lite_v1_1=True,
+                  yield_wait_lifecycle=True)
+    assert not (tmp_path / "should-not-create").exists()
 
 
 def test_handoff_audit_requires_actual_b_reads_and_post_handoff_save(tmp_path):
@@ -61,7 +66,13 @@ def test_handoff_audit_requires_actual_b_reads_and_post_handoff_save(tmp_path):
              "result": [{"message_id": "message-1"}]}}}},
         {"type": "item.started", "item": {"server": "desktop", "tool": "type_text"}},
     ])
-    assert audit_handoff.audit(tmp_path)["trace_consistent_handoff"]
+    scored = audit_handoff.audit(tmp_path)
+    assert scored["trace_consistent_handoff"]
+    assert scored["correct_joint_handoff"]
+    (tmp_path / "oracle.json").write_text('{"joint_success": false}')
+    scored = audit_handoff.audit(tmp_path)
+    assert scored["trace_consistent_handoff"]
+    assert not scored["correct_joint_handoff"]
     write_rows(stdout, [{"type": "item.started", "item": {"server": "desktop", "tool": "type_text"}}])
     assert not audit_handoff.audit(tmp_path)["trace_consistent_handoff"]
 
