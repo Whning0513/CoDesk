@@ -8,15 +8,16 @@ trap 'unset AIGCBEST_API_KEY' EXIT
 python_bin="${CODESK_PYTHON_BIN:-$OSWORLD_DIR/.venv/bin/python}"
 mode="${1:-}"
 case "$mode" in
-    pilot) sides=(isolated) ;;
-    triad1) sides=(isolated shared shared_lock) ;;
-    triad2) sides=(shared_lock shared isolated) ;;
-    *) echo 'Usage: run_v1p6_model.sh pilot|triad1|triad2' >&2; exit 2 ;;
+    pilot) sides=(isolated); max_steps=8; active_seconds=360; budget_flag=(--diagnostic-step-limit 8) ;;
+    feasibility) sides=(isolated); max_steps=25; active_seconds=1200; budget_flag=() ;;
+    triad1) sides=(isolated shared shared_lock); max_steps=25; active_seconds=1200; budget_flag=() ;;
+    triad2) sides=(shared_lock shared isolated); max_steps=25; active_seconds=1200; budget_flag=() ;;
+    *) echo 'Usage: run_v1p6_model.sh pilot|feasibility|triad1|triad2' >&2; exit 2 ;;
 esac
 
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 manifest="audits/case3_three_arm_20261030/model-${mode}-${stamp}.tsv"
-printf 'mode\tarm\trun_id\texit_code\n' > "$manifest"
+printf 'mode\tarm\tmax_gui_calls_per_actor\tactive_model_seconds\trun_id\texit_code\n' > "$manifest"
 for side in "${sides[@]}"; do
     free_kib="$(df -Pk . | awk 'NR==2 {print $4}')"
     if (( free_kib < 15 * 1024 * 1024 )); then
@@ -39,7 +40,8 @@ for side in "${sides[@]}"; do
         --runtime "$OSCOMBO_RUNTIME_IMAGE" \
         --model gpt-6-astra --base-url https://api.haogpt.net/v1 \
         --api-key-env AIGCBEST_API_KEY --mcp-python "$python_bin" \
-        --model-timeout 1200 --yield-wait-lifecycle --actor-mcp-only \
+        --model-timeout "$active_seconds" "${budget_flag[@]}" \
+        --yield-wait-lifecycle --actor-mcp-only \
         "${lock_flag[@]}" > "$log" 2>&1 &
     driver_pid=$!
     for _ in {1..100}; do
@@ -60,7 +62,8 @@ for side in "${sides[@]}"; do
         kill "$sampler_pid" 2>/dev/null || true
         wait "$sampler_pid" 2>/dev/null || true
     fi
-    printf '%s\t%s\t%s\t%s\n' "$mode" "$side" "$run_id" "$exit_code" >> "$manifest"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$mode" "$side" "$max_steps" "$active_seconds" "$run_id" "$exit_code" >> "$manifest"
     if [[ -s "$run_root/qemu_process_resources.jsonl" ]]; then
         "$python_bin" audits/three_lite_cases_20261029/summarize_qemu.py "$run_root" \
             > "audits/case3_three_arm_20261030/${run_id}-qemu-metrics.json" 2>&1 || true
@@ -70,9 +73,9 @@ for side in "${sides[@]}"; do
             > "audits/case3_three_arm_20261030/${run_id}-metrics.log" 2>&1 || true
     fi
     echo "Finished $run_id with exit $exit_code at $(date -u +%FT%TZ)"
-    if (( exit_code == 3 )); then
-        echo "Infrastructure failure; stopping the triad, preserving this run" >&2
-        exit 3
+    if (( exit_code != 0 && exit_code != 2 )); then
+        echo "Driver exited $exit_code; stopping before another Guest, preserving this run" >&2
+        exit "$exit_code"
     fi
 done
 echo "Manifest: $manifest"
