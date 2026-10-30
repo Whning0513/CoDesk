@@ -1,10 +1,11 @@
 import json
+import pytest
 
 from PIL import Image, ImageDraw
 
 from oscombo.collab.build_and_verify_lite_v1.fixtures import build_fixture
 from oscombo.collab.build_and_verify_lite_v1.oracle import evaluate
-from oscombo.collab.lite_file_guest_pilot import _browser_trace_audit, _editor_has_unsaved_buffer
+from oscombo.collab.lite_file_guest_pilot import _browser_trace_audit, _editor_has_unsaved_buffer, run
 
 
 def test_positive_and_negative_artifacts(tmp_path):
@@ -53,3 +54,16 @@ def test_unsaved_editor_buffer_is_detected_before_postscore_reopen():
     path = "/tmp/task/outputs/agent_B/qa_note.txt"
     assert _editor_has_unsaved_buffer("*qa_note.txt (/tmp/task) - gedit", path)
     assert not _editor_has_unsaved_buffer("qa_note.txt (/tmp/task) - gedit", path)
+
+
+def test_input_lock_cannot_be_mislabeled_as_isolated_or_scripted(tmp_path):
+    common = dict(case="build_verify", run_root=tmp_path / "unused",
+                  provider=tmp_path, image="unused", runtime="unused",
+                  base_url="http://127.0.0.1/v1", api_key_env="UNUSED",
+                  mcp_python="python", model_timeout=1, diagnostic_step_limit=None,
+                  negative=False, gui_input_lock=True)
+    with pytest.raises(ValueError, match="Shared desktop"):
+        run(condition="collaborative_isolated", model="test", **common)
+    with pytest.raises(ValueError, match="Shared desktop"):
+        run(condition="collaborative_shared", model=None, **common)
+    assert not common["run_root"].exists()

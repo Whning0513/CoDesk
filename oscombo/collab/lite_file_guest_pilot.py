@@ -258,12 +258,15 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
         model_timeout: float, diagnostic_step_limit: int | None, negative: bool,
         yield_wait_lifecycle: bool = False,
         actor_mcp_only: bool = False,
-        blender_bin: str | None = None) -> dict:
+        blender_bin: str | None = None,
+        gui_input_lock: bool = False) -> dict:
     spec, fixtures, oracle = _profile(case)
     if case == "model_review" and (not blender_bin or not Path(blender_bin).is_file()):
         raise ValueError("Model-and-Review Lite needs a local Blender scorer executable")
     if condition not in spec.CONDITIONS:
         raise ValueError(condition)
+    if gui_input_lock and (condition != "collaborative_shared" or not model):
+        raise ValueError("GUI input lock requires a model run on the Shared desktop")
     run_root.mkdir(parents=True, exist_ok=False)
     run_id = run_root.name
     fixture = run_root / "fixtures"
@@ -276,6 +279,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 "role_budget_contract": spec.ROLE_BUDGET,
                 "yield_wait_lifecycle": bool(yield_wait_lifecycle),
                 "actor_mcp_only": bool(actor_mcp_only),
+                "gui_input_lock": bool(gui_input_lock),
                 "blender_scorer": blender_bin if case == "model_review" else None,
                 "scripted_negative_control": negative}
     ledger = RunLedger(run_root, metadata)
@@ -367,7 +371,8 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                     timeout=model_timeout, relay_client_token_env=relay_env,
                     workspace_bridge=True, handoff_from=spec.HANDOFF_DEPENDENCIES.get(role),
                     yield_wait=yield_wait_lifecycle,
-                    case_id=spec.CASE_ID)
+                    case_id=spec.CASE_ID,
+                    gui_input_lock_path=str(run_root / "gui_input.lock") if gui_input_lock else None)
             with ThreadPoolExecutor(max_workers=2, thread_name_prefix="lite-file-actor") as pool:
                 futures = {role: pool.submit(actor, role) for role in "AB"}
                 for role, future in futures.items():
@@ -623,6 +628,8 @@ def main(argv: list[str] | None = None):
                         help="pause B's active model budget after it voluntarily yields for A's handoff")
     parser.add_argument("--actor-mcp-only", action="store_true",
                         help="model sees only the desktop and collaboration MCP tools")
+    parser.add_argument("--gui-input-lock", action="store_true",
+                        help="serialize individual Shared model GUI input actions only")
     parser.add_argument("--blender-bin", help="host-side Blender scorer for model_review")
     args = parser.parse_args(argv)
     run_root = args.run_root.resolve()
@@ -633,7 +640,8 @@ def main(argv: list[str] | None = None):
                      args.provider.resolve(), args.image, args.runtime,
                      args.model, args.base_url, args.api_key_env, args.mcp_python,
                      args.model_timeout, args.diagnostic_step_limit, args.scripted_negative,
-                     args.yield_wait_lifecycle, args.actor_mcp_only, args.blender_bin)
+                     args.yield_wait_lifecycle, args.actor_mcp_only, args.blender_bin,
+                     args.gui_input_lock)
     except Exception as exc:
         failure = {"status": "INVALID_INFRA_OR_RUNNER_ERROR", "run_id": args.run_root.name,
                    "error": f"{type(exc).__name__}: {exc}", "traceback": traceback.format_exc()}
