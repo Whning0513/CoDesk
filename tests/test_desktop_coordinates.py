@@ -1,6 +1,53 @@
 from __future__ import annotations
 
 import json
+import multiprocessing
+import queue
+
+import pytest
+
+
+def _hold_input_lock(path, ready, release):
+    import oscombo.desktop_tools as dt
+    dt.GUI_INPUT_LOCK_PATH = path
+    with dt._gui_input_lock() as state:
+        ready.put(state["wait_s"])
+        release.wait(5)
+
+
+def _probe_input_lock(path, started, result):
+    import oscombo.desktop_tools as dt
+    dt.GUI_INPUT_LOCK_PATH = path
+    started.put(True)
+    with dt._gui_input_lock() as state:
+        result.put(state["wait_s"])
+
+
+def test_gui_input_lock_serializes_separate_mcp_processes(tmp_path):
+    ctx = multiprocessing.get_context("fork")
+    ready, started, result = ctx.Queue(), ctx.Queue(), ctx.Queue()
+    release = ctx.Event()
+    path = str(tmp_path / "shared-gui-input.lock")
+    first = ctx.Process(target=_hold_input_lock, args=(path, ready, release))
+    second = ctx.Process(target=_probe_input_lock, args=(path, started, result))
+    try:
+        first.start()
+        assert ready.get(timeout=5) >= 0
+        second.start()
+        assert started.get(timeout=5)
+        with pytest.raises(queue.Empty):
+            result.get(timeout=0.2)
+        release.set()
+        assert result.get(timeout=5) >= 0.15
+    finally:
+        release.set()
+        for proc in (first, second):
+            if proc.pid is not None:
+                proc.join(timeout=5)
+                if proc.is_alive():
+                    proc.terminate()
+                    proc.join(timeout=5)
+    assert first.exitcode == second.exitcode == 0
 
 
 def test_screenshot_coordinate_mapping_and_bounds():
@@ -61,6 +108,7 @@ def test_in_bounds_action_records_unmodified_raw_and_mapped_coordinates(tmp_path
     monkeypatch.setattr(dt, "LOG", str(log))
     monkeypatch.setattr(dt, "BUDGET", 10)
     monkeypatch.setattr(dt, "SETTLE", 0)
+    monkeypatch.setattr(dt, "GUI_INPUT_LOCK_PATH", str(tmp_path / "gui-input.lock"))
     monkeypatch.setattr(dt, "_active_window", lambda: "Impress")
     executed = []
     monkeypatch.setattr(dt, "_py", executed.append)
@@ -72,6 +120,8 @@ def test_in_bounds_action_records_unmodified_raw_and_mapped_coordinates(tmp_path
     assert record["coordinate_audit"]["status"] == "accepted"
     assert record["coordinate_audit"]["raw_model_coordinates"] == {"x": 100, "y": 416}
     assert record["coordinate_audit"]["mapped_guest_coordinates"] == [150, 624]
+    assert record["input_lock"]["enabled"] is True
+    assert record["input_lock"]["held_s"] >= 0
 
 
 def test_tool_result_cooldown_throttles_model_turns_and_is_observable(monkeypatch):

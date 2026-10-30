@@ -142,6 +142,15 @@ def test_codex_and_pi_config(tmp_path, monkeypatch):
     make_harness(paced_spec).prepare(paced_ctx)
     paced_toml = (tmp_path / "pacedAgent/codex_home/config.toml").read_text()
     assert 'OSCOMBO_MCP_TURN_COOLDOWN_SEC = "60.0"' in paced_toml
+    locked_spec = {"harness": "codex", "model": "m", "options": {
+        "base_url": "http://gateway/v1", "codex_bin": "true",
+        "gui_input_lock_path": str(tmp_path / "shared-input.lock")}}
+    locked_ctx = AgentContext(name="lockedAgent", task_id="t", instruction="x", guest=_FakeGuest(),
+                              out=tmp_path, max_steps=7, spec=locked_spec)
+    make_harness(locked_spec).prepare(locked_ctx)
+    locked_toml = (tmp_path / "lockedAgent/codex_home/config.toml").read_text()
+    assert f'OSCOMBO_GUI_INPUT_LOCK_PATH = "{tmp_path / "shared-input.lock"}"' in locked_toml
+    assert "OSCOMBO_GUI_INPUT_LOCK_PATH" not in toml
     monkeypatch.setenv("OPENAI_API_KEY", "k")
     spec = {"harness": "pi", "model": "m", "effort": "high", "options": {"base_url": "http://gateway/v1",
                                                                           "pi_bin": "true"}}

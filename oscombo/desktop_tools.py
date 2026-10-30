@@ -35,6 +35,7 @@ LOG = os.environ.get("OSCOMBO_ACTION_LOG")
 BUDGET = int(os.environ.get("OSCOMBO_MAX_STEPS") or "45")
 SETTLE = float(os.environ.get("OSCOMBO_MCP_SETTLE", "1.0"))
 TOOL_RESULT_COOLDOWN = max(0.0, float(os.environ.get("OSCOMBO_MCP_TURN_COOLDOWN_SEC", "0")))
+GUI_INPUT_LOCK_PATH = os.environ.get("OSCOMBO_GUI_INPUT_LOCK_PATH")
 _cooldown_lock = threading.Lock()
 _last_tool_result_at: float | None = None
 MODEL_W, MODEL_H = 1280, 720
@@ -58,6 +59,30 @@ TOOLS = {
     "wait": "Wait for the UI to update (seconds, max 30), then take a screenshot.",
     "declare_infeasible": "Call this (instead of acting) if you are confident the task cannot be done as specified.",
 }
+
+
+@contextmanager
+def _gui_input_lock():
+    """Serialize only Guest input, across the two MCP processes of a Shared run.
+
+    Screenshots stay outside this lock. A model may therefore still act on a
+    stale observation; this is the deliberately simple input-lock ablation.
+    """
+    if not GUI_INPUT_LOCK_PATH:
+        yield {"enabled": False, "wait_s": 0.0, "acquired_at": None}
+        return
+    os.makedirs(os.path.dirname(GUI_INPUT_LOCK_PATH), exist_ok=True)
+    started = time.monotonic()
+    with open(GUI_INPUT_LOCK_PATH, "a") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        state = {"enabled": True, "wait_s": round(time.monotonic() - started, 6),
+                 "acquired_at": time.time()}
+        try:
+            yield state
+        finally:
+            state["released_at"] = time.time()
+            state["held_s"] = round(state["released_at"] - state["acquired_at"], 6)
+            fcntl.flock(handle, fcntl.LOCK_UN)
 
 
 @contextmanager
@@ -272,16 +297,23 @@ def run_tool(name: str, args: dict) -> tuple[str, bytes | None]:
     code = _code(name, args, scale)
     if name == "wait":
         time.sleep(min(float(args.get("seconds", 2.0)), 30))
-    before = _active_window() if code else None
+    before = None
+    after = None
     action_started_at = time.time()
     action_error = None
-    try:
-        if code:
-            _py(code)
-    except Exception as exc:
-        action_error = exc
-    action_ended_at = time.time()
-    after = _active_window() if code else None
+    input_lock = {"enabled": False, "wait_s": 0.0, "acquired_at": None}
+    if code:
+        with _gui_input_lock() as input_lock:
+            before = _active_window()
+            action_started_at = time.time()
+            try:
+                _py(code)
+            except Exception as exc:
+                action_error = exc
+            action_ended_at = time.time()
+            after = _active_window()
+    else:
+        action_ended_at = time.time()
     shot_started_at = time.time()
     try:
         png, new_scale, guest_size = _shot()
@@ -290,6 +322,7 @@ def run_tool(name: str, args: dict) -> tuple[str, bytes | None]:
               "started_at": tool_started_at, "action_started_at": action_started_at,
               "action_ended_at": action_ended_at, "window_before": before,
               "window_after": after, "window_samples_atomic": False,
+              "input_lock": input_lock,
               "error": f"{type(exc).__name__}: {exc}", "phase": "screenshot",
               "action_error": str(action_error) if action_error else None})
         raise
@@ -305,6 +338,7 @@ def run_tool(name: str, args: dict) -> tuple[str, bytes | None]:
           "screenshot_ended_at": shot_ended_at,
           "screenshot_s": shot_ended_at - shot_started_at,
           "action_error": str(action_error) if action_error else None,
+          "input_lock": input_lock,
           "tool_result_cooldown_s": cooldown,
           "coordinate_audit": audit,
           "input_observation": {"model_screenshot_size": [MODEL_W, MODEL_H],
