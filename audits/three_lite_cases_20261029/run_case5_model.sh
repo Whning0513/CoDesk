@@ -70,6 +70,12 @@ for arm in "${arms[@]}"; do
         /data3/whn/Project2/OSWorld-V2/.venv/bin/python \
             audits/lite_v2_lifecycle_20261028/summarize_lifecycle.py "$run_root" \
             > "audits/three_lite_cases_20261029/${run_id}-metrics.log" 2>&1 || true
+        /data3/whn/Project2/OSWorld-V2/.venv/bin/python \
+            -m oscombo.collab.spreadsheet_handoff_lite_v1_1.summarize_lock "$run_root" \
+            > "audits/three_lite_cases_20261029/${run_id}-gui-lock.json" 2>&1 || true
+        /data3/whn/Project2/OSWorld-V2/.venv/bin/python \
+            audits/three_lite_cases_20261029/audit_actor_tool_boundary.py "$run_root" \
+            > "audits/three_lite_cases_20261029/${run_id}-tool-boundary.json" 2>&1 || true
     fi
     echo "Finished ${run_id} with exit ${exit_code} at $(date -u +%FT%TZ)"
 done
