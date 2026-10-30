@@ -301,7 +301,13 @@ class LoggedGuest:
 
     def run_pyautogui(self, code: str) -> Any:
         self.action_n += 1
-        action_id = f"{self.actor}-{self.action_n:03d}"
+        # A and B already have distinct IDs. System actions run separately on
+        # each Isolated Guest and otherwise overwrite the same screenshot name.
+        action_id = (
+            f"{self.guest_key}-system-{self.action_n:03d}"
+            if self.actor == "system"
+            else f"{self.actor}-{self.action_n:03d}"
+        )
         before = self._window_sample("before")
         started = time.time()
         self.ledger.record(self.actor, "action_start", guest_id=self.guest_key,
