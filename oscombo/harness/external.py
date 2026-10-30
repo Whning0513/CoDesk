@@ -249,6 +249,8 @@ class CodexHarness(CommandHarness):
                    "OSCOMBO_MAX_STEPS": str(ctx.max_steps), "PYTHONPATH": _pythonpath()}
         if "desktop_tool_cooldown_sec" in o:
             mcp_env["OSCOMBO_MCP_TURN_COOLDOWN_SEC"] = str(float(o["desktop_tool_cooldown_sec"]))
+        if o.get("gui_input_lock_path"):
+            mcp_env["OSCOMBO_GUI_INPUT_LOCK_PATH"] = str(o["gui_input_lock_path"])
         env_toml = ", ".join(f"{k} = {json.dumps(v)}" for k, v in mcp_env.items())
         key_env = o.get("api_key_env", "OPENAI_API_KEY")
         auth_mode = o.get("auth_mode", "auto")
