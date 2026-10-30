@@ -1,0 +1,9 @@
+# Spreadsheet Handoff Lite v1.1 design and validation
+
+Lite v1.0.0 is frozen. Its recent GUI-only pair failed for different reasons: Shared A sent a correct number but did not commit/save a Calc cell, and B wrote a case count into a field intended for units; Isolated A eventually saved a correct revision, but B consumed its remaining budget navigating Calc windows. Those episodes are not rescored.
+
+The v1.1 public Calc headers specify units per case, USD per unit, order **units**, and total USD. The A and B prompts identify the cell addresses, require Enter and Ctrl+S before publication, and tell B to rely on the delivered saved revision plus message while keeping its own order workbook foreground. If these disagree, B can inspect A's file through GUI. This preserves the indispensable A→B saved handoff and two concurrent Calc windows without requiring B to perform an extra file-navigation path in every valid run. No expected numerical answer is in an Actor prompt or public fixture.
+
+The independent v1.1 fixture, private Gold and Oracle live in this directory. The Oracle still derives expected net need and purchase cost from the public source cells and separately scores A, B and joint artifacts. A behavioral audit is required before claiming a valid handoff. The old v1.0.0 tests, runs and result files remain unchanged.
+
+Validation order: offline Gold and wrong-value/file controls; real Guest scripted Shared and Isolated positive plus wrong-unit Shared negative; small model Isolated Pilot; frozen same-model, same-budget Shared/Isolated/Shared+simple GUI action lock cohort. For each run retain request-level tool-filter evidence, screenshots/actions, revision/message chronology, save/reopen/reset, Oracle, wait/lock metrics, token/time/resource metrics and causal attribution. A model score is valid only after infrastructure checks; no success-based reruns.
