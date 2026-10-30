@@ -73,6 +73,11 @@ for arm in "${arms[@]}"; do
             -m oscombo.collab.spreadsheet_handoff_lite_v1_1.audit_handoff "$run_root" \
             > "$run_root/handoff_audit.json" 2>&1 || true
     fi
+    if [[ -d "$run_root/actor_runs" ]]; then
+        /data3/whn/Project2/OSWorld-V2/.venv/bin/python \
+            audits/three_lite_cases_20261029/audit_actor_tool_boundary.py "$run_root" \
+            > "$run_root/actor_tool_boundary_audit.json" 2>&1 || true
+    fi
     echo "Finished ${run_id} exit=${code} at $(date -u +%FT%TZ)"
 done
 echo "Manifest: ${manifest}"
