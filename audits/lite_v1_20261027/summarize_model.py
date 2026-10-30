@@ -67,7 +67,16 @@ def main(root: Path) -> None:
         }
     actor_intervals = {role: [(actors[role]["started_at"], actors[role]["ended_at"])]
                        for role in "AB" if role in actors}
-    qemu = [x for x in records(root / "qemu_process_resources.jsonl") if "rss_bytes" in x]
+    qemu = []
+    for sample in records(root / "qemu_process_resources.jsonl"):
+        if "rss_bytes" in sample:
+            qemu.append(sample)
+        else:
+            # The run-labeled sampler records all Guests in one timestamped
+            # row. Expand it for the existing per-process aggregation below.
+            qemu.extend({**guest, "time": sample["time"],
+                         "process_created": guest.get("process_created", 0)}
+                        for guest in sample.get("guests", []))
     qemu_by_process = defaultdict(list)
     memory_by_bucket = defaultdict(dict)
     for x in qemu:
