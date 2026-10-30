@@ -1,6 +1,6 @@
-# Case 7 Lite v1.0.2: proposed three-arm protocol
+# Case 7 Lite v1.0.2: three-arm preregistration
 
-Status: **not yet frozen**. Real Guest v1.0.2 scripted controls and a bounded Isolated model Pilot are required first. This protocol does not change or rescore the v1.0.1 cohort.
+Status: **preregistered, not yet frozen**. Real Guest v1.0.2 scripted controls and one bounded Isolated model Pilot are required before freezing the exact experiment commit. This protocol does not change or rescore the v1.0.1 cohort. Any task or scoring change after the Pilot requires a separately versioned case and fresh controls for both topologies.
 
 ## Task and fair comparison
 
@@ -12,9 +12,17 @@ The lock arm uses `--condition collaborative_shared --gui-input-lock`; its arm i
 
 ## Validation sequence
 
-1. Real Guest scripted positive in Shared and Isolated, then a wrong-value/file negative. Check GUI screenshots, A's post-move opening of the delivered note, B's GUI read, saved revisions, peer read-back SHA and read-only mode, Oracle, file reopen and exact run-owned reset. An infrastructure error is recorded separately and does not count as a task failure.
+1. Real Guest scripted positives in Shared and Isolated, then wrong-tag negatives in Shared and Isolated, in that fixed order. Check GUI screenshots, A's post-move opening of the delivered note, B's GUI read, saved revisions, peer read-back SHA and read-only mode, Oracle, file reopen and exact run-owned reset. An infrastructure error is recorded separately and does not count as a task failure.
 2. One bounded Isolated model Pilot (`12` desktop calls, `600` seconds) to check A/B basic solvability, real handoff and tool/recording stability. Retain the Pilot whatever its outcome.
-3. Freeze the above configuration before full runs. Propose two complete triplets in balanced order: triplet 1 Isolated, Shared, Shared+Lock; triplet 2 Shared+Lock, Shared, Isolated. The parent Agent may reduce concurrency for disk/Guest responsiveness, but not change a single arm's task or budget. Keep all launched episodes; replace only independently documented infrastructure-invalid attempts with a new run_id.
+3. Freeze the case and runner commit, model endpoint, prompts, fixtures, Oracle, 25-call role budget, 1200-second active model budget, wait lifecycle and tool allowlist before full runs. The formal sequence is **triplet 1: Isolated → Shared → Shared+Lock; triplet 2: Shared+Lock → Shared → Isolated**. Each arm is a fresh run with a unique run_id. Arms run sequentially on this host; their order does not depend on earlier scores. The parent Agent may delay starts for disk/Guest responsiveness, but not change an arm's task or budget. No third triplet is added in response to success or failure.
+
+## Start and stop rules
+
+- Before **each** scripted control and model arm, require at least 15 GiB available on the run filesystem and zero running Docker containers bearing the project's `oscombo=1` Guest label. A failed Docker query also blocks the start. A blocked start is recorded as `NOT_STARTED_*`, creates no run directory and does not occupy its planned slot; resume that slot in the registered order when resources are clear. This is a preflight scheduling gate, not a model-time GUI lock.
+- After a started control, require the expected exit and `result.json` status: positive `0/PASS`, negative `2/FAIL`. On any unexpected result, stop before launching another Guest, preserve the run and manifest, diagnose it, and rerun only the pending control with a new run_id if justified. Do not convert a task failure into an infrastructure fault.
+- The Pilot is diagnostic. An ordinary model task failure is retained and does not by itself justify altering the case or halting the registered formal sequence; a broken tool, bridge, scorer or Guest lifecycle must be fixed symmetrically before freeze. Record the exact freeze commit after this review.
+- In formal runs, retain every started episode, including `FAIL`. Continue to the next registered arm after an ordinary task failure. If an arm is independently classified as `INVALID_INFRA_OR_RUNNER_ERROR` (exit 3, missing/corrupt result, broken Guest or bridge, or postscore lifecycle fault), preserve its run, stop the sequence, repair the infrastructure symmetrically and resume the **same arm slot** with a new run_id. Report both the invalid attempt and its replacement; never discard the original or replace a valid failure. If the freeze configuration changes, disclose it and restart the full formal comparison rather than mixing versions.
+- No model episode is repeated because one topology scores worse. Stop after the two planned triplets, even if all fail or all pass. Final joint success is the saved-artifact Oracle endpoint; verified GUI handoff is a separate process endpoint and must not be inferred from the Oracle alone.
 
 ## Analysis contract
 
