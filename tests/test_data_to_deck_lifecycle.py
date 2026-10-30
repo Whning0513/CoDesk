@@ -149,5 +149,6 @@ def test_resume_command_keeps_actor_private_session(tmp_path):
 
 def test_secondary_unit_expression_is_narrow():
     assert extended_amount("decreased by 11 USD thousands versus Q2", -11)
+    assert extended_amount("decreased by 11.5 USD thousands versus Q2", -11.5)
     assert not extended_amount("decreased by 10 USD thousands versus Q2", -11)
     assert not extended_amount("decreased by 11 USD millions versus Q2", -11)
