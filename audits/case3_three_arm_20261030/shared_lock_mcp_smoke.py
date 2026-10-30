@@ -35,11 +35,13 @@ def image_bytes(result) -> bytes:
 
 async def actor(role: str, url: str, lock_path: Path, run_root: Path,
                 python: str, repo: Path, ready: asyncio.Event) -> None:
+    actor_root = run_root / f"mcp_{role}"
+    actor_root.mkdir()
     child_env = {name: os.environ[name] for name in
                  ("PATH", "HOME", "LANG", "LC_ALL", "VIRTUAL_ENV") if name in os.environ}
     child_env.update({
         "OSCOMBO_GUEST_URL": url,
-        "OSCOMBO_ACTION_LOG": str(run_root / f"mcp_{role}_actions.jsonl"),
+        "OSCOMBO_ACTION_LOG": str(actor_root / "actions.jsonl"),
         "OSCOMBO_GUI_INPUT_LOCK_PATH": str(lock_path),
         "OSCOMBO_MAX_STEPS": "3",
         "PYTHONPATH": f"{repo}:{os.environ.get('OSWORLD_DIR', '')}",
@@ -78,7 +80,7 @@ async def drive_mcp(url: str, lock_path: Path, run_root: Path, python: str, repo
 def evaluate_logs(run_root: Path, lock_path: Path) -> dict:
     records = {}
     for role in "AB":
-        log = run_root / f"mcp_{role}_actions.jsonl"
+        log = run_root / f"mcp_{role}" / "actions.jsonl"
         rows = [json.loads(line) for line in log.read_text().splitlines()]
         if [row["tool"] for row in rows] != ["screenshot", "move"]:
             raise RuntimeError(f"{role} did not execute screenshot then input")
