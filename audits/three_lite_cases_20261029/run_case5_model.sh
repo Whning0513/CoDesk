@@ -85,5 +85,9 @@ for arm in "${arms[@]}"; do
             > "audits/three_lite_cases_20261029/${run_id}-tool-boundary.json" 2>&1 || true
     fi
     echo "Finished ${run_id} with exit ${exit_code} at $(date -u +%FT%TZ)"
+    if (( exit_code != 0 && exit_code != 2 )); then
+        echo "Stopping triad after infrastructure or runner error in ${run_id}" >&2
+        exit "$exit_code"
+    fi
 done
 echo "Manifest: ${manifest}"
