@@ -771,6 +771,15 @@ def _handoff_wait_budgets(started: float, now: float, timeout: float,
     return deadline, max(0.0, deadline - now)
 
 
+def _actor_handoff_lifecycle(role: str, case_spec: Any,
+                             handoff_lifecycle: bool,
+                             yield_wait_lifecycle: bool) -> tuple[str | None, bool]:
+    """Apply the same opt-in wait policy to either desktop topology."""
+    peer = (getattr(case_spec, "HANDOFF_DEPENDENCIES", {}).get(role)
+            if handoff_lifecycle else None)
+    return peer, bool(peer and yield_wait_lifecycle)
+
+
 def _public_handoff_state(client: CollaborationClient, peer: str, actor: str) -> dict[str, Any]:
     """Inspect public revisions and messages only; no evaluator or file contents."""
     versions = client.list_saved_artifacts()
@@ -987,6 +996,7 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
               case_spreadsheet_lite_v1: bool = False,
               case_spreadsheet_lite_v1_1: bool = False,
               handoff_lifecycle: bool = False,
+              yield_wait_lifecycle: bool = False,
               scripted_negative: bool = False,
               gui_input_lock: bool = False) -> dict[str, Any]:
     if sum(bool(value) for value in (case_lite_v1, case_lite_v2, case_lite_v2_1,
@@ -1000,6 +1010,8 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
     if handoff_lifecycle and (not lite_handoff_family or not model or condition not in
                               {"collaborative_shared", "collaborative_isolated"}):
         raise ValueError("handoff_lifecycle requires a collaborative Lite model run")
+    if yield_wait_lifecycle and not handoff_lifecycle:
+        raise ValueError("yield_wait_lifecycle requires handoff_lifecycle")
     if case_spreadsheet_lite_v1_1:
         from oscombo.collab.spreadsheet_handoff_lite_v1_1 import spec as case_spec
         from oscombo.collab.spreadsheet_handoff_lite_v1_1.fixtures import build_fixture as case_build_fixture
@@ -1094,6 +1106,7 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
                                                       condition == "collaborative_isolated"),
                 "scripted_negative_control": scripted_negative,
                 "handoff_lifecycle": handoff_lifecycle,
+                "yield_wait_lifecycle": yield_wait_lifecycle,
                 "guest_count": guest_count, "provider_commit": "3d778a3c9a34a079316f70df023b166700445792",
                 "provider_path": str(provider), "base_qcow2": image,
                 "runtime_image": runtime, "started_at": time.time()}
@@ -1242,6 +1255,8 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
             actor_barrier = threading.Barrier(len(actor_roles))
             def actor_task(role: str) -> dict[str, Any]:
                 actor_guest = guest_a if role == "A" else guest_b
+                handoff_from, yield_wait = _actor_handoff_lifecycle(
+                    role, case_spec, handoff_lifecycle, yield_wait_lifecycle)
                 actor_base_url = f"{qwen_base_url}/actor/{role}/v1" if local_qwen else model_base_url
                 if relay_client_token_env:
                     actor_base_url = model_base_url.removesuffix("/v1") + f"/actor/{role}/v1"
@@ -1257,8 +1272,8 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
                     tool_cooldown_sec=model_tool_cooldown_sec,
                     relay_client_token_env=relay_client_token_env,
                     workspace_bridge=workspace_bridge is not None,
-                    handoff_from=(getattr(case_spec, "HANDOFF_DEPENDENCIES", {}).get(role)
-                                  if handoff_lifecycle else None),
+                    handoff_from=handoff_from,
+                    yield_wait=yield_wait,
                     case_id=case_spec.CASE_ID,
                     gui_input_lock_path=(str(run_root / "gui_input.lock") if gui_input_lock else None))
             if is_solo:
@@ -1704,6 +1719,8 @@ def main(argv: list[str] | None = None) -> None:
                         help="run the versioned Spreadsheet Handoff Lite v1.1 profile")
     parser.add_argument("--handoff-lifecycle", action="store_true",
                         help="suspend a v2 B Actor that exits before A's public handoff, then resume it")
+    parser.add_argument("--yield-wait-lifecycle", action="store_true",
+                        help="pause active model time while a role voluntarily awaits a public peer handoff")
     parser.add_argument("--scripted-negative", action="store_true",
                         help="supported Lite scripted control deliberately saves an incorrect GUI result")
     parser.add_argument("--run-root", type=Path, required=True)
@@ -1768,6 +1785,7 @@ def main(argv: list[str] | None = None) -> None:
                            case_spreadsheet_lite_v1=args.case_spreadsheet_lite_v1,
                            case_spreadsheet_lite_v1_1=args.case_spreadsheet_lite_v1_1,
                            handoff_lifecycle=args.handoff_lifecycle,
+                           yield_wait_lifecycle=args.yield_wait_lifecycle,
                            scripted_negative=args.scripted_negative,
                            gui_input_lock=args.gui_input_lock)
     except Exception as exc:

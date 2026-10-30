@@ -72,7 +72,7 @@ def audit(root: Path) -> dict:
     trace_consistent = bool(a_delivered and a_message and b_seen_revision_index is not None
                             and b_read_message_index is not None
                             and b_post_handoff_gui_index is not None
-                            and b_saved_after_handoff and artifact_success)
+                            and b_saved_after_handoff)
     return {
         "run_id": root.name,
         "artifact_joint_success": artifact_success,
@@ -87,6 +87,7 @@ def audit(root: Path) -> dict:
         "b_saved_revision": {k: b_rev.get(k) for k in ("revision", "sha256", "time")} if b_rev else None,
         "b_saved_after_handoff": b_saved_after_handoff,
         "trace_consistent_handoff": trace_consistent,
+        "correct_joint_handoff": trace_consistent and artifact_success,
         "limit": "This chronology supports use of the public handoff; it cannot prove the model's internal reasoning. Review screenshots and final cells as well.",
     }
 

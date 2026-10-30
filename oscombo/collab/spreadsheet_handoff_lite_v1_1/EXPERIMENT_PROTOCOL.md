@@ -6,11 +6,13 @@ Freeze this protocol before the first full model triad. Earlier v1.0.0 episodes 
 
 1. Run offline Gold/Oracle positive and wrong-value controls, including the exact `8` units / `$224` case-count mistake.
 2. Run real Guest scripted positive Shared and Isolated with GUI save, version transfer, message, file collection, GUI reopen and reset. Run the v1.1 scripted negative Shared: A correct, B writes a case count into E3, independent Oracle A true/B false/joint false, reopen and reset complete. Any Guest startup/reopen error is infrastructure-invalid and must keep its run ID.
-3. Run a bounded Isolated strong-model Pilot at 12 desktop calls per Actor and 600 seconds of active role time to check GUI, tool allowlist, public handoff and B's basic solvability. Do not score this diagnostic as a full sample. If the task design changes, make a new version and repeat both topology controls.
+3. Run a bounded Isolated strong-model Pilot at 12 desktop calls per Actor and 600 seconds of role time to check GUI, tool allowlist, public handoff and B's basic solvability. Do not score this diagnostic as a full sample. If the task design changes, make a new version and repeat both topology controls.
+
+The one Pilot, `sh-lite-v1p1-pilot-isolated-20261030T221912Z`, ran with the original `--handoff-lifecycle` flag. Its trace exposed a generic runner wiring omission: the B Actor did suspend and wake, but `pause_active_budget=false`. Preserve this diagnostic unchanged. The full triads below add the same `--yield-wait-lifecycle` opt-in to **all three arms** after offline regression; it pauses only voluntary wait time for a public peer handoff and supplies no answer or GUI arbitration. This is a Harness lifecycle correction, not a task/Oracle change. No success-based Pilot rerun is planned.
 
 ## Frozen full runs
 
-Use `gpt-6-astra`, medium effort, 25 GUI calls per role, 1200 seconds active role time, request-level `--actor-mcp-only`, public `--handoff-lifecycle`, the same v1.1 Fixture, role prompts, workspace bridge, independent Oracle and postscore recovery. The Actor API key stays in the coordinator process only. Each run has a unique run ID. Actor threads start concurrently.
+Use `gpt-6-astra`, medium effort, 25 GUI calls per role, 1200 seconds active role time, request-level `--actor-mcp-only`, public `--handoff-lifecycle --yield-wait-lifecycle`, the same v1.1 Fixture, role prompts, workspace bridge, independent Oracle and postscore recovery. The Actor API key stays in the coordinator process only. Each run has a unique run ID. Actor threads start concurrently. A B Actor may voluntarily yield while A has not delivered a saved revision plus message; it consumes no model calls or GUI steps while suspended and resumes the same conversation after that public handoff. The policy and time budget are identical across Shared, Isolated and Shared+Lock.
 
 - **Isolated:** two Guests, no cross-Guest GUI input lock, A's full saved revisions/messages delivered to B.
 - **Shared:** one Guest, two Actors, no GUI input lock.

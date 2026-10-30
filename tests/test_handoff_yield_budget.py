@@ -1,5 +1,9 @@
 """A yielded peer handoff does not spend B's active model time budget."""
-from oscombo.collab.data_to_deck.live_pilot import _handoff_wait_budgets
+from types import SimpleNamespace
+
+from oscombo.collab.data_to_deck.live_pilot import (
+    _actor_handoff_lifecycle, _handoff_wait_budgets,
+)
 from oscombo.harness.external import CodexHarness, CommandHarness
 
 
@@ -24,3 +28,11 @@ def test_opt_in_tells_actor_how_to_yield_without_a_task_answer(monkeypatch):
     prompt = harness.prompt(None)
     assert "finish your current turn" in prompt
     assert "No task answer is supplied" in prompt
+
+
+def test_opt_in_selects_only_roles_with_a_public_peer_dependency():
+    task = SimpleNamespace(HANDOFF_DEPENDENCIES={"B": "A"})
+    assert _actor_handoff_lifecycle("A", task, True, True) == (None, False)
+    assert _actor_handoff_lifecycle("B", task, True, True) == ("A", True)
+    assert _actor_handoff_lifecycle("B", task, True, False) == ("A", False)
+    assert _actor_handoff_lifecycle("B", task, False, True) == (None, False)
