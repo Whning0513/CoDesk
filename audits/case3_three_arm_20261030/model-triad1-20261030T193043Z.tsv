@@ -1,0 +1,3 @@
+mode	arm	max_gui_calls_per_actor	active_model_seconds	run_id	exit_code
+triad1	isolated	25	1200	bv-lite-v1p6-triad1-isolated-20261030T193043Z	2
+triad1	shared	25	1200	bv-lite-v1p6-triad1-shared-20261030T193043Z	3
