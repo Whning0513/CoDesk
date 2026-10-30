@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 
 import pytest
 
 from oscombo.collab.data_to_deck.fixtures import _ods
 from oscombo.collab.data_to_deck.live_pilot import run_pilot
-from oscombo.collab.spreadsheet_handoff_lite_v1_1 import fixtures, live_pilot, oracle, spec
+from oscombo.collab.spreadsheet_handoff_lite_v1_1 import audit_handoff, fixtures, live_pilot, oracle, spec
 from oscombo.collab.spreadsheet_handoff_lite_v1_1.private.gold import expected_plan, write_gold
 
 
@@ -32,6 +33,35 @@ def test_versioned_entrypoint_and_lock_scope(monkeypatch, tmp_path):
                   "unused", model="dummy", case_spreadsheet_lite_v1_1=True,
                   gui_input_lock=True)
     assert not (tmp_path / "should-not-create").exists()
+
+
+def test_handoff_audit_requires_actual_b_reads_and_post_handoff_save(tmp_path):
+    def write_rows(path, rows):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+
+    write_rows(tmp_path / "workspace_versions/events.jsonl", [
+        {"event": "revision_saved", "actor": "A", "revision": 1, "sha256": "a-hash", "time": 10},
+        {"event": "transfer_verified", "actor": "A", "revision": 1, "sha256": "a-hash", "time": 11},
+        {"event": "revision_saved", "actor": "B", "revision": 1, "sha256": "b-hash", "time": 25},
+    ])
+    write_rows(tmp_path / "collaboration/events.jsonl", [
+        {"actor": "A", "recipient": "B", "message_id": "message-1", "timestamp": 12},
+    ])
+    (tmp_path / "oracle.json").write_text('{"joint_success": true}')
+    stdout = tmp_path / "actor_runs/B/B/stdout.log"
+    write_rows(stdout, [
+        {"type": "item.completed", "item": {"server": "collaboration",
+         "tool": "list_saved_artifacts", "result": {"structured_content": {
+             "A": {"revision": 1, "sha256": "a-hash"}}}}},
+        {"type": "item.completed", "item": {"server": "collaboration",
+         "tool": "read_messages", "result": {"structured_content": {
+             "result": [{"message_id": "message-1"}]}}}},
+        {"type": "item.started", "item": {"server": "desktop", "tool": "type_text"}},
+    ])
+    assert audit_handoff.audit(tmp_path)["trace_consistent_handoff"]
+    write_rows(stdout, [{"type": "item.started", "item": {"server": "desktop", "tool": "type_text"}}])
+    assert not audit_handoff.audit(tmp_path)["trace_consistent_handoff"]
 
 
 def _case(tmp_path: Path):

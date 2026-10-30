@@ -68,6 +68,11 @@ for arm in "${arms[@]}"; do
             audits/lite_v2_lifecycle_20261028/summarize_lifecycle.py "$run_root" \
             > "audits/three_lite_cases_20261029/${run_id}-metrics.log" 2>&1 || true
     fi
+    if [[ -f "$run_root/oracle.json" ]]; then
+        /data3/whn/Project2/OSWorld-V2/.venv/bin/python \
+            -m oscombo.collab.spreadsheet_handoff_lite_v1_1.audit_handoff "$run_root" \
+            > "$run_root/handoff_audit.json" 2>&1 || true
+    fi
     echo "Finished ${run_id} exit=${code} at $(date -u +%FT%TZ)"
 done
 echo "Manifest: ${manifest}"
