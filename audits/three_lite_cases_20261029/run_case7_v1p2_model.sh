@@ -44,6 +44,20 @@ if [[ ! "$free_kib" =~ ^[0-9]+$ ]] || (( free_kib < min_free_kib )); then
     echo "${status}: ${run_id}; free_kib=${free_kib:-unknown}; required_kib=${min_free_kib}; preflight=${preflight}" >&2
     exit 3
 fi
+if active_guests=$(docker ps --filter label=oscombo=1 --format '{{.ID}}' 2>/dev/null); then
+    active_guest_count=$(printf '%s\n' "$active_guests" | awk 'NF { n++ } END { print n+0 }')
+    status=NOT_STARTED_ACTIVE_GUEST
+else
+    active_guest_count='-'
+    status=NOT_STARTED_GUEST_CHECK_ERROR
+fi
+if [[ "$status" == NOT_STARTED_GUEST_CHECK_ERROR || "$active_guest_count" -ne 0 ]]; then
+    preflight="audits/three_lite_cases_20261029/${run_id}-preflight.tsv"
+    printf 'run_id\tstatus\tfree_kib\trequired_kib\tactive_guest_count\n%s\t%s\t%s\t%s\t%s\n' \
+        "$run_id" "$status" "$free_kib" "$min_free_kib" "$active_guest_count" > "$preflight"
+    echo "${status}: ${run_id}; active_guest_count=${active_guest_count}; preflight=${preflight}" >&2
+    exit 3
+fi
 echo "Starting ${run_id} at $(date -u +%FT%TZ)"
 "$osworld_python" \
     -m oscombo.collab.workspace_assembly_lite_v1p2.live_pilot \

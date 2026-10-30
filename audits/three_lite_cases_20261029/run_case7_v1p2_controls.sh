@@ -20,9 +20,9 @@ fi
 
 stamp="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 manifest="audits/three_lite_cases_20261029/case7-v1p2-controls-${stamp}.tsv"
-printf 'control\tcondition\trun_id\texit_code\tstatus\tverdict\tfree_kib\n' > "$manifest"
+printf 'control\tcondition\trun_id\texit_code\tstatus\tverdict\tfree_kib\tactive_guest_count\n' > "$manifest"
 min_free_kib=$((15 * 1024 * 1024))
-for entry in 'positive shared' 'positive isolated' 'negative shared'; do
+for entry in 'positive shared' 'positive isolated' 'negative shared' 'negative isolated'; do
     read -r control side <<< "$entry"
     run_id="wa-lite-v1p2-scripted-${control}-${side}-${stamp}"
     run_root="runs/${run_id}"
@@ -31,9 +31,22 @@ for entry in 'positive shared' 'positive isolated' 'negative shared'; do
     if [[ ! "$free_kib" =~ ^[0-9]+$ ]] || (( free_kib < min_free_kib )); then
         status=NOT_STARTED_LOW_DISK
         [[ "$free_kib" =~ ^[0-9]+$ ]] || status=NOT_STARTED_DISK_CHECK_ERROR
-        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-            "$control" "$side" "$run_id" '-' "$status" NOT_STARTED "$free_kib" >> "$manifest"
+        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+            "$control" "$side" "$run_id" '-' "$status" NOT_STARTED "$free_kib" '-' >> "$manifest"
         echo "${status}: ${run_id}; free_kib=${free_kib:-unknown}; required_kib=${min_free_kib}; manifest=${manifest}" >&2
+        exit 3
+    fi
+    if active_guests=$(docker ps --filter label=oscombo=1 --format '{{.ID}}' 2>/dev/null); then
+        active_guest_count=$(printf '%s\n' "$active_guests" | awk 'NF { n++ } END { print n+0 }')
+        status=NOT_STARTED_ACTIVE_GUEST
+    else
+        active_guest_count='-'
+        status=NOT_STARTED_GUEST_CHECK_ERROR
+    fi
+    if [[ "$status" == NOT_STARTED_GUEST_CHECK_ERROR || "$active_guest_count" -ne 0 ]]; then
+        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+            "$control" "$side" "$run_id" '-' "$status" NOT_STARTED "$free_kib" "$active_guest_count" >> "$manifest"
+        echo "${status}: ${run_id}; active_guest_count=${active_guest_count}; manifest=${manifest}" >&2
         exit 3
     fi
     negative_flag=()
@@ -61,8 +74,8 @@ for entry in 'positive shared' 'positive isolated' 'negative shared'; do
     if [[ "$status" != "$expected_status" || "$exit_code" -ne "$expected_exit" ]]; then
         verdict=UNEXPECTED
     fi
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-        "$control" "$side" "$run_id" "$exit_code" "$status" "$verdict" "$free_kib" >> "$manifest"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$control" "$side" "$run_id" "$exit_code" "$status" "$verdict" "$free_kib" "$active_guest_count" >> "$manifest"
     echo "Finished ${run_id}: exit ${exit_code}, status ${status}, ${verdict} at $(date -u +%FT%TZ)"
     if [[ "$verdict" == "UNEXPECTED" ]]; then
         echo "Stopped after unexpected control; manifest: ${manifest}" >&2
