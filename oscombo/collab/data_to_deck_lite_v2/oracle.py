@@ -48,7 +48,7 @@ def _direction(text: str, value: float) -> bool:
 
 def _amount(text: str, value: float) -> bool:
     n = abs(value)
-    magnitude = str(int(n)) if n.is_integer() else str(n)
+    magnitude = str(int(n)) if float(n).is_integer() else str(n)
     return bool(re.search(rf"(?<!\d)(?:[+\-−]\s*)?(?:\$\s*)?{re.escape(magnitude)}(?:\.0+)?\s*"
                           r"(?:k\b|thousand\b|USD[_\s-]*k\b)", text, re.I)
                 or re.search(rf"\$\s*{int(n) * 1000:,}\b", text))
