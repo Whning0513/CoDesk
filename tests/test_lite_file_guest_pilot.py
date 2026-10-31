@@ -1,9 +1,11 @@
 import json
 
 from PIL import Image, ImageDraw
+import pytest
 
 from oscombo.collab.lite_file_guest_pilot import (
-    _browser_trace_audit, _postscore_lifecycle_ok, _result_exit_code,
+    _await_delivered_revision, _browser_trace_audit, _postscore_lifecycle_ok,
+    _result_exit_code,
 )
 
 
@@ -12,6 +14,24 @@ def test_result_exit_codes_distinguish_task_failure_from_invalid_run():
     assert _result_exit_code("FAIL") == 2
     assert _result_exit_code("INVALID_INFRA_OR_RUNNER_ERROR") == 3
     assert _result_exit_code("unexpected_status") == 3
+
+
+def test_scripted_handoff_waits_for_delivered_new_revision(monkeypatch):
+    class Bridge:
+        def __init__(self, revisions):
+            self.revisions = iter(revisions)
+
+        def snapshot(self):
+            return {"A": next(self.revisions)}
+
+    monkeypatch.setattr("oscombo.collab.lite_file_guest_pilot.time.sleep", lambda _: None)
+    ready = {"revision": 1, "delivered": True, "sha256": "new"}
+    bridge = Bridge([{"revision": 0, "delivered": True},
+                     {"revision": 1, "delivered": False}, ready])
+    assert _await_delivered_revision(bridge, "A", timeout_seconds=5) == ready
+    with pytest.raises(RuntimeError, match="new revision"):
+        _await_delivered_revision(Bridge([{"revision": 0, "delivered": True}]),
+                                  "A", timeout_seconds=0)
 
 
 def test_postscore_lifecycle_separates_missing_task_output_from_reopen_fault():
