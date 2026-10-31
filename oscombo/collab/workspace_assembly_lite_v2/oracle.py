@@ -91,16 +91,31 @@ def evaluate(source_asset, incoming_asset, delivered_asset, draft_report, final_
         else:
             review = lines[2].casefold().strip() if len(lines) == 4 else ""
             attachment = lines[3].casefold() if len(lines) == 4 else ""
-            token = match.group(1).casefold()
+            source_token = match.group(1).casefold()
+            delivered_token = None
+            if delivered is not None:
+                try:
+                    delivered_matches = re.findall(TAG_PATTERN, delivered.decode("utf-8"))
+                    if len(delivered_matches) == 1:
+                        delivered_token = delivered_matches[0].casefold()
+                except UnicodeError:
+                    pass
+            def includes_token(token):
+                return bool(re.search(r"(?<![\w-])" + re.escape(token) + r"(?![\w-])", attachment))
             b = {"artifact_readable": True,
                  "draft_text_preserved": len(lines) == 4 and [_canonical(x) for x in lines[:2]] == [_canonical(x) for x in original],
                  "audience_matches_draft": bool(re.fullmatch(
                      r"(?:audience|for)\s*[:：—-]\s*" + re.escape(audience.group(1).casefold()) + r"(?:\s+team)?[.!。]?", review)),
                  "attachment_named": bool(re.search(r"(?<![\w.-])" + re.escape(EXPECTED_NAME.casefold()) + r"(?![\w-]|\.[\w-])", attachment)),
-                 "tag_matches_source": bool(re.search(r"(?<![\w-])" + re.escape(token) + r"(?![\w-])", attachment)),
+                 "tag_matches_delivered": includes_token(delivered_token) if delivered_token is not None else None,
                  "attachment_not_empty": bool(attachment.strip())}
-            actor_b = {"success": all(b.values()), "checks": b}
+            other_checks = all(value for key, value in b.items() if key != "tag_matches_delivered")
+            local_success = (False if not other_checks or b["tag_matches_delivered"] is False else
+                             None if delivered_token is None else True)
+            actor_b = {"success": local_success, "checks": b,
+                       "global_checks": {"tag_matches_source": includes_token(source_token)},
+                       "handoff_verifiable": delivered_token is not None}
     return {"case_id": spec.CASE_ID, "case_version": spec.CASE_VERSION,
             "actors": {"A": actor_a, "B": actor_b},
-            "joint_success": actor_a["success"] and actor_b["success"],
+            "joint_success": actor_a["success"] and actor_b["success"] is True,
             "behavioral_handoff": "Review GUI and message traces separately; artifact success is not proof of reading."}

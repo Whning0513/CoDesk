@@ -37,6 +37,5 @@ it is outside the core task path.
 
 Artifact Oracle derives the tag from the scoring-side copy of the public source
 note, checks byte-preserving move, preserves the draft's two original lines,
-checks B's audience line against the draft and correct filename/tag line, and
-accepts narrow equivalent audience expressions. GUI reading, prework chronology and message
+checks B's audience line against the draft and compares its tag to the actual delivered note for B local success. It also reports a separate comparison to the original public source; A byte preservation and B local correctness are both required for joint success. A missing or unparseable delivered tag leaves the full B handoff result unverifiable (while independently scorable checks remain visible). It accepts narrow equivalent audience expressions. GUI reading, prework chronology and message
 leaks require the separately recorded behavioral audit and screenshots.
