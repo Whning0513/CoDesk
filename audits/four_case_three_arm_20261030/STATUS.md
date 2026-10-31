@@ -21,7 +21,7 @@ The current host has no KVM, so TCG Guest boot is expensive. At the latest sampl
 
 At 18:08 UTC, free space was about 20 GiB after several GiB of writes by another project under `/data3/whn/Projects/model0820/`; no files in that project were changed. The Case 3 negative-control reset Guest separately showed a fixed 384 KiB overlay and about 575 MiB QEMU RSS for over ten minutes, so only its run-owned driver and labeled container were stopped. No new model Guest was launched during this event. A coordinator-side `/v1/models` request returned HTTP 200 without exposing the API key.
 
-Case 1's previous clean whitelist pair and the Case 6/7 historical cohorts remain in their own reports; this study does not rewrite their verdicts. No controlled Shared input-lock result exists yet.
+Case 1's previous clean whitelist pair and the Case 6/7 historical cohorts remain in their own reports; this study does not rewrite their verdicts. Controlled Shared input-lock arms have now completed for Cases 3 and 6; neither had material lock contention during its formal run, so they cannot establish a success effect.
 
 The common file-case runner now maps PASS to exit 0, task FAIL to exit 2, and infrastructure-invalid or unexpected status to exit 3. The corresponding data-to-deck runner mapping is under review. This distinction prevents a later three-arm script from treating a postscore reset fault as a model task failure.
 
