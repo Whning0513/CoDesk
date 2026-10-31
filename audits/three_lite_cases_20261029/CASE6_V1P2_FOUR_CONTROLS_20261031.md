@@ -1,0 +1,20 @@
+# Case 6 v1.2: four scripted GUI controls (2026-10-31)
+
+Frozen source commit: `00ef3ddfe836c856d831e98914451e14aa7e85ab`. Cohort: `controls-20261031T112131Z-797825387828`. The four arms use the same public fixture and were run in the order below. The evaluator-only gold and Oracle stayed on the scoring side. These are scripted controls, not model-agent results.
+
+| Run ID | Topology and control | Oracle | Driver elapsed seconds |
+| --- | --- | --- | ---: |
+| `sh-lite-v1p2-positive-shared-20261031T112131Z-797825387828` | Shared, correct order | A PASS, B PASS, joint PASS | 1071.08 |
+| `sh-lite-v1p2-positive-isolated-20261031T112131Z-797825387828` | Isolated, correct order | A PASS, B PASS, joint PASS | 1604.99 |
+| `sh-lite-v1p2-wrong-units-shared-20261031T112131Z-797825387828` | Shared, case count mistakenly entered as units | A PASS, B FAIL, joint FAIL, as expected | 1056.21 |
+| `sh-lite-v1p2-wrong-units-isolated-20261031T112131Z-797825387828` | Isolated, case count mistakenly entered as units | A PASS, B FAIL, joint FAIL, as expected | 1594.17 |
+
+For both negative controls the specific `correct_whole_case_order` check was false. All four runs reopened the saved artifacts and reported clean reset workspaces; synchronization history and diagnostics were clean. The resource checker confirmed the expected 8 vCPU / 8 GiB per Guest and complete sampled coverage. Real screenshots were reviewed for A's published read-only revision (H3 = 73) and the preserved initial revision (H3 blank); review JSON records screenshot hashes and revision metadata. Some individual title bars were only partially painted; where available, a fully painted candidate frame was retained as supporting evidence, and the affected Isolated negative review notes that identity additionally rests on window and bridge metadata. The evidence does not by itself establish that a model Agent reads a revision.
+
+The correct positive GUI path uses 16 physical input calls by design, with four additional calls to open the stale revision for control evidence and separate system window activation. This is a scripted count, not a measured model difficulty or success rate. No input lock is added to Shared baseline during model runs. Startup, reopen, and reset are included in elapsed times; they cannot be interpreted as model execution times.
+
+Run outputs are local under `/data3/whn/Project2/CoDesk-case6-ready/runs/<run_id>/`; see `oracle.json`, `result.json`, `gui_actions.jsonl`, `observations.jsonl`, `workspace_versions/events.jsonl`, `resource_profile_check.json`, and `screenshots/`. The run-local `peer_view_visual_review.json` and `stale_view_visual_review.json` contain manual review hashes. Driver logs and the tab-separated manifest are under that worktree's `audits/three_lite_cases_20261029/`; supervisor state is under its `case6-v1p2-supervisors/controls-20261031T112131Z-797825387828/`. Large run artifacts remain local and must be archived separately if needed for independent review.
+
+The verifier `python -m oscombo.collab.spreadsheet_handoff_lite_v1_2.verify_controls <manifest> --expected-commit 00ef3ddfe836c856d831e98914451e14aa7e85ab` returned `valid: true` for all four controls. Its commit argument requires the full SHA: an initial invocation using the abbreviated SHA returned false, and the full-SHA invocation passed. Earlier cohorts are retained and excluded: one had truncated column labels and a blank-string formula error; the next exposed a white loading-frame screenshot and fixed-coordinate selection landing in the wrong row when LibreOffice info bars appeared. The current control uses a real empty input cell, wider columns, a name-box jump, and a scripted-only painted-grid wait; models are not given automated GUI input.
+
+These controls establish that this pinned fixture, GUI adapter, workspace mirror, and scoring can execute under the tested conditions. They do not establish model solvability, topology effects, or statistical reliability. The subsequent Isolated Pilot is a separate, predeclared diagnostic run and must be reported regardless of outcome.
