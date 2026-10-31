@@ -38,7 +38,11 @@ def a_probe_change() -> list[str]:
 
 
 def a_probe_restore(original: str) -> list[str]:
-    pieces = original.split("\n")
+    # GNOME Text Editor appends a final LF on save. Do not type that final
+    # newline as an extra blank line; the bridge still verifies exact bytes.
+    if not original.endswith("\n"):
+        raise ValueError("probe fixture must end with a newline")
+    pieces = original.removesuffix("\n").split("\n")
     typing = []
     for index, line in enumerate(pieces):
         if line:

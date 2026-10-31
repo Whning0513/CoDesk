@@ -413,3 +413,23 @@ def test_case7_scripted_open_retry_is_guarded_and_recorded(tmp_path, monkeypatch
     monkeypatch.setattr(guest, "screenshot", lambda **kwargs: b"bad")
     with pytest.raises(RuntimeError, match="unknown geometry"):
         pilot._case7_control_retry_open(guest, tmp_path, "prompt", "case")
+
+
+@pytest.mark.parametrize("source", ["first\nsecond\n", "first\n\nsecond\n", "first\n\n"])
+def test_probe_restore_reconstructs_exact_bytes_with_editor_final_lf(monkeypatch, source):
+    """Simulate GUI typing plus the observed GNOME Text Editor save behavior."""
+    import sys
+    from types import SimpleNamespace
+    typed = []
+    pyautogui = SimpleNamespace(write=lambda s, *args: typed.append(s),
+                               press=lambda key: typed.append("\n" if key == "enter" else "?"))
+    monkeypatch.setitem(sys.modules, "pyautogui", pyautogui)
+    monkeypatch.setattr("time.sleep", lambda *_: None)
+    action = scripted.a_probe_restore(source)[1]
+    exec(action, {})
+    assert ("".join(typed) + "\n").encode() == source.encode()
+
+
+def test_probe_restore_rejects_fixture_without_final_lf():
+    with pytest.raises(ValueError, match="end with a newline"):
+        scripted.a_probe_restore("unterminated")
