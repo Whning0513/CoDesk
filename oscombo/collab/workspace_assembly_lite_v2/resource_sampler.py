@@ -8,6 +8,8 @@ from pathlib import Path
 import subprocess
 import time
 
+from . import filesystem_capacity
+
 
 def _text(path: str) -> str:
     try:
@@ -57,9 +59,27 @@ def sample(run_root: Path, interval: float, max_seconds: float) -> None:
     output = run_root / "resource_samples_v2.jsonl"
     started = time.monotonic()
     seen = False
+    try:
+        preflight_path = Path(os.environ["CODESK_CASE7_FS_PREFLIGHT"])
+        preflight = json.loads(preflight_path.read_text(encoding="utf-8"))
+        (run_root / "filesystem_preflight.json").write_text(
+            json.dumps(preflight, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    except (KeyError, OSError, ValueError):
+        # Missing preflight is reported by summarize; do not stop Guest cleanup.
+        pass
+    try:
+        filesystem_paths = filesystem_capacity.discover_paths(
+            run_root, Path(os.environ.get("CODESK_CASE7_WORKTREE", str(run_root))))
+        filesystem_error = None
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        filesystem_paths = None
+        filesystem_error = f"filesystem discovery failed: {type(exc).__name__}"
     while time.monotonic() - started < max_seconds:
         record = {"run_id": run_id, "time": time.time(), "guests": [],
                   "disk_available_bytes": os.statvfs(run_root).f_bavail * os.statvfs(run_root).f_frsize,
+                  "filesystem_capacity": (filesystem_capacity.snapshot(filesystem_paths)
+                    if filesystem_paths is not None else
+                    {"valid": False, "errors": [filesystem_error], "filesystems": {}}),
                   "host_meminfo": {line.split(":", 1)[0]: line.split(":", 1)[1].strip()
                     for line in _text("/proc/meminfo").splitlines()
                     if line.startswith(("MemAvailable:", "SwapTotal:", "SwapFree:"))},
@@ -118,6 +138,48 @@ def summarize(run_root: Path) -> dict:
     timing_covered = (isinstance(started, (int, float)) and isinstance(elapsed, (int, float)) and
                       len(times) >= 2 and times[0] <= started + 60 and
                       times[-1] >= started + elapsed - 60 and max_gap <= 60)
+    filesystems = [row.get("filesystem_capacity", {}) for row in rows]
+    filesystem_errors, minima = [], {}
+    if not filesystems:
+        filesystem_errors.append("filesystem samples missing")
+    for index, item in enumerate(filesystems):
+        if not isinstance(item, dict) or item.get("valid") is not True:
+            filesystem_errors.append(f"filesystem sample {index} missing or below a limit")
+        elif not isinstance(item.get("filesystems"), dict) or set(item["filesystems"]) != set(filesystem_capacity.LABELS):
+            filesystem_errors.append(f"filesystem sample {index} has incomplete labels")
+    for label in filesystem_capacity.LABELS:
+        values = [item.get("filesystems", {}).get(label, {})
+                  for item in filesystems if isinstance(item, dict) and isinstance(item.get("filesystems"), dict)]
+        if len(values) != len(filesystems) or not values or any(
+                not isinstance(value, dict) or not isinstance(value.get("available_bytes"), int)
+                or not isinstance(value.get("available_inodes"), int)
+                or not isinstance(value.get("device"), int) or not isinstance(value.get("path"), str)
+                or not Path(value["path"]).is_absolute() for value in values):
+            filesystem_errors.append(f"{label} capacity evidence incomplete")
+            continue
+        minima[label] = {"available_bytes": min(v["available_bytes"] for v in values),
+                         "available_inodes": min(v["available_inodes"] for v in values)}
+        if minima[label]["available_bytes"] < filesystem_capacity.MIN_FREE_BYTES:
+            filesystem_errors.append(f"{label} below 15 GiB during run")
+        if minima[label]["available_inodes"] < filesystem_capacity.MIN_FREE_INODES:
+            filesystem_errors.append(f"{label} below {filesystem_capacity.MIN_FREE_INODES} inodes during run")
+        if len({(v["path"], v["device"]) for v in values}) != 1:
+            filesystem_errors.append(f"{label} path or device changed during run")
+    try:
+        preflight = json.loads((run_root / "filesystem_preflight.json").read_text())
+        if preflight.get("valid") is not True or set(preflight.get("filesystems", {})) != set(filesystem_capacity.LABELS):
+            raise ValueError("preflight invalid or incomplete")
+        for label in filesystem_capacity.LABELS:
+            before = preflight["filesystems"][label]
+            values = [item["filesystems"][label] for item in filesystems]
+            if (before["available_bytes"] < filesystem_capacity.MIN_FREE_BYTES
+                    or before["available_inodes"] < filesystem_capacity.MIN_FREE_INODES
+                    or any(value["device"] != before["device"] for value in values)
+                    or (label != "run" and any(value["path"] != before["path"] for value in values))):
+                filesystem_errors.append(f"{label} differs from passing preflight")
+    except (OSError, ValueError, TypeError, KeyError):
+        filesystem_errors.append("passing filesystem preflight evidence missing or invalid")
+    filesystem_valid = not filesystem_errors
     valid = (requested == {"cpus": "8", "ram": "8G"} and bool(cmds)
              and len(expected_ids) == int(provenance.get("guest_count", 0)) > 0
              and None not in expected_ids and expected_ids <= set(cmds)
@@ -128,9 +190,11 @@ def summarize(run_root: Path) -> dict:
                      for cid in expected_ids)
              and all({"MemAvailable", "SwapTotal", "SwapFree"} <= set(row.get("host_meminfo", {}))
                      and bool(row.get("host_io_pressure")) for row in rows)
-             and timing_covered and not any(r.get("sample_error") for r in rows))
+             and timing_covered and filesystem_valid and not any(r.get("sample_error") for r in rows))
     return {"valid": valid, "requested": requested, "actual_qemu_argv": cmds,
             "peak_observed_guests": peak, "samples": len(rows), "timing_covered": timing_covered,
+            "filesystem_capacity_valid": filesystem_valid, "filesystem_minima": minima,
+            "filesystem_capacity_errors": filesystem_errors,
             "max_sample_gap_s": round(max_gap, 3) if times and len(times) >= 2 else None,
             "sample_errors": [r["sample_error"] for r in rows if r.get("sample_error")]}
 

@@ -102,6 +102,14 @@ free_kib=$(df -Pk "$PWD" | awk 'NR==2 {print $4}') || exit 3
 if [[ ! "$free_kib" =~ ^[0-9]+$ ]] || (( free_kib < 15 * 1024 * 1024 )); then
     printf 'NOT_STARTED_LOW_DISK %s\n' "$free_kib" > "$preflight"; exit 3
 fi
+filesystem_preflight="$PWD/audits/three_lite_cases_20261029/${run_id}-filesystems-preflight.json"
+run_parent="$PWD/runs"
+[[ -d "$run_parent" ]] || run_parent="$PWD"
+if ! "$python" -m oscombo.collab.workspace_assembly_lite_v2.filesystem_capacity "$run_parent" --worktree "$PWD" > "$filesystem_preflight"; then
+    printf 'NOT_STARTED_FILESYSTEM_CAPACITY %s\n' "$filesystem_preflight" > "$preflight"; exit 3
+fi
+export CODESK_CASE7_FS_PREFLIGHT="$filesystem_preflight"
+export CODESK_CASE7_WORKTREE="$PWD"
 if ! guests=$(docker ps --filter label=oscombo=1 --format '{{.ID}}' 2>/dev/null); then
     printf 'NOT_STARTED_DOCKER_UNAVAILABLE\n' > "$preflight"; exit 3
 fi
@@ -109,7 +117,7 @@ if [[ -n "$guests" ]]; then printf 'NOT_STARTED_ACTIVE_GUEST\n' > "$preflight"; 
 if ! "$python" -m oscombo.collab.workspace_assembly_lite_v2.preflight > "$preflight"; then
     echo 'NOT_STARTED_INOTIFY_HEADROOM' >> "$preflight"; exit 3
 fi
-printf 'source_commit=%s\nfixture_seed=%s\nfree_kib=%s\nguest_cpus=8\nguest_ram=8G\n' "$commit" "$fixture_seed" "$free_kib" >> "$preflight"
+printf 'source_commit=%s\nfixture_seed=%s\nfree_kib=%s\nfilesystem_preflight=%s\nguest_cpus=8\nguest_ram=8G\n' "$commit" "$fixture_seed" "$free_kib" "$filesystem_preflight" >> "$preflight"
 model_args=()
 credential_value=''
 if (( model )); then

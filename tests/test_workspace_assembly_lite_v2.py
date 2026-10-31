@@ -229,7 +229,7 @@ def test_trace_audit_records_prework_view_and_message_leak_separately(tmp_path):
 
 
 def test_resource_audit_requires_actual_qemu_configuration_and_complete_samples(tmp_path):
-    from oscombo.collab.workspace_assembly_lite_v2 import resource_sampler
+    from oscombo.collab.workspace_assembly_lite_v2 import filesystem_capacity, resource_sampler
     root = tmp_path / "run"
     root.mkdir()
     meta = {"started_at": 0, "guest_resources_requested": {"cpus": "8", "ram": "8G"},
@@ -241,7 +241,15 @@ def test_resource_audit_requires_actual_qemu_configuration_and_complete_samples(
                 "rss_and_io": {"VmRSS": "10 kB", "VmSwap": "0 kB", "read_bytes": "0", "write_bytes": "0"}}
     row = {"guests": [guest("a"), guest("b")],
            "host_meminfo": {"MemAvailable": "9 kB", "SwapTotal": "10 kB", "SwapFree": "9 kB"},
-           "host_io_pressure": "some avg10=0.00"}
+           "host_io_pressure": "some avg10=0.00",
+           "filesystem_capacity": {"valid": True, "filesystems": {
+               label: {"path": f"/{label}", "device": index, "available_bytes": 20 * 1024**3,
+                       "available_inodes": 10000}
+               for index, label in enumerate(filesystem_capacity.LABELS)}}}
+    preflight = json.loads(json.dumps(row["filesystem_capacity"]))
+    # Preflight checks the parent, while live samples check the created run root.
+    preflight["filesystems"]["run"]["path"] = "/run-parent"
+    (root / "filesystem_preflight.json").write_text(json.dumps(preflight))
     samples = root / "resource_samples_v2.jsonl"
     samples.write_text("".join(json.dumps({**row, "time": t}) + "\n" for t in (0, 10)))
     assert resource_sampler.summarize(root)["valid"] is True
@@ -256,6 +264,22 @@ def test_resource_audit_requires_actual_qemu_configuration_and_complete_samples(
     del row["guests"][1]["rss_and_io"]["VmSwap"]
     samples.write_text("".join(json.dumps({**row, "time": t}) + "\n" for t in (0, 10)))
     assert resource_sampler.summarize(root)["valid"] is False
+    row["guests"][1]["rss_and_io"]["VmSwap"] = "0 kB"
+    row["filesystem_capacity"]["filesystems"]["docker_data"]["available_bytes"] = 14 * 1024**3
+    samples.write_text("".join(json.dumps({**row, "time": t}) + "\n" for t in (0, 10)))
+    assert resource_sampler.summarize(root)["filesystem_capacity_valid"] is False
+    row["filesystem_capacity"]["filesystems"]["docker_data"]["available_bytes"] = 20 * 1024**3
+    row["filesystem_capacity"]["filesystems"]["git_common"]["available_inodes"] = 0
+    samples.write_text("".join(json.dumps({**row, "time": t}) + "\n" for t in (0, 10)))
+    assert resource_sampler.summarize(root)["valid"] is False
+    row["filesystem_capacity"]["filesystems"]["git_common"]["available_inodes"] = 10000
+    row["filesystem_capacity"]["filesystems"]["docker_data"]["device"] = 999
+    samples.write_text("".join(json.dumps({**row, "time": t}) + "\n" for t in (0, 10)))
+    assert "docker_data differs from passing preflight" in resource_sampler.summarize(root)["filesystem_capacity_errors"]
+    row["filesystem_capacity"]["filesystems"]["docker_data"]["device"] = 1
+    (root / "filesystem_preflight.json").unlink()
+    samples.write_text("".join(json.dumps({**row, "time": t}) + "\n" for t in (0, 10)))
+    assert "passing filesystem preflight evidence missing or invalid" in resource_sampler.summarize(root)["filesystem_capacity_errors"]
 
 
 def test_metrics_exclude_multiple_waits_and_count_lock_overlaps(tmp_path):
