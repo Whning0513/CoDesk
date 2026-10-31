@@ -30,7 +30,7 @@ revision probe are counted separately. This is not a model execution limit;
 real Guest controls must verify the layout and action counts. The sequential
 scripted control also uses two coordinator `wmctrl` activations between B's
 prework, A's move and B's file open; these are recorded separately and are not
-provided to model Actors. Shared model runs can require additional focus
+provided to model Actors. A scripted control can use one separately recorded Open-button retry if the GTK chooser remains open after path submission; that additional input is outside the 15-input estimate. Shared model runs can require additional focus
 switches. A separate
 optional control modifies/restores A's note via GUI to validate old/new views;
 it is outside the core task path.

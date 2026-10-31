@@ -364,3 +364,28 @@ def test_b_local_tracks_delivered_tag_and_global_tracks_original(tmp_path):
     assert s["actors"]["B"]["global_checks"]["tag_matches_source"] is True
     delivered.write_bytes(b"not a valid inspection tag")
     assert score()["actors"]["B"]["success"] is None
+
+
+def test_case7_scripted_open_retry_is_guarded_and_recorded(tmp_path, monkeypatch):
+    import struct
+    (tmp_path / "screenshots").mkdir()
+    class Guest:
+        title = "Open"
+        def active_window(self): return self.title
+        def screenshot(self, **kwargs): return b"\x89PNG\r\n\x1a\n" + bytes(8) + struct.pack(">II", 1920, 1080)
+    guest = Guest()
+    calls = []
+    def actor(*args, **kwargs):
+        calls.append(args)
+        return {"status": "done", "trace_path": "trace.json"}
+    monkeypatch.setattr(pilot.core, "_run_actor", actor)
+    assert pilot._case7_control_retry_open(guest, tmp_path, "prompt", "case") is True
+    assert "click(1550, 164)" in calls[0][3][0]
+    assert json.loads((tmp_path / "control_B_open_retry.json").read_text())["trace_path"] == "trace.json"
+    guest.title = "other"
+    assert pilot._case7_control_retry_open(guest, tmp_path, "prompt", "case") is False
+    assert len(calls) == 1
+    guest.title = "Open"
+    monkeypatch.setattr(guest, "screenshot", lambda **kwargs: b"bad")
+    with pytest.raises(RuntimeError, match="unknown geometry"):
+        pilot._case7_control_retry_open(guest, tmp_path, "prompt", "case")

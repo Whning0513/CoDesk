@@ -207,6 +207,30 @@ def _restore_closed_case7_writer(guest, path: str, run_id: str) -> bool:
         return True
 
 
+def _case7_control_retry_open(guest, run_root: Path, instruction: str, case_id: str) -> bool:
+    """Retry a still-open GTK file picker once, only for scripted controls."""
+    if (guest.active_window() or "").strip().casefold() != "open":
+        return False
+    import struct
+    shot = guest.screenshot(patience=45)
+    if not shot.startswith(b"\x89PNG\r\n\x1a\n") or struct.unpack(">II", shot[16:24]) != (1920, 1080):
+        raise RuntimeError("cannot safely retry Case 7 Open dialog at unknown geometry")
+    path = run_root / "screenshots" / "control_B_open_retry_before.png"
+    path.write_bytes(shot)
+    # The guest fixture uses the 1920x1080 GTK file picker; this is the green
+    # Open button. The explicit screenshot/action trace keeps the retry visible.
+    result = core._run_actor("B", guest, instruction,
+        ["import pyautogui, time; pyautogui.click(1550, 164); time.sleep(6)", "DONE"],
+        run_root, max_steps=25, case_id=case_id)
+    (run_root / "control_B_open_retry.json").write_text(json.dumps({
+        "reason": "file chooser remained open after path submission",
+        "before_screenshot": str(path.relative_to(run_root)), "trace_path": result.get("trace_path"),
+        "status": result.get("status"), "time": time.time()}, indent=2) + "\n")
+    if result.get("status") != "done":
+        raise RuntimeError("scripted B Open button retry failed")
+    return True
+
+
 def _editor_has_unsaved_buffer(title: str, path: str) -> bool:
     return f"*{Path(path).name}".casefold() in title.casefold()
 
@@ -680,6 +704,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                     scripted.b_read(view_path), run_root, max_steps=25, case_id=spec.CASE_ID)
                 if read["status"] != "done":
                     raise RuntimeError("scripted B peer-view GUI open failed")
+                _case7_control_retry_open(guest_b, run_root, spec.AGENT_B_INSTRUCTION, spec.CASE_ID)
                 title = ""
                 for _ in range(12):
                     title = guest_b.active_window() or ""
