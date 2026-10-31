@@ -1,0 +1,3 @@
+Inspection note for the Aurora supply review.
+Inspection tag: RIVER-27.
+Status: current.

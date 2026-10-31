@@ -1,0 +1,493 @@
+{
+  "case_version": "1.0.2",
+  "freeze_commit": "b09f8c5aba01fcffa67ec5abbdd8888572b6afce",
+  "manual_review_note": "Manual flags are based on preserved action timestamps and screenshots. Automated strict process endpoint is conservative and remains false; see report.",
+  "arms": [
+    {
+      "order": 1,
+      "run_id": "wa-lite-v1p2-isolated-20261031T014933Z-3911287",
+      "condition": "collaborative_isolated",
+      "input_lock": false,
+      "source_commit": "b09f8c5aba01fcffa67ec5abbdd8888572b6afce",
+      "status": "PASS",
+      "oracle": {
+        "A": true,
+        "B": true,
+        "joint": true
+      },
+      "desktop_calls": {
+        "A": 10,
+        "B": 15
+      },
+      "tokens": {
+        "A": 138599,
+        "B": 224956
+      },
+      "model_requests": {
+        "A": 14,
+        "B": 20
+      },
+      "model_http_statuses": {
+        "A": {
+          "200": 14
+        },
+        "B": {
+          "200": 20
+        }
+      },
+      "seconds": {
+        "setup_until_actor": 705.416,
+        "actor_phase": 745.159,
+        "total": 1763.6946897506714,
+        "actor_active_overlap_excluding_wait": 66.912,
+        "B_handoff_wait": 225.108,
+        "GUI_actions_A": 36.207,
+        "GUI_actions_B": 49.571,
+        "screenshots_A": 41.211,
+        "screenshots_B": 65.336,
+        "model_request_overlap": 40.563
+      },
+      "resources": {
+        "qemu_peak_sum_rss_gib": 9.486,
+        "qemu_sampled_cpu_delta_s": 7784.93,
+        "guest_peak": 2
+      },
+      "lock": {
+        "A": {
+          "executed_gui_actions": 8,
+          "locked_actions": 0,
+          "unlocked_actions": 8,
+          "wait_s": 0,
+          "held_s": 0,
+          "max_wait_s": 0
+        },
+        "B": {
+          "executed_gui_actions": 10,
+          "locked_actions": 0,
+          "unlocked_actions": 10,
+          "wait_s": 0,
+          "held_s": 0,
+          "max_wait_s": 0
+        }
+      },
+      "reopen_same_bytes": true,
+      "reset_clean": true,
+      "workspace_verified": true,
+      "workspace_errors": [],
+      "A_revision": 1,
+      "B_revision": 1,
+      "A_sha256": "4b18022a28c6ed4af5a476469c9f796514fab91711645c53bcba576fbe4b3595",
+      "B_sha256": "6409db1f727e8f275482cb44ea6ba54f21f1158587b933aa45bc6298606c8181",
+      "strict_automated_v1p2_process": false,
+      "manual_B_independent_GUI_open": true,
+      "B_saw_A_delivered_content_in_shared_GUI": false,
+      "B_initial_ctrl_o_misrouted_to_A_gedit": false,
+      "B_GUI_path_candidate": true
+    },
+    {
+      "order": 2,
+      "run_id": "wa-lite-v1p2-shared-20261031T022055Z-3972516",
+      "condition": "collaborative_shared",
+      "input_lock": false,
+      "source_commit": "b09f8c5aba01fcffa67ec5abbdd8888572b6afce",
+      "status": "PASS",
+      "oracle": {
+        "A": true,
+        "B": true,
+        "joint": true
+      },
+      "desktop_calls": {
+        "A": 11,
+        "B": 11
+      },
+      "tokens": {
+        "A": 133765,
+        "B": 175760
+      },
+      "model_requests": {
+        "A": 13,
+        "B": 18
+      },
+      "model_http_statuses": {
+        "A": {
+          "200": 13
+        },
+        "B": {
+          "200": 18
+        }
+      },
+      "seconds": {
+        "setup_until_actor": 345.566,
+        "actor_phase": 586.117,
+        "total": 1157.5938029289246,
+        "actor_active_overlap_excluding_wait": 53.946,
+        "B_handoff_wait": 220.073,
+        "GUI_actions_A": 33.568,
+        "GUI_actions_B": 41.433,
+        "screenshots_A": 45.072,
+        "screenshots_B": 45.17,
+        "model_request_overlap": 31.811
+      },
+      "resources": {
+        "qemu_peak_sum_rss_gib": 4.932,
+        "qemu_sampled_cpu_delta_s": 3338.47,
+        "guest_peak": 1
+      },
+      "lock": {
+        "A": {
+          "executed_gui_actions": 8,
+          "locked_actions": 0,
+          "unlocked_actions": 8,
+          "wait_s": 0,
+          "held_s": 0,
+          "max_wait_s": 0
+        },
+        "B": {
+          "executed_gui_actions": 9,
+          "locked_actions": 0,
+          "unlocked_actions": 9,
+          "wait_s": 0,
+          "held_s": 0,
+          "max_wait_s": 0
+        }
+      },
+      "reopen_same_bytes": true,
+      "reset_clean": true,
+      "workspace_verified": true,
+      "workspace_errors": [],
+      "A_revision": 1,
+      "B_revision": 1,
+      "A_sha256": "4b18022a28c6ed4af5a476469c9f796514fab91711645c53bcba576fbe4b3595",
+      "B_sha256": "58733c9ae2a98f3cc15d74972f4c8d59c9eabab996b0607c5a52c4b4f3d72cc9",
+      "strict_automated_v1p2_process": false,
+      "manual_B_independent_GUI_open": false,
+      "B_saw_A_delivered_content_in_shared_GUI": true,
+      "B_initial_ctrl_o_misrouted_to_A_gedit": true,
+      "B_GUI_path_candidate": false
+    },
+    {
+      "order": 3,
+      "run_id": "wa-lite-v1p2-shared_lock-20261031T024037Z-4015653",
+      "condition": "collaborative_shared",
+      "input_lock": true,
+      "source_commit": "b09f8c5aba01fcffa67ec5abbdd8888572b6afce",
+      "status": "PASS",
+      "oracle": {
+        "A": true,
+        "B": true,
+        "joint": true
+      },
+      "desktop_calls": {
+        "A": 11,
+        "B": 24
+      },
+      "tokens": {
+        "A": 141198,
+        "B": 532441
+      },
+      "model_requests": {
+        "A": 14,
+        "B": 32
+      },
+      "model_http_statuses": {
+        "A": {
+          "200": 14
+        },
+        "B": {
+          "200": 32
+        }
+      },
+      "seconds": {
+        "setup_until_actor": 364.484,
+        "actor_phase": 1083.249,
+        "total": 1657.5858433246613,
+        "actor_active_overlap_excluding_wait": 66.855,
+        "B_handoff_wait": 239.169,
+        "GUI_actions_A": 40.246,
+        "GUI_actions_B": 105.062,
+        "screenshots_A": 43.894,
+        "screenshots_B": 98.505,
+        "model_request_overlap": 37.142
+      },
+      "resources": {
+        "qemu_peak_sum_rss_gib": 5.012,
+        "qemu_sampled_cpu_delta_s": 4508.86,
+        "guest_peak": 1
+      },
+      "lock": {
+        "A": {
+          "executed_gui_actions": 9,
+          "locked_actions": 9,
+          "unlocked_actions": 0,
+          "wait_s": 0.0,
+          "held_s": 65.361,
+          "max_wait_s": 0.0
+        },
+        "B": {
+          "executed_gui_actions": 22,
+          "locked_actions": 22,
+          "unlocked_actions": 0,
+          "wait_s": 0.001,
+          "held_s": 166.438,
+          "max_wait_s": 0.0
+        }
+      },
+      "reopen_same_bytes": true,
+      "reset_clean": true,
+      "workspace_verified": true,
+      "workspace_errors": [],
+      "A_revision": 1,
+      "B_revision": 1,
+      "A_sha256": "4b18022a28c6ed4af5a476469c9f796514fab91711645c53bcba576fbe4b3595",
+      "B_sha256": "107b21053de5eda049c0379e336928777846c10abd103bb24c06c2176a821015",
+      "strict_automated_v1p2_process": false,
+      "manual_B_independent_GUI_open": false,
+      "B_saw_A_delivered_content_in_shared_GUI": true,
+      "B_initial_ctrl_o_misrouted_to_A_gedit": false,
+      "B_GUI_path_candidate": false
+    },
+    {
+      "order": 4,
+      "run_id": "wa-lite-v1p2-shared_lock-20261031T030848Z-4062373",
+      "condition": "collaborative_shared",
+      "input_lock": true,
+      "source_commit": "b09f8c5aba01fcffa67ec5abbdd8888572b6afce",
+      "status": "PASS",
+      "oracle": {
+        "A": true,
+        "B": true,
+        "joint": true
+      },
+      "desktop_calls": {
+        "A": 10,
+        "B": 13
+      },
+      "tokens": {
+        "A": 123044,
+        "B": 207059
+      },
+      "model_requests": {
+        "A": 13,
+        "B": 19
+      },
+      "model_http_statuses": {
+        "A": {
+          "200": 13
+        },
+        "B": {
+          "200": 19
+        }
+      },
+      "seconds": {
+        "setup_until_actor": 343.285,
+        "actor_phase": 593.392,
+        "total": 1130.3603920936584,
+        "actor_active_overlap_excluding_wait": 54.846,
+        "B_handoff_wait": 219.177,
+        "GUI_actions_A": 34.844,
+        "GUI_actions_B": 43.701,
+        "screenshots_A": 38.691,
+        "screenshots_B": 55.43,
+        "model_request_overlap": 31.389
+      },
+      "resources": {
+        "qemu_peak_sum_rss_gib": 5.0,
+        "qemu_sampled_cpu_delta_s": 3701.86,
+        "guest_peak": 1
+      },
+      "lock": {
+        "A": {
+          "executed_gui_actions": 8,
+          "locked_actions": 8,
+          "unlocked_actions": 0,
+          "wait_s": 0.0,
+          "held_s": 55.991,
+          "max_wait_s": 0.0
+        },
+        "B": {
+          "executed_gui_actions": 10,
+          "locked_actions": 10,
+          "unlocked_actions": 0,
+          "wait_s": 0.0,
+          "held_s": 71.948,
+          "max_wait_s": 0.0
+        }
+      },
+      "reopen_same_bytes": true,
+      "reset_clean": true,
+      "workspace_verified": true,
+      "workspace_errors": [],
+      "A_revision": 1,
+      "B_revision": 1,
+      "A_sha256": "4b18022a28c6ed4af5a476469c9f796514fab91711645c53bcba576fbe4b3595",
+      "B_sha256": "416934c525f3d16b02b06eb3b7ac9a78dfdd587ef2c03c5bda511e565ff0c327",
+      "strict_automated_v1p2_process": false,
+      "manual_B_independent_GUI_open": false,
+      "B_saw_A_delivered_content_in_shared_GUI": true,
+      "B_initial_ctrl_o_misrouted_to_A_gedit": true,
+      "B_GUI_path_candidate": false
+    },
+    {
+      "order": 5,
+      "run_id": "wa-lite-v1p2-shared-20261031T032829Z-4096679",
+      "condition": "collaborative_shared",
+      "input_lock": false,
+      "source_commit": "b09f8c5aba01fcffa67ec5abbdd8888572b6afce",
+      "status": "PASS",
+      "oracle": {
+        "A": true,
+        "B": true,
+        "joint": true
+      },
+      "desktop_calls": {
+        "A": 10,
+        "B": 8
+      },
+      "tokens": {
+        "A": 139447,
+        "B": 121076
+      },
+      "model_requests": {
+        "A": 14,
+        "B": 15
+      },
+      "model_http_statuses": {
+        "A": {
+          "200": 14
+        },
+        "B": {
+          "200": 15
+        }
+      },
+      "seconds": {
+        "setup_until_actor": 343.811,
+        "actor_phase": 488.089,
+        "total": 1055.5170483589172,
+        "actor_active_overlap_excluding_wait": 53.968,
+        "B_handoff_wait": 214.05,
+        "GUI_actions_A": 36.54,
+        "GUI_actions_B": 23.752,
+        "screenshots_A": 40.561,
+        "screenshots_B": 35.934,
+        "model_request_overlap": 29.454
+      },
+      "resources": {
+        "qemu_peak_sum_rss_gib": 4.863,
+        "qemu_sampled_cpu_delta_s": 3182.6,
+        "guest_peak": 1
+      },
+      "lock": {
+        "A": {
+          "executed_gui_actions": 8,
+          "locked_actions": 0,
+          "unlocked_actions": 8,
+          "wait_s": 0,
+          "held_s": 0,
+          "max_wait_s": 0
+        },
+        "B": {
+          "executed_gui_actions": 5,
+          "locked_actions": 0,
+          "unlocked_actions": 5,
+          "wait_s": 0,
+          "held_s": 0,
+          "max_wait_s": 0
+        }
+      },
+      "reopen_same_bytes": true,
+      "reset_clean": true,
+      "workspace_verified": true,
+      "workspace_errors": [],
+      "A_revision": 1,
+      "B_revision": 1,
+      "A_sha256": "4b18022a28c6ed4af5a476469c9f796514fab91711645c53bcba576fbe4b3595",
+      "B_sha256": "ba638ecee0ea21852756ca22bbe6222570ef06319966414050f3264f749e5dc2",
+      "strict_automated_v1p2_process": false,
+      "manual_B_independent_GUI_open": false,
+      "B_saw_A_delivered_content_in_shared_GUI": true,
+      "B_initial_ctrl_o_misrouted_to_A_gedit": false,
+      "B_GUI_path_candidate": false
+    },
+    {
+      "order": 6,
+      "run_id": "wa-lite-v1p2-isolated-20261031T034644Z-4127906",
+      "condition": "collaborative_isolated",
+      "input_lock": false,
+      "source_commit": "b09f8c5aba01fcffa67ec5abbdd8888572b6afce",
+      "status": "PASS",
+      "oracle": {
+        "A": true,
+        "B": true,
+        "joint": true
+      },
+      "desktop_calls": {
+        "A": 9,
+        "B": 17
+      },
+      "tokens": {
+        "A": 93761,
+        "B": 231398
+      },
+      "model_requests": {
+        "A": 11,
+        "B": 19
+      },
+      "model_http_statuses": {
+        "A": {
+          "200": 11
+        },
+        "B": {
+          "200": 19
+        }
+      },
+      "seconds": {
+        "setup_until_actor": 588.903,
+        "actor_phase": 670.375,
+        "total": 1570.2261893749237,
+        "actor_active_overlap_excluding_wait": 49.686,
+        "B_handoff_wait": 270.334,
+        "GUI_actions_A": 32.225,
+        "GUI_actions_B": 36.697,
+        "screenshots_A": 35.811,
+        "screenshots_B": 57.356,
+        "model_request_overlap": 37.407
+      },
+      "resources": {
+        "qemu_peak_sum_rss_gib": 9.296,
+        "qemu_sampled_cpu_delta_s": 11842.38,
+        "guest_peak": 2
+      },
+      "lock": {
+        "A": {
+          "executed_gui_actions": 7,
+          "locked_actions": 0,
+          "unlocked_actions": 7,
+          "wait_s": 0,
+          "held_s": 0,
+          "max_wait_s": 0
+        },
+        "B": {
+          "executed_gui_actions": 12,
+          "locked_actions": 0,
+          "unlocked_actions": 12,
+          "wait_s": 0,
+          "held_s": 0,
+          "max_wait_s": 0
+        }
+      },
+      "reopen_same_bytes": true,
+      "reset_clean": true,
+      "workspace_verified": true,
+      "workspace_errors": [],
+      "A_revision": 1,
+      "B_revision": 1,
+      "A_sha256": "4b18022a28c6ed4af5a476469c9f796514fab91711645c53bcba576fbe4b3595",
+      "B_sha256": "19e7cad71cea3f2d7b4f851765bfb81d16a321358d1621bbd9e1d8a3f3a49ba2",
+      "strict_automated_v1p2_process": false,
+      "manual_B_independent_GUI_open": true,
+      "B_saw_A_delivered_content_in_shared_GUI": false,
+      "B_initial_ctrl_o_misrouted_to_A_gedit": false,
+      "B_GUI_path_candidate": true
+    }
+  ]
+}

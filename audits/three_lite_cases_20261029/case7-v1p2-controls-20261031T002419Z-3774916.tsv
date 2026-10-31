@@ -1,0 +1,4 @@
+control	condition	run_id	exit_code	status	verdict	free_kib	active_guest_count
+positive	isolated	wa-lite-v1p2-scripted-positive-isolated-20261031T002419Z-3774916	0	PASS	EXPECTED	17981120	0
+negative	shared	wa-lite-v1p2-scripted-negative-shared-20261031T002419Z-3774916	2	FAIL	EXPECTED	17967452	0
+negative	isolated	wa-lite-v1p2-scripted-negative-isolated-20261031T002419Z-3774916	2	FAIL	EXPECTED	17957668	0
