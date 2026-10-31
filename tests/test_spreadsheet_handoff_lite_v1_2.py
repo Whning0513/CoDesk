@@ -14,6 +14,7 @@ from oscombo.collab.data_to_deck.live_pilot import (
     _workspace_sync_audit, _spreadsheet_lite_v1_2_forecast_actions,
     _spreadsheet_lite_v1_2_prepare_actions, _spreadsheet_lite_v1_2_open_view_actions,
     _spreadsheet_lite_v1_2_order_actions,
+    _calc_grid_frame_ready,
 )
 from oscombo.collab.spreadsheet_handoff_lite_v1_2 import fixtures, oracle, spec
 from oscombo.collab.spreadsheet_handoff_lite_v1_2 import live_pilot
@@ -25,6 +26,25 @@ from oscombo.collab.spreadsheet_handoff_lite_v1_2.verify_controls import verify 
 from oscombo.collab.spreadsheet_handoff_lite_v1_2.verify_pilot import verify as verify_pilot
 from oscombo.collab.spreadsheet_handoff_lite_v1_2.guard_prior import check as guard_prior
 from oscombo.collab.spreadsheet_handoff_lite_v1_2.private.gold import expected_plan, write_gold
+
+
+def test_calc_grid_gate_rejects_loading_frame():
+    import io
+    from PIL import Image, ImageDraw
+    def png(image):
+        stream = io.BytesIO()
+        image.save(stream, format="PNG")
+        return stream.getvalue()
+    frame = Image.new("RGB", (1920, 1080), "white")
+    assert not _calc_grid_frame_ready(png(frame))
+    draw = ImageDraw.Draw(frame)
+    for x in range(140, 1500, 140):
+        draw.line((x, 350, x, 850), fill="gray")
+    for y in range(360, 850, 20):
+        draw.line((120, y, 1500, y), fill="gray")
+    assert not _calc_grid_frame_ready(png(frame))  # grid without painted title
+    draw.rectangle((800, 36, 880, 45), fill="black")
+    assert _calc_grid_frame_ready(png(frame))
 
 
 def _case(tmp_path):

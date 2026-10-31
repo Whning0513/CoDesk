@@ -551,6 +551,46 @@ def _office_frame_ready(png: bytes) -> bool:
         return sum(toolbar.histogram()[180:]) / (toolbar.width * toolbar.height) > 0.5
 
 
+def _calc_grid_frame_ready(png: bytes) -> bool:
+    """Identify painted Calc grid and title ink; a white loading frame is not ready."""
+    from PIL import Image
+    with Image.open(io.BytesIO(png)) as frame:
+        if frame.size != (1920, 1080):
+            return False
+        img = frame.convert("L")
+        px = img.load()
+        horizontal = sum(sum(px[x, y] < 230 for x in range(120, 1500, 4)) > 240
+                         for y in range(350, 850))
+        vertical = sum(sum(px[x, y] < 230 for y in range(350, 850, 4)) > 80
+                       for x in range(120, 1500))
+        title_ink = sum(px[x, y] < 100 for x in range(700, 1200, 2) for y in range(32, 58, 2))
+        return horizontal >= 5 and vertical >= 5 and title_ink >= 20
+
+
+def _capture_scripted_calc_view(guest: LoggedGuest, expected: str, phase: str) -> bytes:
+    """Observe a GUI-opened revision, without injecting input or affecting model runs."""
+    deadline = time.monotonic() + 180
+    consecutive = 0
+    attempt = 0
+    started = time.time()
+    while time.monotonic() < deadline:
+        attempt += 1
+        shot = guest.screenshot(patience=45)
+        active = guest.active_window() or ""
+        ready = Path(expected).name.casefold() in active.casefold() and _calc_grid_frame_ready(shot)
+        out = guest.root / "screenshots" / f"{phase}-candidate-{attempt:03d}.png"
+        out.write_bytes(shot)
+        _append(guest.root / "observations.jsonl", {"actor": "system", "guest_key": guest.guest_key,
+            "time_utc": _stamp(), "phase": phase, "expected_document": Path(expected).name,
+            "active_window": active, "ready_frame": ready, "screenshot": str(out.relative_to(guest.root)),
+            "elapsed_since_wait_start_s": round(time.time() - started, 3), "atomic": False})
+        consecutive = consecutive + 1 if ready else 0
+        if consecutive >= 2:
+            return shot
+        time.sleep(3)
+    raise RuntimeError(f"scripted Calc revision did not render a stable grid: {expected!r}")
+
+
 def _launch(guest: LoggedGuest, application: str, path: str, log: str, readonly: bool = False) -> None:
     title_hint = Path(path).name
     cmd = (f"mkdir -p {shlex.quote(str(Path(log).parent))}; "
@@ -1432,7 +1472,7 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
             if stale_view["status"] != "done" or Path(seed_path).name not in (guest_b.active_window() or ""):
                 raise RuntimeError("Spreadsheet Lite v1.2 stale revision did not open in Calc")
             stale_shot = run_root / "screenshots" / "scripted-stale-forecast-view.png"
-            stale_shot.write_bytes(guest_b.screenshot(patience=45))
+            stale_shot.write_bytes(_capture_scripted_calc_view(guest_b, seed_path, "scripted-stale-view"))
             (run_root / "scripted_stale_view.json").write_text(json.dumps({
                 "peer_view_path": seed_view, "revision": seed["revision"], "sha256": seed["sha256"],
                 "latest_revision": delivered["revision"], "latest_sha256": delivered["sha256"],
@@ -1446,7 +1486,7 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
             if viewed["status"] != "done" or Path(view_path).name not in (guest_b.active_window() or ""):
                 raise RuntimeError("Spreadsheet Lite v1.2 peer revision did not open in Calc")
             view_shot = run_root / "screenshots" / "scripted-peer-forecast-view.png"
-            view_shot.write_bytes(guest_b.screenshot(patience=45))
+            view_shot.write_bytes(_capture_scripted_calc_view(guest_b, view_path, "scripted-peer-view"))
             (run_root / "scripted_peer_view.json").write_text(json.dumps({
                 "peer_view_path": relative_view, "revision": delivered["revision"],
                 "sha256": delivered["sha256"], "active_window": guest_b.active_window(),
