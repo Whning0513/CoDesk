@@ -1,0 +1,50 @@
+{
+  "guests": [
+    {
+      "base_image": {
+        "Destination": "/System.qcow2",
+        "Mode": "ro",
+        "Propagation": "rprivate",
+        "RW": false,
+        "Source": "/data3/whn/Project2/images/osworld-v2-ubuntu-x86.qcow2",
+        "Type": "bind"
+      },
+      "container_id": "5e82e248610ef1e9317a412a76ebc3204af6469d13c6f6488b48c9d18c6389be",
+      "created_utc": "2026-10-31T08:56:34.050803+00:00",
+      "key": "A",
+      "labels": {
+        "org.opencontainers.image.ref.name": "ubuntu",
+        "org.opencontainers.image.version": "22.04",
+        "oscombo": "1",
+        "oscombo.run": "case5-dual-system-health-20261031T085432Z"
+      },
+      "overlay_path": "/data3/whn/Project2/CoDesk-case5/runs/case5-dual-system-health-20261031T085432Z/overlay/A/osworld-0b4ea7c56dcf42fa955e36ce1375a605.qcow2",
+      "readiness_latency_s": 120.21
+    },
+    {
+      "base_image": {
+        "Destination": "/System.qcow2",
+        "Mode": "ro",
+        "Propagation": "rprivate",
+        "RW": false,
+        "Source": "/data3/whn/Project2/images/osworld-v2-ubuntu-x86.qcow2",
+        "Type": "bind"
+      },
+      "container_id": "bf57a8d2c38e8fa22ab5b54d3fade362b0607c686531cdf7cc642503446cb528",
+      "created_utc": "2026-10-31T09:01:42.191779+00:00",
+      "key": "B",
+      "labels": {
+        "org.opencontainers.image.ref.name": "ubuntu",
+        "org.opencontainers.image.version": "22.04",
+        "oscombo": "1",
+        "oscombo.run": "case5-dual-system-health-20261031T085432Z"
+      },
+      "overlay_path": "/data3/whn/Project2/CoDesk-case5/runs/case5-dual-system-health-20261031T085432Z/overlay/B/osworld-f7f1cd3f46874ca6b8a885e74b1f41f2.qcow2",
+      "readiness_latency_s": 123.77
+    }
+  ],
+  "kind": "dual_system_screenshot_control",
+  "model_called": false,
+  "run_id": "case5-dual-system-health-20261031T085432Z",
+  "started_at": 1793436872.3870435
+}

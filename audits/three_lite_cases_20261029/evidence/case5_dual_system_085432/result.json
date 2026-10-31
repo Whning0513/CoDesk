@@ -1,0 +1,74 @@
+{
+  "cleanup": [
+    {
+      "container_id": "8ab27a9cc4978dea435a03746bbbf6439ddaffec57f38fe3d14aadcac92cf369",
+      "removed": true
+    },
+    {
+      "container_id": "3f272def7bb30725c53bcbb0ca4b32fcc257fb2c7c98c697f5a0881ba93e9915",
+      "removed": true
+    }
+  ],
+  "cleanup_complete": true,
+  "elapsed_s": 1305.547,
+  "inotify_after": {
+    "allocated": 2,
+    "errno": 28,
+    "error_name": "ENOSPC",
+    "max_user_watches": 65536,
+    "requested": 64
+  },
+  "inotify_before": {
+    "allocated": 2,
+    "errno": 28,
+    "error_name": "ENOSPC",
+    "max_user_watches": 65536,
+    "requested": 64
+  },
+  "model_called": false,
+  "reset": [
+    {
+      "guest": "A",
+      "labels": {
+        "org.opencontainers.image.ref.name": "ubuntu",
+        "org.opencontainers.image.version": "22.04",
+        "oscombo": "1",
+        "oscombo.run": "case5-dual-system-health-20261031T085432Z"
+      },
+      "new": "3f272def7bb30725c53bcbb0ca4b32fcc257fb2c7c98c697f5a0881ba93e9915",
+      "old": "5e82e248610ef1e9317a412a76ebc3204af6469d13c6f6488b48c9d18c6389be",
+      "workspace_clean": true
+    },
+    {
+      "guest": "B",
+      "labels": {
+        "org.opencontainers.image.ref.name": "ubuntu",
+        "org.opencontainers.image.version": "22.04",
+        "oscombo": "1",
+        "oscombo.run": "case5-dual-system-health-20261031T085432Z"
+      },
+      "new": "8ab27a9cc4978dea435a03746bbbf6439ddaffec57f38fe3d14aadcac92cf369",
+      "old": "bf57a8d2c38e8fa22ab5b54d3fade362b0607c686531cdf7cc642503446cb528",
+      "workspace_clean": true
+    }
+  ],
+  "run_id": "case5-dual-system-health-20261031T085432Z",
+  "screenshot_control": {
+    "A": {
+      "guest": "A",
+      "path": "screenshots/A-system-001.png",
+      "role": "system",
+      "sha256": "1f5c23a3ccee0e640892268d4557bf7c35dd6c9d3505d9a9c5c31852349e437f"
+    },
+    "B": {
+      "guest": "B",
+      "path": "screenshots/B-system-001.png",
+      "role": "system",
+      "sha256_after_A": "6a9d9c3a1a2a04bd5cf7690c8949267891405b74a2a0f73629f60064b007d88e",
+      "sha256_before_A": "6a9d9c3a1a2a04bd5cf7690c8949267891405b74a2a0f73629f60064b007d88e"
+    },
+    "B_unchanged_after_A": true,
+    "paths_distinct": true
+  },
+  "status": "PASS"
+}
