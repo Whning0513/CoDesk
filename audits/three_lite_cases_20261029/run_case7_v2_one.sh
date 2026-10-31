@@ -81,7 +81,20 @@ if x.get('round_fixture_sha256',{}).get(sys.argv[3]) != manifest['fixture_sha256
 PY
 fi
 stamp="$(date -u +%Y%m%dT%H%M%SZ)-$$"
-run_id="wa-lite-v2-${mode}${round:+-$round}-${stamp}"
+run_id="${CODESK_CASE7_V2_RUN_ID:-wa-lite-v2-${mode}${round:+-$round}-${stamp}}"
+if [[ ! "$run_id" =~ ^wa-lite-v2-[a-zA-Z0-9_.-]+$ || -e "$PWD/runs/$run_id" ]]; then
+    echo 'Unsafe or already-used run ID' >&2; exit 3
+fi
+if [[ "$mode" == isolated || "$mode" == shared || "$mode" == shared_lock ]]; then
+    campaign_state="${CODESK_CASE7_V2_CAMPAIGN_STATE:-}"
+    if [[ ! -f "$campaign_state" ]]; then echo 'Formal run requires a campaign reservation' >&2; exit 3; fi
+    "$python" - "$campaign_state" "$freeze" "$run_id" "$round" "$mode" <<'PY' || exit 3
+import sys
+from pathlib import Path
+from oscombo.collab.workspace_assembly_lite_v2.campaign import verify_reservation
+verify_reservation(Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3], sys.argv[4], sys.argv[5])
+PY
+fi
 run_root="$PWD/runs/$run_id"
 log="$PWD/audits/three_lite_cases_20261029/${run_id}-driver.log"
 preflight="$PWD/audits/three_lite_cases_20261029/${run_id}-preflight.txt"
@@ -139,7 +152,7 @@ from pathlib import Path
 p=Path(sys.argv[1]); result=json.loads(p.read_text())
 result['pre_resource_status']=result.get('status')
 result['status']='INVALID_INFRA_OR_RUNNER_ERROR'
-result['resource_audit_error']=sys.argv[2]
+result['infrastructure_audit_error']=sys.argv[2]
 tmp=p.with_suffix('.json.tmp'); tmp.write_text(json.dumps(result,indent=2,sort_keys=True)+'\n'); tmp.replace(p)
 PY
     fi
@@ -166,6 +179,12 @@ else
     exit 3
 fi
 if (( model )) && [[ "$exit_code" == 0 || "$exit_code" == 2 ]]; then
+    if ! "$python" -m oscombo.collab.workspace_assembly_lite_v2.contract "$run_root" \
+        > "${log%.log}-contract-audit.log" 2>&1; then
+        mark_resource_invalid 'model transport or Actor tool contract could not be verified'
+        echo 'Model transport/tool boundary invalid; preserve this attempt as infrastructure review' >&2
+        exit 3
+    fi
     if ! "$python" -m oscombo.collab.workspace_assembly_lite_v2.analyze "$run_root" \
         > "${log%.log}-metrics.log" 2>&1; then
         mark_resource_invalid 'model timing/usage/lock metrics could not be reconstructed'

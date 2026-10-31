@@ -22,12 +22,16 @@ original output is writable. The model harness does not open a view for B.
 
 The task setup selects the sole incoming file and places B's Writer caret in
 an empty final paragraph, identically in both topologies, before either model
-starts. No inspection tag is prefilled. The scripted task path contains 14
+starts. No inspection tag is prefilled. The scripted task path contains 15
 physical GUI inputs when a hotkey chord and a typed string each count as one:
-5 A move inputs, 2 B prework, 3 B open/read and 4 B finish. These are grouped
+5 A move inputs, 2 B prework, 4 B open/read and 4 B finish. These are grouped
 into 11 pyautogui calls; setup, screenshots, messages, sleeps and the optional
 revision probe are counted separately. This is not a model execution limit;
-real Guest controls must verify the layout and action counts. A separate
+real Guest controls must verify the layout and action counts. The sequential
+scripted control also uses two coordinator `wmctrl` activations between B's
+prework, A's move and B's file open; these are recorded separately and are not
+provided to model Actors. Shared model runs can require additional focus
+switches. A separate
 optional control modifies/restores A's note via GUI to validate old/new views;
 it is outside the core task path.
 

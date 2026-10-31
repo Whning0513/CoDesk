@@ -34,7 +34,7 @@ change focus, lock or task semantics for a particular condition.
    view files persist with their own correct SHA and 0444 mode, A's original is
    writable, the final original bytes and Oracle pass, B GUI reads the final
    view, and reopen/reset complete. These extra diagnostic actions are outside
-   the 14-input task critical path and never run for model Actors.
+   the 15-input task critical path and never run for model Actors.
 3. One Isolated concurrent model Pilot, 12 desktop calls and 600 active seconds
    per role. Inspect actual tool use, timestamps, GUI and peer view, raw messages,
    sync history, Oracle, reopen and reset. Keep an ordinary task failure; repair
@@ -72,3 +72,28 @@ unresolved validation retry occurred, mark the episode infrastructure review
 required even if a later final sync succeeds. A same-user 0444 view is an
 accidental-write guard, not role-level isolation; Shared's writable A source
 remains visible under the common Ubuntu user.
+
+## Launch and recovery controls
+
+`audits/three_lite_cases_20261029/run_case7_v2_one.sh` runs one control or
+Pilot after its preflight. Once six controls, their manual screenshot review,
+and the Pilot review are available, `python -m
+oscombo.collab.workspace_assembly_lite_v2.freeze` requires explicit paths to
+all evidence and creates a new, non-overwriting freeze record. It independently
+checks the saved artifact Oracle, fixture hashes, public messages, revision
+chronology, reopens/resets, QEMU resource audit and Pilot tool contract. Its
+usage is shown by `--help`; it is not a substitute for the required visual
+review.
+
+Formal arms must use `python -m oscombo.collab.workspace_assembly_lite_v2.campaign
+--freeze <freeze.json> --state <campaign.json>`. The scheduler reserves only
+the next listed slot, refuses simultaneous schedulers with a file lock, and
+retains valid FAILs instead of retrying them. `--all` continues in order; the
+default runs one slot so the coordinator can reschedule shared resources.
+A not-started preflight can be retried in its same slot. An infrastructure-invalid
+attempt stops the campaign; resuming requires a recorded review identifying the
+attempt and passing current positive/negative controls in both topologies.
+A source change invalidates the freeze and requires fresh controls and a new
+campaign. A still-`RUNNING` record after coordinator interruption is never
+implicitly retried: inspect the exact run/process, preserve evidence and resolve
+it explicitly before creating any replacement. No score determines a rerun.

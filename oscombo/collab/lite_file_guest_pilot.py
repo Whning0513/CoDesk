@@ -537,10 +537,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
             }
             for role in "AB":
                 if case == "workspace_assembly_v2":
-                    instructions[role] += ("\nAfter saving, use publish_saved_artifact and send_message; "
-                        "use list_saved_artifacts/read_messages for handoff. The peer_view_path in "
-                        "the published revision is relative to the task root. B reads that view "
-                        "without editing it. Perform task edits only through GUI applications.")
+                    instructions[role] = spec.model_instruction(role)
                 else:
                     instructions[role] += ("\nSaved outputs are versioned and copied to the same paths on both desktops. "
                                           "After saving, use publish_saved_artifact and send_message; "
@@ -667,7 +664,12 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                     scripted.b_read(view_path), run_root, max_steps=25, case_id=spec.CASE_ID)
                 if read["status"] != "done":
                     raise RuntimeError("scripted B peer-view GUI open failed")
-                title = guest_b.active_window() or ""
+                title = ""
+                for _ in range(12):
+                    title = guest_b.active_window() or ""
+                    if Path(view_path).name.casefold() in title.casefold() and "read-only" in title.casefold():
+                        break
+                    time.sleep(5)
                 screenshot = run_root / "screenshots" / "control_B_peer_view.png"
                 screenshot.write_bytes(guest_b.screenshot(patience=45))
                 if Path(view_path).name.casefold() not in title.casefold() or "read-only" not in title.casefold():
@@ -754,6 +756,8 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 fixture / spec.FIXTURE_NAMES["report"],
                 run_root / "artifacts/B" / Path(b_path).name)
         (run_root / "oracle.json").write_text(json.dumps(score, indent=2, sort_keys=True) + "\n")
+        oracle_fixture_valid = not (case == "workspace_assembly_v2" and
+                                    (score.get("invalid_fixture") or score.get("invalid_scorer")))
         browser_trace = _browser_trace_audit(run_root) if case == "build_verify" else None
         process_audit = None
         if case == "workspace_assembly_v2" and model:
@@ -836,15 +840,17 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
         (run_root / "reset_evidence.json").write_text(json.dumps(reset_evidence, indent=2) + "\n")
         result = {"run_id": run_id, "case_id": spec.CASE_ID, "condition": condition,
                   "model": model, "actor_results": outcomes, "oracle": score,
-                  "browser_trace_audit": browser_trace, "behavioral_audit": process_audit,
+                  "browser_trace_audit": browser_trace,
                   "artifact_manifest": artifacts, "reopen": reopen,
                   "reopen_complete": reopen_complete,
                   "postscore_lifecycle_ok": postscore_lifecycle_ok,
-                  "bridge_valid": bridge_valid,
                   "reset": reset_evidence, "elapsed_s": time.time() - metadata["started_at"],
                   "status": core._episode_result_status(score["joint_success"] and
                       (browser_trace is None or browser_trace["browser_one_visible_row_after_handoff"]),
-                      postscore_lifecycle_ok and bridge_valid, outcomes, bool(model))}
+                      postscore_lifecycle_ok and bridge_valid and oracle_fixture_valid, outcomes, bool(model))}
+        if case == "workspace_assembly_v2":
+            result.update({"behavioral_audit": process_audit, "bridge_valid": bridge_valid,
+                           "oracle_fixture_valid": oracle_fixture_valid})
         (run_root / "result.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
         return result
     finally:
