@@ -140,18 +140,32 @@ class SavedArtifactBridge:
             stream.write(json.dumps({"run_id": self.run_id, "time": time.time(), **event}) + "\n")
 
     def _read(self, role: str, path: str) -> bytes:
-        data = self.controllers[role].get_file(path)
+        try:
+            data = self.controllers[role].get_file(path)
+        except Exception as exc:
+            self._record(event="guest_read_error", actor=role, path=path,
+                         error=f"{type(exc).__name__}: {exc}")
+            raise
         if not data:
             raise RuntimeError(f"no saved artifact returned by Guest {self.guest_ids[role]}")
         return data
 
     def _exists(self, role: str, path: str) -> bool:
-        result = self.controllers[role].run_bash_script(
-            f"if test -f {shlex.quote(path)}; then printf 1; else printf 0; fi", timeout=30)
+        try:
+            result = self.controllers[role].run_bash_script(
+                f"if test -f {shlex.quote(path)}; then printf 1; else printf 0; fi", timeout=30)
+        except Exception as exc:
+            self._record(event="guest_probe_error", actor=role, path=path,
+                         error=f"{type(exc).__name__}: {exc}")
+            raise
         if not isinstance(result, dict) or result.get("status") != "success":
+            self._record(event="guest_probe_error", actor=role, path=path,
+                         error="Guest artifact existence check failed")
             raise RuntimeError("Guest artifact existence check failed")
         value = (result.get("output") or "").strip()
         if value not in {"0", "1"}:
+            self._record(event="guest_probe_error", actor=role, path=path,
+                         error="invalid existence check value")
             raise RuntimeError("Guest artifact existence check returned an invalid value")
         return value == "1"
 
@@ -272,20 +286,9 @@ class SavedArtifactBridge:
         self._record(event="peer_readonly_verified", actor=owner, peer=peer,
                      destination_guest=self.guest_ids[peer], mode=mode)
 
-    def publish(self, actor: str) -> dict:
-        """Publish only this actor's fixed output; callers cannot select a path."""
-        if actor not in self.controllers or actor not in self.outputs:
-            raise ValueError("no output owned by this actor")
-        with self._lock:
-            if self._closed:
-                raise RuntimeError("bridge writer is closed")
-            started = time.time()
-            path = f"{self.task_root}/{self.outputs[actor]}"
-            data = self._read(actor, path)
-            # Read twice and check ZIP CRCs before transferring a GUI save.
-            if self._read(actor, path) != data:
-                raise RuntimeError("artifact changed during save; retry after saving completes")
-            expected = self.mime_types[actor]
+    def _validate_saved(self, actor: str, data: bytes) -> None:
+        expected = self.mime_types[actor]
+        try:
             if expected == "application/x-blender":
                 from oscombo.collab.model_and_review.blend_format import (
                     ZSTD_MAGIC, has_blend_container_header)
@@ -307,6 +310,30 @@ class SavedArtifactBridge:
                         raise RuntimeError("saved artifact is not the role's ODF document type")
             else:
                 data.decode("utf-8")
+        except Exception as exc:
+            # A GUI save may be observed mid-write. This records a validation
+            # retry, not a claim about its ultimate cause; later commits are
+            # checked in diagnostics, and persistent failure needs review.
+            self._record(event="save_validation_retry", actor=actor,
+                         error=f"{type(exc).__name__}: {exc}")
+            raise
+
+    def publish(self, actor: str) -> dict:
+        """Publish only this actor's fixed output; callers cannot select a path."""
+        if actor not in self.controllers or actor not in self.outputs:
+            raise ValueError("no output owned by this actor")
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("bridge writer is closed")
+            started = time.time()
+            path = f"{self.task_root}/{self.outputs[actor]}"
+            data = self._read(actor, path)
+            # Read twice and check ZIP CRCs before transferring a GUI save.
+            if self._read(actor, path) != data:
+                self._record(event="save_validation_retry", actor=actor,
+                             error="artifact changed during save; retry after saving completes")
+                raise RuntimeError("artifact changed during save; retry after saving completes")
+            self._validate_saved(actor, data)
             sha = digest(data)
             previous = self.current.get(actor)
             peer = "B" if actor == "A" else "A"
@@ -339,8 +366,14 @@ class SavedArtifactBridge:
             if actor in self.peer_view_dirs and (not previous or previous["sha256"] != sha):
                 self._save_pending_revision(actor, pending, candidate)
             if distinct and peer_hash != sha:
-                self._write(peer, path, data)
-                self._protect_peer(actor)
+                try:
+                    self._write(peer, path, data)
+                    self._protect_peer(actor)
+                except Exception as exc:
+                    self._record(event="transfer_error", actor=actor, peer=peer,
+                                 revision=candidate["revision"], sha256=sha,
+                                 error=f"{type(exc).__name__}: {exc}")
+                    raise
                 self._record(event="transfer_verified", **{**candidate, "delivered": True},
                              destination_guest=self.guest_ids[peer], elapsed_s=time.time() - started)
             if actor in self.peer_view_dirs:
@@ -370,6 +403,8 @@ class SavedArtifactBridge:
             temp.replace(self.root / "current.json")
             self.current = committed
             self.peer_hashes[actor] = sha
+            self._record(event="revision_committed", actor=actor, revision=candidate["revision"],
+                         sha256=sha, peer_view_path=candidate.get("peer_view_path"))
             return dict(candidate)
 
     def snapshot(self) -> dict:
@@ -381,6 +416,49 @@ class SavedArtifactBridge:
         except FileNotFoundError:
             return {}
         return {role: dict(value) for role, value in committed.items()}
+
+    def diagnostics(self) -> dict:
+        """Rebuild bridge history from durable events, including direct calls.
+
+        A validation retry is only treated as recovered when the same actor
+        subsequently committed a valid saved artifact. Other transfer/view or
+        ownership faults remain review-required even if a later sync succeeds.
+        """
+        event_path = self.root / "events.jsonl"
+        rows, malformed = [], 0
+        if event_path.exists():
+            for line in event_path.read_text().splitlines():
+                try:
+                    rows.append(json.loads(line))
+                except (ValueError, TypeError):
+                    malformed += 1
+        errors = {"transfer_error", "peer_view_error", "peer_view_conflict",
+                  "ownership_or_sync_conflict", "guest_read_error", "guest_probe_error"}
+        faults = [row for row in rows if row.get("event") in errors]
+        retries = [i for i, row in enumerate(rows) if row.get("event") == "save_validation_retry"]
+        unresolved = []
+        for i in retries:
+            actor = rows[i].get("actor")
+            if not any(row.get("event") == "revision_committed" and row.get("actor") == actor
+                       for row in rows[i + 1:]):
+                unresolved.append(rows[i])
+        # Background sync repeats the same validation exception as sync_error;
+        # do not relabel a known recovered save retry as an environment fault.
+        unknown_sync_errors = []
+        for i, row in enumerate(rows):
+            if row.get("event") != "sync_error":
+                continue
+            error = str(row.get("error", ""))
+            matching = any(prev.get("event") in errors | {"save_validation_retry"} and
+                           str(prev.get("error", "")) and
+                           error.endswith(str(prev.get("error")))
+                           for prev in rows[max(0, i - 3):i])
+            if not matching:
+                unknown_sync_errors.append(row)
+        return {"historical_faults": faults, "save_validation_retries": len(retries),
+                "unresolved_save_validation_retries": unresolved,
+                "unknown_sync_errors": unknown_sync_errors, "malformed_event_lines": malformed,
+                "infrastructure_review_required": bool(faults or unresolved or unknown_sync_errors or malformed)}
 
     def sync(self):
         for role in ("A", "B"):

@@ -653,3 +653,62 @@ def test_failed_ownership_write_does_not_leak_lease(tmp_path, monkeypatch):
     with (root / "writer.lock").open("a") as handle:
         fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
         fcntl.flock(handle, fcntl.LOCK_UN)
+
+
+@pytest.mark.parametrize("shared", [False, True])
+def test_direct_view_failure_history_survives_retry_and_resume(tmp_path, shared):
+    bridge, a, b, opts = make_view_bridge(tmp_path, shared=shared)
+    bridge.publish("A")
+    a.files["/task/outputs/agent_A/note.txt"] = b"changed\n"
+    b.fail_view = True
+    with pytest.raises(RuntimeError, match="view transfer failed"):
+        bridge.publish("A")
+    b.fail_view = False
+    assert bridge.publish("A")["revision"] == 1
+    assert bridge.diagnostics()["infrastructure_review_required"]
+    bridge.close()
+    resumed = SavedArtifactBridge(bridge.root, "views", "/task", {"A": a, "B": b},
+                                  bridge.guest_ids, resume=True, **opts)
+    diagnostics = resumed.diagnostics()
+    assert diagnostics["infrastructure_review_required"]
+    assert any(e["event"] == "peer_view_error" for e in diagnostics["historical_faults"])
+    resumed.close()
+
+
+def test_save_validation_retry_is_resolved_only_by_later_commit(tmp_path):
+    bridge, a, _, _ = make_view_bridge(tmp_path, shared=True)
+    bridge.publish("A")
+    a.files["/task/outputs/agent_A/note.txt"] = b"\xff"
+    with pytest.raises(UnicodeDecodeError):
+        bridge.publish("A")
+    diagnostics = bridge.diagnostics()
+    assert diagnostics["save_validation_retries"] == 1
+    assert diagnostics["infrastructure_review_required"]
+    assert len(diagnostics["unresolved_save_validation_retries"]) == 1
+    a.files["/task/outputs/agent_A/note.txt"] = b"completed save\n"
+    bridge.publish("A")
+    diagnostics = bridge.diagnostics()
+    assert diagnostics["save_validation_retries"] == 1
+    assert diagnostics["unresolved_save_validation_retries"] == []
+    assert not diagnostics["infrastructure_review_required"]
+    bridge.close()
+
+
+def test_peer_view_is_exposed_to_peer_via_public_collaboration_api(tmp_path):
+    bridge, _, _, _ = make_view_bridge(tmp_path, shared=True)
+    revision = bridge.publish("A")
+    server = make_server(ProtocolStore(tmp_path / "messages", "views"), {"A": "a", "B": "b"})
+    server.workspace_bridge = bridge
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    client = CollaborationClient(f"http://127.0.0.1:{server.server_port}", "B", "b")
+    try:
+        public = client.list_saved_artifacts()
+        assert public["A"]["peer_view_path"] == revision["peer_view_path"]
+        assert public["A"]["sha256"] == revision["sha256"]
+        assert public["A"]["delivered"] is True
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+        bridge.close()
