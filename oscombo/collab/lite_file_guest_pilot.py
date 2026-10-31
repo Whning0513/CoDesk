@@ -29,7 +29,7 @@ from oscombo.collab.data_to_deck.provenance import RunLedger, collect_artifacts
 from oscombo.collab.data_to_deck.workspace_bridge import SavedArtifactBridge
 
 
-WORKSPACE_ASSEMBLY_CASES = {"workspace_assembly", "workspace_assembly_v1p2"}
+WORKSPACE_ASSEMBLY_CASES = {"workspace_assembly", "workspace_assembly_v1p2", "workspace_assembly_v2"}
 
 
 def _profile(case: str):
@@ -39,6 +39,8 @@ def _profile(case: str):
         from oscombo.collab.workspace_assembly_lite_v1 import spec, fixtures, oracle
     elif case == "workspace_assembly_v1p2":
         from oscombo.collab.workspace_assembly_lite_v1p2 import spec, fixtures, oracle
+    elif case == "workspace_assembly_v2":
+        from oscombo.collab.workspace_assembly_lite_v2 import spec, fixtures, oracle
     elif case == "model_review":
         from oscombo.collab.model_and_review_lite_v1 import spec, fixtures, oracle
     else:
@@ -57,6 +59,8 @@ def _install(guest, fixture: Path, task_root: str, case: str, spec):
                 f"{shlex.quote(task_root + '/outputs/agent_A')} "
                 f"{shlex.quote(task_root + '/outputs/agent_B')} "
                 f"{shlex.quote(task_root + '/incoming')}"]
+    if case == "workspace_assembly_v2":
+        commands.append(f"mkdir -p {shlex.quote(task_root + '/' + spec.PEER_VIEW_DIRS['A'])}")
     for name in names.values():
         encoded = base64.b64encode((fixture / name).read_bytes()).decode("ascii")
         commands.append(f"printf %s {shlex.quote(encoded)} | base64 -d > "
@@ -206,6 +210,13 @@ def _activate_editor_tab(guest, role: str, shared: bool):
 
 
 def _scripted_actions(case: str, role: str, task_root: str, fixtures, negative: bool) -> list[str]:
+    if case == "workspace_assembly_v2":
+        from oscombo.collab.workspace_assembly_lite_v2 import scripted
+        if role == "A":
+            return scripted.a_move(task_root)
+        if role == "B":
+            return scripted.b_finish("WRONG-00" if negative else fixtures.DEFAULT_TAG)
+        raise ValueError((case, role))
     if case == "build_verify" and role == "A":
         corrected = fixtures.source_html().replace('value="delievered"',
                                                    'value="delievered"' if negative else 'value="delivered"')
@@ -274,6 +285,53 @@ def _audit_case7_scripted_delivered_read(run_root: Path) -> dict:
     if not candidates:
         raise RuntimeError("Case 7 v1.0.2 scripted A did not open the delivered note in Text Editor")
     return result
+
+
+def _control_case7_view_revisions(guest_a, guest_b, controllers, bridge, first,
+                                  a_path: str, task_root: str, run_root: Path,
+                                  run_id: str, spec) -> dict:
+    """Additional GUI-only control for version history, never a model action."""
+    from oscombo.collab.workspace_assembly_lite_v2 import scripted
+    _launch(guest_a, "editor", a_path, run_id)
+    changed = core._run_actor("A", guest_a, spec.AGENT_A_INSTRUCTION,
+        scripted.a_probe_change(), run_root, max_steps=25, case_id=spec.CASE_ID)
+    if changed["status"] != "done":
+        raise RuntimeError("scripted A revision change failed")
+    second = bridge.publish("A")
+    original = (run_root / "fixtures" / spec.FIXTURE_NAMES["asset"]).read_text(encoding="utf-8")
+    restored = core._run_actor("A", guest_a, spec.AGENT_A_INSTRUCTION,
+        scripted.a_probe_restore(original), run_root, max_steps=25, case_id=spec.CASE_ID)
+    if restored["status"] != "done":
+        raise RuntimeError("scripted A revision restore failed")
+    third = bridge.publish("A")
+    revisions = [first, second, third]
+    if not first["revision"] < second["revision"] < third["revision"]:
+        raise RuntimeError("scripted probe did not create three distinct revisions")
+    if not (first["sha256"] == third["sha256"] and second["sha256"] != first["sha256"]):
+        raise RuntimeError("scripted probe did not restore the original note bytes")
+    verified = []
+    for revision in revisions:
+        relative = revision.get("peer_view_path")
+        if not relative:
+            raise RuntimeError("scripted probe revision is missing its peer view")
+        path = f"{task_root}/{relative}"
+        data = controllers["B"].get_file(path)
+        mode = _guest_script(guest_b, f"stat -c %a -- {shlex.quote(path)}")["output"].strip()
+        if hashlib.sha256(data).hexdigest() != revision["sha256"] or mode != "444":
+            raise RuntimeError("scripted probe peer view differs or is not read-only")
+        saved = run_root / "control_views" / Path(relative).name
+        saved.parent.mkdir(parents=True, exist_ok=True)
+        saved.write_bytes(data)
+        verified.append({"revision": revision["revision"], "peer_view_path": relative,
+                         "sha256": revision["sha256"], "mode": mode,
+                         "recovered_copy": str(saved.relative_to(run_root))})
+    source_mode = _guest_script(guest_a, f"stat -c %a -- {shlex.quote(a_path)}")["output"].strip()
+    if not source_mode.isdigit() or not (int(source_mode, 8) & 0o200):
+        raise RuntimeError("A original output unexpectedly lost owner write permission")
+    result = {"views": verified, "source_mode": source_mode,
+              "change_trace": changed["trace_path"], "restore_trace": restored["trace_path"]}
+    (run_root / "control_view_revisions.json").write_text(json.dumps(result, indent=2) + "\n")
+    return third
 
 
 def _browser_trace_audit(run_root: Path, *, write: bool = True) -> dict:
@@ -346,10 +404,18 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
         yield_wait_lifecycle: bool = False,
         actor_mcp_only: bool = False,
         blender_bin: str | None = None,
-        gui_input_lock: bool = False) -> dict:
+        gui_input_lock: bool = False,
+        scripted_view_version_probe: bool = False,
+        fixture_seed: str | None = None) -> dict:
     spec, fixtures, oracle = _profile(case)
     if gui_input_lock and (not model or condition != "collaborative_shared"):
         raise ValueError("GUI input lock arm requires a Shared model run")
+    if scripted_view_version_probe and (case != "workspace_assembly_v2" or model or negative):
+        raise ValueError("view version probe requires a v2 scripted positive control")
+    if fixture_seed is not None and case != "workspace_assembly_v2":
+        raise ValueError("fixture seed is supported only for workspace assembly v2")
+    if fixture_seed is not None:
+        fixtures.tag_for_seed(fixture_seed)  # validate before allocating a run
     if case == "model_review" and (not blender_bin or not Path(blender_bin).is_file()):
         raise ValueError("Model-and-Review Lite needs a local Blender scorer executable")
     if condition not in spec.CONDITIONS:
@@ -357,8 +423,11 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
     run_root.mkdir(parents=True, exist_ok=False)
     run_id = run_root.name
     fixture = run_root / "fixtures"
-    fixtures.build_fixture(fixture)
-    task_root = f"/tmp/codesk-{case.replace('_', '-')}-lite-v1"
+    if case == "workspace_assembly_v2":
+        fixtures.build_fixture(fixture, seed=fixture_seed)
+    else:
+        fixtures.build_fixture(fixture)
+    task_root = spec.TASK_ROOT if case == "workspace_assembly_v2" else f"/tmp/codesk-{case.replace('_', '-')}-lite-v1"
     metadata = {"run_id": run_id, "case_id": spec.CASE_ID, "case_version": spec.CASE_VERSION,
                 "condition": condition, "guest_count": 1 if condition.endswith("shared") else 2,
                 "model": model, "model_called": bool(model), "started_at": time.time(),
@@ -370,6 +439,20 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 "gui_input_lock_scope": "one desktop input action; screenshot outside lock" if gui_input_lock else None,
                 "blender_scorer": blender_bin if case == "model_review" else None,
                 "scripted_negative_control": negative}
+    if case == "workspace_assembly_v2":
+        image_path = Path(image).resolve(strict=True)
+        image_stat = image_path.stat()
+        metadata["guest_resources_requested"] = {"cpus": os.environ.get("OSCOMBO_GUEST_CPUS", "4"),
+                                                 "ram": os.environ.get("OSCOMBO_GUEST_RAM", "4G")}
+        metadata["base_image_path"] = str(image_path)
+        metadata["base_image_stat"] = {"bytes": image_stat.st_size, "mtime_ns": image_stat.st_mtime_ns}
+        metadata["runtime_image"] = runtime
+        metadata["scripted_view_version_probe"] = scripted_view_version_probe
+        metadata["source_commit"] = os.environ.get("CODESK_CASE7_SOURCE_COMMIT")
+        metadata["model_effort"] = "medium" if model else None
+        metadata["model_timeout"] = model_timeout if model else None
+        metadata["diagnostic_step_limit"] = diagnostic_step_limit
+        metadata["fixture_seed"] = fixture_seed
     ledger = RunLedger(run_root, metadata)
     (run_root / "ownership.json").write_text(json.dumps({"run_id": run_id, "resources": [],
         "cleanup": "only exact owned oscombo.run label and full container ID"}, indent=2) + "\n")
@@ -413,7 +496,8 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                                      controllers, ids, case_id=spec.CASE_ID,
                                      outputs=spec.OUTPUTS, mime_types=mime,
                                      allow_initial_missing={"A"} if case in WORKSPACE_ASSEMBLY_CASES else None,
-                                     peer_read_only=True)
+                                     peer_read_only=True,
+                                     peer_view_dirs=spec.PEER_VIEW_DIRS if case == "workspace_assembly_v2" else None)
         server.workspace_bridge = bridge
         bridge.start()
         a_path = f"{task_root}/{spec.OUTPUTS['A']}"
@@ -431,9 +515,17 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
             a_app, b_app = "blender", "editor"
         else:
             _launch(guest_a, "files", f"{task_root}/incoming", run_id)
-            if case == "workspace_assembly_v1p2":
+            if case in {"workspace_assembly_v1p2", "workspace_assembly_v2"}:
                 _maximize_case7_files(guest_a)
+            if case == "workspace_assembly_v2":
+                guest_a.actor = "system"
+                guest_a.run_pyautogui("import pyautogui, time; pyautogui.hotkey('ctrl','a'); time.sleep(2)")
+                (run_root / "screenshots" / "setup_A_selected.png").write_bytes(guest_a.screenshot(patience=45))
             _launch(guest_b, "writer", b_path, run_id)
+            if case == "workspace_assembly_v2":
+                guest_b.actor = "system"
+                guest_b.run_pyautogui("import pyautogui, time; pyautogui.hotkey('ctrl','end'); time.sleep(2)")
+                (run_root / "screenshots" / "setup_B_caret.png").write_bytes(guest_b.screenshot(patience=45))
             a_app, b_app = "files", "writer"
         outcomes = {}
         if model:
@@ -444,11 +536,17 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 "B": spec.AGENT_B_INSTRUCTION + f"\nTask root: {task_root}. Your output: {b_path}.",
             }
             for role in "AB":
-                instructions[role] += ("\nSaved outputs are versioned and copied to the same paths on both desktops. "
-                                      "After saving, use publish_saved_artifact and send_message; "
-                                      "use list_saved_artifacts/read_messages for handoff. "
-                                      "The peer file is read-only; do not edit it. "
-                                      "Perform task edits only through GUI applications.")
+                if case == "workspace_assembly_v2":
+                    instructions[role] += ("\nAfter saving, use publish_saved_artifact and send_message; "
+                        "use list_saved_artifacts/read_messages for handoff. The peer_view_path in "
+                        "the published revision is relative to the task root. B reads that view "
+                        "without editing it. Perform task edits only through GUI applications.")
+                else:
+                    instructions[role] += ("\nSaved outputs are versioned and copied to the same paths on both desktops. "
+                                          "After saving, use publish_saved_artifact and send_message; "
+                                          "use list_saved_artifacts/read_messages for handoff. "
+                                          "The peer file is read-only; do not edit it. "
+                                          "Perform task edits only through GUI applications.")
             barrier = threading.Barrier(2)
             def actor(role):
                 barrier.wait(timeout=60)
@@ -468,6 +566,26 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 for role, future in futures.items():
                     outcomes[role] = future.result()
         else:
+            if case == "workspace_assembly_v2":
+                from oscombo.collab.workspace_assembly.fixtures import read_odt
+                from oscombo.collab.workspace_assembly_lite_v2 import scripted
+                _activate(guest_b, "writer", b_path)
+                audience_match = re.search(r"(?im)^Prepared for ([A-Za-z][A-Za-z -]+?) review\.$", fixtures.draft_text())
+                if not audience_match:
+                    raise RuntimeError("scripted control cannot derive the draft audience")
+                pre = core._run_actor("B", guest_b, spec.AGENT_B_INSTRUCTION,
+                    scripted.b_prepare(audience_match.group(1).title()), run_root, max_steps=25, case_id=spec.CASE_ID)
+                if pre["status"] != "done":
+                    raise RuntimeError("scripted B pre-handoff GUI failed")
+                pre_path = run_root / "control_prework.odt"
+                pre_path.write_bytes(controllers["B"].get_file(b_path))
+                pre_text, _ = read_odt(pre_path)
+                if ("Audience: " + audience_match.group(1).title() + ".") not in pre_text:
+                    raise RuntimeError("scripted B pre-handoff edit was not saved")
+                pre_revision = bridge.publish("B")
+                (run_root / "control_prework.json").write_text(json.dumps({
+                    "finished_at": time.time(), "sha256": hashlib.sha256(pre_path.read_bytes()).hexdigest(),
+                    "revision": pre_revision["revision"], "trace_path": pre["trace_path"]}, indent=2) + "\n")
             if case == "build_verify":
                 if condition.endswith("shared"):
                     _activate_editor_tab(guest_a, "A", True)
@@ -493,11 +611,17 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 _guest_script(guest_a, f"test ! -e {shlex.quote(task_root + '/incoming/' + spec.FIXTURE_NAMES['asset'])} "
                     f"&& test -s {shlex.quote(a_path)}")
             a_revision = bridge.publish("A")
+            if scripted_view_version_probe:
+                a_revision = _control_case7_view_revisions(guest_a, guest_b, controllers, bridge,
+                    a_revision, a_path, task_root, run_root, run_id, spec)
             if controllers["B"].get_file(a_path) != controllers["A"].get_file(a_path):
                 raise RuntimeError("B Guest did not receive A's saved version")
-            msg = clients["A"].send_message("B", f"Saved {Path(a_path).name} revision {a_revision['revision']}; "
-                    + ("filter defect fixed" if case == "build_verify" else
-                       "shade width 1.46 m" if case == "model_review" else "inspection tag RIVER-27"))
+            message = (f"Saved {Path(a_path).name} revision {a_revision['revision']}; "
+                       + ("filter defect fixed" if case == "build_verify" else
+                          "shade width 1.46 m" if case == "model_review" else "inspection tag RIVER-27"))
+            if case == "workspace_assembly_v2":
+                message = f"Saved {Path(a_path).name} revision {a_revision['revision']} is ready."
+            msg = clients["A"].send_message("B", message)
             if msg["message_id"] not in {m["message_id"] for m in clients["B"].read_messages()}:
                 raise RuntimeError("B did not receive A's message")
             if case == "build_verify":
@@ -518,12 +642,54 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                     "screenshot": str(peer_shot.relative_to(run_root)),
                     "saved_sha256": a_revision["sha256"]}, indent=2) + "\n")
                 _activate(guest_b, "editor", b_path)
+            elif case == "workspace_assembly_v2":
+                view_relative = a_revision.get("peer_view_path")
+                if not view_relative:
+                    raise RuntimeError("published A revision has no peer view")
+                view_path = f"{task_root}/{view_relative}"
+                view_bytes = controllers["B"].get_file(view_path)
+                if hashlib.sha256(view_bytes).hexdigest() != a_revision["sha256"]:
+                    raise RuntimeError("B peer view SHA differs from published A revision")
+                recovered_view = run_root / "control_views" / Path(view_relative).name
+                recovered_view.parent.mkdir(parents=True, exist_ok=True)
+                if recovered_view.exists() and recovered_view.read_bytes() != view_bytes:
+                    raise RuntimeError("recovered peer view conflicts with prior control snapshot")
+                if not recovered_view.exists():
+                    recovered_view.write_bytes(view_bytes)
+                mode = _guest_script(guest_b, f"stat -c %a -- {shlex.quote(view_path)}")["output"].strip()
+                if mode != "444":
+                    raise RuntimeError("B peer view is not read-only")
+                owner_mode = _guest_script(guest_a, f"stat -c %a -- {shlex.quote(a_path)}")["output"].strip()
+                if not owner_mode.isdigit() or not (int(owner_mode, 8) & 0o200):
+                    raise RuntimeError("A original output unexpectedly lost owner write permission")
+                _activate(guest_b, "writer", b_path)
+                read = core._run_actor("B", guest_b, spec.AGENT_B_INSTRUCTION,
+                    scripted.b_read(view_path), run_root, max_steps=25, case_id=spec.CASE_ID)
+                if read["status"] != "done":
+                    raise RuntimeError("scripted B peer-view GUI open failed")
+                title = guest_b.active_window() or ""
+                screenshot = run_root / "screenshots" / "control_B_peer_view.png"
+                screenshot.write_bytes(guest_b.screenshot(patience=45))
+                if Path(view_path).name.casefold() not in title.casefold() or "read-only" not in title.casefold():
+                    raise RuntimeError("B did not visibly open the revision in read-only Writer")
+                (run_root / "control_B_peer_view.json").write_text(json.dumps({
+                    "revision": a_revision["revision"], "peer_view_path": view_relative,
+                    "sha256": a_revision["sha256"], "mode": mode, "owner_mode": owner_mode,
+                    "opened_at": time.time(), "window": title,
+                    "recovered_copy": str(recovered_view.relative_to(run_root)),
+                    "trace_path": read["trace_path"], "screenshot": str(screenshot.relative_to(run_root))}, indent=2) + "\n")
             else:
                 # Smoke the real peer file in a GUI viewer before the scripted
                 # Writer edit. Model actors must choose their own read action.
                 _launch(guest_b, "editor", a_path, run_id)
                 _activate(guest_b, "writer", b_path)
             b_actions = _scripted_actions(case, "B", task_root, fixtures, negative)
+            if case == "workspace_assembly_v2":
+                note = (fixture / spec.FIXTURE_NAMES["asset"]).read_text(encoding="utf-8")
+                tag_match = re.search(r"(?m)^Inspection tag: ([A-Z][A-Z0-9]{2,9}-[0-9]{2})\.$", note)
+                if not tag_match:
+                    raise RuntimeError("scripted control cannot derive the public note tag")
+                b_actions = scripted.b_finish("WRONG-00" if negative else tag_match.group(1))
             if case == "build_verify":
                 browser_result = core._run_actor("B", guest_b, spec.AGENT_B_INSTRUCTION,
                     b_actions[:5] + ["DONE"], run_root, max_steps=25, case_id=spec.CASE_ID)
@@ -540,9 +706,16 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 raise RuntimeError("scripted B GUI failed")
             bridge.publish("B")
         bridge.stop()
-        (run_root / "workspace_sync_result.json").write_text(json.dumps({
+        sync_result = {
             "final_versions": bridge.snapshot(), "transient_errors": bridge.errors,
-            "verified": True}, indent=2) + "\n")
+            "verified": True}
+        bridge_valid = True
+        if case == "workspace_assembly_v2":
+            diagnostics = bridge.diagnostics()
+            bridge_valid = not diagnostics["infrastructure_review_required"]
+            sync_result.update({"final_sync_succeeded": True,
+                                "diagnostics": diagnostics, "verified": bridge_valid})
+        (run_root / "workspace_sync_result.json").write_text(json.dumps(sync_result, indent=2) + "\n")
         bridge = None
         artifact_items = []
         missing_outputs = []
@@ -582,6 +755,11 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 run_root / "artifacts/B" / Path(b_path).name)
         (run_root / "oracle.json").write_text(json.dumps(score, indent=2, sort_keys=True) + "\n")
         browser_trace = _browser_trace_audit(run_root) if case == "build_verify" else None
+        process_audit = None
+        if case == "workspace_assembly_v2" and model:
+            from oscombo.collab.workspace_assembly_lite_v2.audit import audit
+            process_audit = audit(run_root)
+            (run_root / "behavioral_audit.json").write_text(json.dumps(process_audit, indent=2) + "\n")
         reopen = []
         for role, guest, app, path in (("A", guest_a, a_app, a_path), ("B", guest_b, b_app, b_path)):
             if role in missing_outputs:
@@ -658,14 +836,15 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
         (run_root / "reset_evidence.json").write_text(json.dumps(reset_evidence, indent=2) + "\n")
         result = {"run_id": run_id, "case_id": spec.CASE_ID, "condition": condition,
                   "model": model, "actor_results": outcomes, "oracle": score,
-                  "browser_trace_audit": browser_trace,
+                  "browser_trace_audit": browser_trace, "behavioral_audit": process_audit,
                   "artifact_manifest": artifacts, "reopen": reopen,
                   "reopen_complete": reopen_complete,
                   "postscore_lifecycle_ok": postscore_lifecycle_ok,
+                  "bridge_valid": bridge_valid,
                   "reset": reset_evidence, "elapsed_s": time.time() - metadata["started_at"],
                   "status": core._episode_result_status(score["joint_success"] and
                       (browser_trace is None or browser_trace["browser_one_visible_row_after_handoff"]),
-                      postscore_lifecycle_ok, outcomes, bool(model))}
+                      postscore_lifecycle_ok and bridge_valid, outcomes, bool(model))}
         (run_root / "result.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
         return result
     finally:
@@ -706,7 +885,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
 
 def main(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--case", required=True, choices=("build_verify", "workspace_assembly", "workspace_assembly_v1p2", "model_review"))
+    parser.add_argument("--case", required=True, choices=("build_verify", "workspace_assembly", "workspace_assembly_v1p2", "workspace_assembly_v2", "model_review"))
     parser.add_argument("--condition", required=True,
                         choices=("collaborative_shared", "collaborative_isolated"))
     parser.add_argument("--run-root", type=Path, required=True)
@@ -720,6 +899,9 @@ def main(argv: list[str] | None = None):
     parser.add_argument("--model-timeout", type=float, default=1200)
     parser.add_argument("--diagnostic-step-limit", type=int)
     parser.add_argument("--scripted-negative", action="store_true")
+    parser.add_argument("--scripted-view-version-probe", action="store_true",
+                        help="v2 scripted positive: save, change and restore a peer view to test revision history")
+    parser.add_argument("--fixture-seed", help="v2 deterministic public note seed; identical within a paired round")
     parser.add_argument("--yield-wait-lifecycle", action="store_true",
                         help="pause B's active model budget after it voluntarily yields for A's handoff")
     parser.add_argument("--actor-mcp-only", action="store_true",
@@ -737,7 +919,7 @@ def main(argv: list[str] | None = None):
                      args.model, args.base_url, args.api_key_env, args.mcp_python,
                      args.model_timeout, args.diagnostic_step_limit, args.scripted_negative,
                      args.yield_wait_lifecycle, args.actor_mcp_only, args.blender_bin,
-                     args.gui_input_lock)
+                     args.gui_input_lock, args.scripted_view_version_probe, args.fixture_seed)
     except Exception as exc:
         failure = {"status": "INVALID_INFRA_OR_RUNNER_ERROR", "run_id": args.run_root.name,
                    "error": f"{type(exc).__name__}: {exc}", "traceback": traceback.format_exc()}
