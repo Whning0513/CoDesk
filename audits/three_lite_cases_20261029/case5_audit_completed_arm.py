@@ -80,6 +80,33 @@ def audit(root: Path, driver_exit: int, condition: str, boundary_path: Path,
     if not any(root.rglob('*.png')):
         errors.append('real Guest screenshots missing')
     try:
+        gui_rows = [json.loads(line) for line in (root / 'gui_actions.jsonl').read_text().splitlines() if line.strip()]
+        paths = [row.get('screenshot') for row in gui_rows]
+        if not paths or any(not isinstance(path, str) or not path for path in paths):
+            errors.append('system GUI action screenshot references missing')
+        elif len(paths) != len(set(paths)):
+            errors.append('system GUI action screenshot paths collide')
+        else:
+            for path in paths:
+                target = (root / path).resolve()
+                if not target.is_relative_to(root.resolve()) or not target.is_file():
+                    errors.append('system GUI action screenshot file missing or outside run')
+                    break
+    except (OSError, ValueError, TypeError):
+        errors.append('system GUI action screenshot log missing or invalid')
+    for role in ('A', 'B'):
+        actor_root = root / 'actor_runs' / role / role
+        try:
+            rows = [json.loads(line) for line in (actor_root / 'actions.jsonl').read_text().splitlines() if line.strip()]
+            numbers = [row.get('n') for row in rows]
+            if (not numbers or any(not isinstance(n, int) or isinstance(n, bool) or n < 1 for n in numbers)
+                    or len(numbers) != len(set(numbers))):
+                errors.append(f'{role} desktop action sequence missing or duplicated')
+            elif any(not (actor_root / 'shots' / f'{n:03d}.png').is_file() for n in numbers):
+                errors.append(f'{role} desktop action screenshot missing')
+        except (OSError, ValueError, TypeError):
+            errors.append(f'{role} desktop action log missing or invalid')
+    try:
         host_rows = [json.loads(line) for line in (root / 'host_resources.jsonl').read_text().splitlines()]
         if not host_rows or not all('disk_free_bytes' in row and 'meminfo' in row and 'io_pressure' in row for row in host_rows):
             errors.append('host resource samples missing or invalid')
