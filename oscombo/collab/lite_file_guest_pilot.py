@@ -245,6 +245,19 @@ def _result_exit_code(status: str) -> int:
     return {"PASS": 0, "FAIL": 2}.get(status, 3)
 
 
+def _await_delivered_revision(bridge, actor: str, timeout_seconds: float = 180) -> dict:
+    """Wait until a scripted edit has replaced the public seed revision."""
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        revision = bridge.snapshot().get(actor) or {}
+        if int(revision.get("revision", 0)) > 0 and revision.get("delivered") is True:
+            return revision
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError(f"scripted {actor} output never reached a delivered new revision")
+        time.sleep(min(2, remaining))
+
+
 def _maximize_case7_files(guest):
     """Set the same broad Files viewport before either model Actor starts."""
     result = _guest_script(guest,
@@ -576,9 +589,14 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 (run_root / "file_move_probe.json").write_text(json.dumps(probe, indent=2) + "\n")
                 _guest_script(guest_a, f"test ! -e {shlex.quote(task_root + '/incoming/' + spec.FIXTURE_NAMES['asset'])} "
                     f"&& test -s {shlex.quote(a_path)}")
-            a_revision = bridge.publish("A")
-            if controllers["B"].get_file(a_path) != controllers["A"].get_file(a_path):
-                raise RuntimeError("B Guest did not receive A's saved version")
+            # Blender can finish writing after its GUI Save shortcut returns.
+            # The scripted control must never announce initial revision 0.
+            a_revision = (_await_delivered_revision(bridge, "A") if case == "model_review"
+                          else bridge.publish("A"))
+            source = controllers["A"].get_file(a_path)
+            peer = controllers["B"].get_file(a_path)
+            if source != peer or hashlib.sha256(peer).hexdigest() != a_revision["sha256"]:
+                raise RuntimeError("B Guest did not receive A's saved revision SHA")
             msg = clients["A"].send_message("B", f"Saved {Path(a_path).name} revision {a_revision['revision']}; "
                     + ("filter defect fixed" if case == "build_verify" else
                        "shade width 1.46 m" if case == "model_review" else "inspection tag RIVER-27"))
