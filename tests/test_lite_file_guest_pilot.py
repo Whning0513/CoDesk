@@ -4,8 +4,8 @@ from PIL import Image, ImageDraw
 import pytest
 
 from oscombo.collab.lite_file_guest_pilot import (
-    _await_delivered_revision, _browser_trace_audit, _postscore_lifecycle_ok,
-    _result_exit_code,
+    _activate_or_restore_saved_editor, _await_delivered_revision,
+    _browser_trace_audit, _postscore_lifecycle_ok, _result_exit_code,
 )
 
 
@@ -32,6 +32,24 @@ def test_scripted_handoff_waits_for_delivered_new_revision(monkeypatch):
     with pytest.raises(RuntimeError, match="new revision"):
         _await_delivered_revision(Bridge([{"revision": 0, "delivered": True}]),
                                   "A", timeout_seconds=0)
+
+
+def test_postscore_restores_model_closed_editor_only(monkeypatch):
+    calls = []
+
+    def missing(*_):
+        raise RuntimeError("wmctrl could not activate a closed editor")
+
+    monkeypatch.setattr("oscombo.collab.lite_file_guest_pilot._activate", missing)
+    monkeypatch.setattr("oscombo.collab.lite_file_guest_pilot._launch",
+                        lambda *args: calls.append(args))
+    assert _activate_or_restore_saved_editor(object(), "editor", "/tmp/review.txt", "run", True)
+    assert len(calls) == 1 and calls[0][2] == "/tmp/review.txt"
+    with pytest.raises(RuntimeError, match="closed editor"):
+        _activate_or_restore_saved_editor(object(), "editor", "/tmp/review.txt", "run", False)
+    with pytest.raises(RuntimeError, match="closed editor"):
+        _activate_or_restore_saved_editor(object(), "blender", "/tmp/scene.blend", "run", True)
+    assert len(calls) == 1
 
 
 def test_postscore_lifecycle_separates_missing_task_output_from_reopen_fault():
