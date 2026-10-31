@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from oscombo.collab.workspace_assembly_lite_v2 import fixtures, freeze, oracle, resource_sampler, spec
+from oscombo.collab.workspace_assembly_lite_v2 import filesystem_capacity, fixtures, freeze, oracle, resource_sampler, spec
 
 
 def make_control(root: Path, *, negative=False):
@@ -42,7 +42,14 @@ def make_control(root: Path, *, negative=False):
     sample = {"guests": [{"container_id": "guest1", "argv": ["qemu-system-x86_64", "-m", "8G", "-smp", "8"],
                           "rss_and_io": fields}],
         "host_meminfo": {"MemAvailable": "1 kB", "SwapTotal": "1 kB", "SwapFree": "1 kB"},
-        "host_io_pressure": "some avg10=0.00"}
+        "host_io_pressure": "some avg10=0.00",
+        "filesystem_capacity": {"valid": True, "filesystems": {
+            label: {"path": f"/{label}", "device": index, "available_bytes": 20 * 1024**3,
+                    "available_inodes": 10000}
+            for index, label in enumerate(filesystem_capacity.LABELS)}}}
+    preflight = json.loads(json.dumps(sample["filesystem_capacity"]))
+    preflight["filesystems"]["run"]["path"] = "/run-parent"
+    (root / "filesystem_preflight.json").write_text(json.dumps(preflight))
     (root / "resource_samples_v2.jsonl").write_text("".join(json.dumps({**sample, "time": t}) + "\n" for t in (0, 10)))
     (root / "resource_audit.json").write_text(json.dumps(resource_sampler.summarize(root)))
     fixtures.report_odt(root / "control_prework.odt", "Audience: Operations.")
