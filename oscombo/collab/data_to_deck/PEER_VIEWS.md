@@ -26,6 +26,16 @@ uncommitted archive is retained and the next available revision number is used.
 The coordinator must treat an unexplained bridge failure as an infrastructure
 problem, not as an Actor task failure. A successful final sync does not prove
 there were no earlier errors; preserve and review the event/error history.
+`bridge.diagnostics()` rereads persisted events even after `resume=True` and
+reports `historical_faults`, `save_validation_retries`,
+`unresolved_save_validation_retries`, and `infrastructure_review_required`.
+Direct `publish` failures and background failures use the same durable events.
+A save-validation retry is recorded separately and considered recovered only
+after that actor successfully commits a valid saved file. Transfer, view,
+ownership and Guest communication faults remain review-required even when a
+later publication succeeds. An invalid final artifact still requires its own
+task-level evaluation; a malformed or incomplete save alone does not prove the
+bridge failed.
 
 With peer views enabled, a nonblocking host file lock permits one bridge writer
 per run root across processes. `stop()` joins the worker, performs final sync,
