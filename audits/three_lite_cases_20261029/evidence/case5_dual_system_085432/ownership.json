@@ -1,0 +1,55 @@
+{
+  "cleanup": "full ID, exact oscombo.run label, own overlay",
+  "project": "CoDesk dual Guest system screenshot control",
+  "resources": [
+    {
+      "base_mount": {
+        "Destination": "/System.qcow2",
+        "Mode": "ro",
+        "Propagation": "rprivate",
+        "RW": false,
+        "Source": "/data3/whn/Project2/images/osworld-v2-ubuntu-x86.qcow2",
+        "Type": "bind"
+      },
+      "container_id": "5e82e248610ef1e9317a412a76ebc3204af6469d13c6f6488b48c9d18c6389be",
+      "created_utc": "2026-10-31T08:56:34.050464+00:00",
+      "image_id": "sha256:4696860fc79a4a6815f61f2a063f473eb8df33534aef3107d126199cb3f2a116",
+      "key": "A",
+      "kind": "guest-container",
+      "labels": {
+        "org.opencontainers.image.ref.name": "ubuntu",
+        "org.opencontainers.image.version": "22.04",
+        "oscombo": "1",
+        "oscombo.run": "case5-dual-system-health-20261031T085432Z"
+      },
+      "name": "ecstatic_jepsen",
+      "overlay_path": "/data3/whn/Project2/CoDesk-case5/runs/case5-dual-system-health-20261031T085432Z/overlay/A/osworld-0b4ea7c56dcf42fa955e36ce1375a605.qcow2",
+      "status": "active"
+    },
+    {
+      "base_mount": {
+        "Destination": "/System.qcow2",
+        "Mode": "ro",
+        "Propagation": "rprivate",
+        "RW": false,
+        "Source": "/data3/whn/Project2/images/osworld-v2-ubuntu-x86.qcow2",
+        "Type": "bind"
+      },
+      "container_id": "bf57a8d2c38e8fa22ab5b54d3fade362b0607c686531cdf7cc642503446cb528",
+      "created_utc": "2026-10-31T09:01:42.191182+00:00",
+      "image_id": "sha256:4696860fc79a4a6815f61f2a063f473eb8df33534aef3107d126199cb3f2a116",
+      "key": "B",
+      "kind": "guest-container",
+      "labels": {
+        "org.opencontainers.image.ref.name": "ubuntu",
+        "org.opencontainers.image.version": "22.04",
+        "oscombo": "1",
+        "oscombo.run": "case5-dual-system-health-20261031T085432Z"
+      },
+      "name": "wonderful_jennings",
+      "overlay_path": "/data3/whn/Project2/CoDesk-case5/runs/case5-dual-system-health-20261031T085432Z/overlay/B/osworld-f7f1cd3f46874ca6b8a885e74b1f41f2.qcow2",
+      "status": "active"
+    }
+  ],
+  "run_id": "case5-dual-system-health-20261031T085432Z"
+}

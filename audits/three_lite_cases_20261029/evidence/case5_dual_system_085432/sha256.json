@@ -1,0 +1,17 @@
+{
+  "A-reset-readiness-018.png": "855ea9f906e167d55800faeeba0b297509c9b5f4e724f28d00157a6fedc77f3d",
+  "A-system-001.png": "1f5c23a3ccee0e640892268d4557bf7c35dd6c9d3505d9a9c5c31852349e437f",
+  "B-reset-readiness-018.png": "aa933ac69b3a73b1c69d70c299089b5b5b0bd9f5f64edb51ae42f0b76f60b76d",
+  "B-system-001.png": "6a9d9c3a1a2a04bd5cf7690c8949267891405b74a2a0f73629f60064b007d88e",
+  "desktop_readiness.jsonl": "56d8e2466135ed8cc9b8c0c6f5c943ae4d60fd76fd36d702ed02982935c6d2e1",
+  "exit-code.txt": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+  "gui_actions.jsonl": "fe33add2214ad33e145542dc6cfd350b40923fa72e0b31c244a5abc72fb646c2",
+  "host_resources.jsonl": "009f511afbb2cd92d70ad7cb48d4fc8c4034ea4f09e2a8c9828d0b7c593bfbec",
+  "launch.json": "7539db41fa7d1da911029ba48287e90ef37dbeea73992b28ede9f84c40927982",
+  "ownership.json": "3adbe69cac6bd13596aff9c705887fc5211953de1148deeeab5671c4d02cc71d",
+  "provenance.json": "746c81a57635f9ab5155e5e2c6851da31537e2416328383a5d246a12f4f0665d",
+  "qemu_process_resources.jsonl": "4f3b0427c76bd54ea59093fe422881852014cb9d984a7e748ff36d9543d7a728",
+  "result.json": "571a56d485c70923e2c6da5c3d50bd5414b20950c542f9c586b3a7614704742a",
+  "stages.jsonl": "7677cb9e83119bc4fa4fd0a303ab1b2c82d25f72943bd9909990c4faedfd6839",
+  "supervisor.json": "2212c7a97bd1d25a290bebb92d8ac99ae1d9ad910ee4282901388ac5cc66f62c"
+}
