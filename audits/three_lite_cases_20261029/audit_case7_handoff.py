@@ -27,6 +27,39 @@ def _gui_reads(actions: list[dict], visible_after: float | None = None) -> list[
     return evidence
 
 
+def _gui_path_open_candidates(actions: list[dict], visible_after: float | None,
+                              root: Path) -> list[dict]:
+    """Flag path-entry plus a later read-only viewer for screenshot review."""
+    if visible_after is None:
+        return []
+    candidates = []
+    delivered = "/outputs/agent_A/inspection_note.txt"
+    for index, row in enumerate(actions):
+        started = row.get("action_started_at") or row.get("started_at") or row.get("t", 0)
+        entered = str((row.get("args") or {}).get("text") or "")
+        if (row.get("tool") != "type_text" or delivered not in entered
+                or started < visible_after or "Open" not in str(row.get("window_before") or "")):
+            continue
+        following = actions[index + 1:index + 5]
+        submitted = next((item for item in following if item.get("tool") == "key" and
+                          str((item.get("args") or {}).get("keys") or "").casefold()
+                          in {"return", "enter"}), None)
+        if submitted is None:
+            continue
+        opened = next((item for item in following if item.get("n", 0) > submitted.get("n", 0)
+                       and "inspection_note.txt (read-only)" in
+                       f"{item.get('window_before') or ''} {item.get('window_after') or ''}"), None)
+        if opened is None:
+            continue
+        shot = root / f"actor_runs/B/B/shots/{int(opened['n']):03d}.png"
+        candidates.append({"path_step": row.get("n"), "submit_step": submitted.get("n"),
+                           "viewer_step": opened.get("n"), "viewer_time": opened.get("action_started_at"),
+                           "viewer_title": opened.get("window_before") or opened.get("window_after"),
+                           "screenshot": str(shot.relative_to(root)) if shot.exists() else None,
+                           "requires_visual_review": True})
+    return candidates
+
+
 def audit(root: Path) -> dict:
     provenance = _document(root / "provenance.json")
     oracle = _document(root / "oracle.json")
@@ -48,6 +81,7 @@ def audit(root: Path) -> dict:
     completed_handoff_time = (max(a_visible_time, a_message["timestamp"])
                               if a_visible_time is not None and a_message else None)
     b_reads = _gui_reads(actions["B"], completed_handoff_time) if completed_handoff_time is not None else []
+    b_path_candidates = _gui_path_open_candidates(actions["B"], completed_handoff_time, root)
     lock = {}
     for role in "AB":
         executed = [row for row in actions[role] if row.get("executed")]
@@ -69,6 +103,8 @@ def audit(root: Path) -> dict:
             "B_saved_revision": b_saved.get("revision") if b_saved else None,
             "A_delivered_note_GUI_read_evidence": a_reads,
             "B_post_revision_delivered_note_GUI_read_evidence": b_reads,
+            "B_GUI_path_open_candidates": b_path_candidates,
+            "manual_review_required": bool(b_path_candidates and not b_reads),
             "behavioral_handoff_verified": bool(a_saved and a_visible_time is not None and
                                                  a_message and b_reads and b_saved and
                                                  b_reads[0]["time"] <= b_saved["time"]),
@@ -79,7 +115,7 @@ def audit(root: Path) -> dict:
             "input_lock": lock,
             "lock_contract_valid": (all(x["unlocked_actions"] == 0 for x in lock.values())
                                     if lock_arm else all(x["locked_actions"] == 0 for x in lock.values())),
-            "scope": "A GUI read may occur before publication but must precede A's message for v1p2 process validity. B GUI read requires a title showing the delivered path after both its revision and A's message became visible. Missing title evidence is unproven, not a model failure by itself; inspect screenshots manually."}
+            "scope": "A GUI read may occur before publication but must precede A's message for v1p2 process validity. A strict B GUI read requires a title showing the delivered path after its revision and A's message became visible. A full-path GUI Open submission followed by a matching read-only viewer is only a candidate: review its screenshot and A's delivered-note screenshot manually. No message or path string alone proves file use."}
 
 
 if __name__ == "__main__":
