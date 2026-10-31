@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -u
 cd "$(dirname "$0")/../.."
-source env.local.sh
+source env.local.sh || exit 3
+export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
+source audits/three_lite_cases_20261029/case5_resource_gate.sh || exit 3
 credential_file="${CODESK_MODEL_KEY_FILE:-/data3/whn/Project2/.codesk-secrets/haogpt_20261027.key}"
 if [[ ! -r "$credential_file" ]]; then
     echo "Model credential file is not readable: ${credential_file}" >&2
@@ -30,6 +32,7 @@ for arm in "${arms[@]}"; do
         echo "Stopping before next Guest: disk available ${available_bytes} bytes (<15 GiB)" >&2
         exit 4
     fi
+    case5_require_no_active_oscombo_guests || exit 4
     condition="collaborative_${arm%_lock}"
     lock_flag=()
     [[ "$arm" == "shared_lock" ]] && lock_flag=(--gui-input-lock)
