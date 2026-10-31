@@ -1,0 +1,42 @@
+{
+  "order": [
+    "haogpt",
+    "docode",
+    "docode",
+    "haogpt"
+  ],
+  "results": {
+    "haogpt": {
+      "attempts": 2,
+      "http_status_counts": {
+        "200": 2
+      },
+      "completed_streams": 2,
+      "function_calls": 2,
+      "reported_models": {
+        "gpt-6-astra": 2
+      },
+      "interruptions": 0,
+      "elapsed_s": [
+        17.216,
+        17.238
+      ]
+    },
+    "docode": {
+      "attempts": 2,
+      "http_status_counts": {
+        "200": 2
+      },
+      "completed_streams": 2,
+      "function_calls": 2,
+      "reported_models": {
+        "gpt-6-astra": 2
+      },
+      "interruptions": 0,
+      "elapsed_s": [
+        31.399,
+        4.104
+      ]
+    }
+  }
+}
