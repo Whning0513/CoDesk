@@ -78,7 +78,7 @@ def test_scripted_core_counts_each_physical_input_separately():
              _spreadsheet_lite_v1_2_open_view_actions("/tmp/sh12/views/B/forecast-r000001.ods"),
              _spreadsheet_lite_v1_2_order_actions(80))
     actions = [action for path in paths for action in path if action != "DONE"]
-    assert len(actions) == 14
+    assert len(actions) == 13
     assert all(action.count("pyautogui.") == 1 for action in actions)
 
 

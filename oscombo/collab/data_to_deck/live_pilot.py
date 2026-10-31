@@ -267,8 +267,9 @@ def _spreadsheet_lite_v1_2_open_view_actions(path: str) -> list[str]:
 
 
 def _spreadsheet_lite_v1_2_order_actions(units: int) -> list[str]:
-    return ["import pyautogui, time; pyautogui.press('up'); time.sleep(1)",
-            "import pyautogui, time; pyautogui.press('left'); time.sleep(1)",
+    # The return from the read-only revision can leave Calc's grid without
+    # keyboard focus. Click the visible E3 cell in the 3.8 cm layout first.
+    return ["import pyautogui, time; pyautogui.click(755, 310); time.sleep(1)",
             f"import pyautogui, time; pyautogui.write({str(units)!r}, 0.12); time.sleep(1)",
             "import pyautogui, time; pyautogui.press('enter'); time.sleep(1)",
             "import pyautogui, time; pyautogui.hotkey('ctrl','s'); time.sleep(3)", "DONE"]
