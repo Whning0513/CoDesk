@@ -146,6 +146,11 @@ def make_server(host: str, port: int, upstream: str, api_key: str,
             started = time.monotonic()
             started_at = time.time()
             actor = route.group(1)
+            headers_sent = False
+            forwarded_bytes = 0
+            phase = "request_validation"
+            status = None
+            first_byte_at = None
             try:
                 length = int(self.headers.get("Content-Length", "0"))
                 if length < 1 or length > 32 * 1024 * 1024:
@@ -162,27 +167,35 @@ def make_server(host: str, port: int, upstream: str, api_key: str,
                     body, removed_tools = restrict_actor_tools(body)
                 if moved or actor_mcp_only:
                     raw = json.dumps(body, separators=(",", ":")).encode("utf-8")
+                phase = "upstream_connect"
                 with requests.post(target, headers={
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
                     "Accept": self.headers.get("Accept", "text/event-stream"),
                 }, data=raw, stream=True, timeout=(15, 300)) as upstream_response:
-                    self.send_response(upstream_response.status_code)
+                    status = upstream_response.status_code
+                    phase = "downstream_headers"
+                    self.send_response(status)
                     self.send_header("Content-Type", upstream_response.headers.get(
                         "Content-Type", "text/event-stream"))
                     self.send_header("Connection", "close")
+                    # end_headers may fail after writing a partial header: from
+                    # here on, never try to send a second HTTP response.
+                    headers_sent = True
                     self.end_headers()
-                    first_byte_at = None
                     response_tail = b""
+                    phase = "upstream_stream"
                     for chunk in upstream_response.iter_content(chunk_size=8192):
                         if chunk:
                             if first_byte_at is None:
                                 first_byte_at = time.time()
                             response_tail = (response_tail + chunk)[-2 * 1024 * 1024:]
+                            phase = "downstream_write"
                             self.wfile.write(chunk)
                             self.wfile.flush()
+                            forwarded_bytes += len(chunk)
+                            phase = "upstream_stream"
                     self.close_connection = True
-                    status = upstream_response.status_code
                     usage = None
                     candidates = [response_tail] if "text/event-stream" not in upstream_response.headers.get("Content-Type", "") else [
                         line[6:] for line in response_tail.splitlines() if line.startswith(b"data: ")]
@@ -202,17 +215,26 @@ def make_server(host: str, port: int, upstream: str, api_key: str,
                                               "actor_mcp_only": actor_mcp_only,
                                               "removed_tool_names": removed_tools,
                                               "request_bytes": len(raw), "upstream_status": status,
+                                              "headers_sent": headers_sent, "forwarded_bytes": forwarded_bytes,
                                               "elapsed_s": round(time.monotonic() - started, 3)}) + "\n")
             except Exception as exc:
                 if event_log is not None:
                     with event_log.open("a", encoding="utf-8") as log:
                         log.write(json.dumps({"time": time.time(), "started_at": started_at,
                                               "actor": actor, "error_type": type(exc).__name__,
+                                              "phase": phase, "headers_sent": headers_sent,
+                                              "forwarded_bytes": forwarded_bytes, "upstream_status": status,
+                                              "actor_mcp_only": actor_mcp_only,
                                               "elapsed_s": round(time.monotonic() - started, 3)}) + "\n")
-                try:
-                    self.send_error(502, "Responses relay upstream error")
-                except OSError:
-                    pass
+                self.close_connection = True
+                if not headers_sent:
+                    try:
+                        # send_response/send_header buffer bytes until
+                        # end_headers; discard any unfinished first response.
+                        self._headers_buffer = []
+                        self.send_error(502, "Responses relay upstream error")
+                    except OSError:
+                        pass
 
     return ThreadingHTTPServer((host, port), Handler)
 

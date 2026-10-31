@@ -205,3 +205,63 @@ def test_version_probe_does_not_inherit_provider_or_run_credentials(monkeypatch)
     assert harness.version("codex") == "codex test-version"
     assert not {"CODESK_PROVIDER_TEST_KEY", "CODESK_RUN_RELAY_TOKEN",
                 "CODESK_CDD_COLLAB_TOKEN_A"} & seen.keys()
+
+
+@pytest.mark.parametrize("failure_phase", ["before_headers", "after_headers", "partial_sse"])
+def test_relay_stream_failure_has_one_response_and_auditable_phase(tmp_path, monkeypatch, failure_phase):
+    import http.client
+    import time
+    from oscombo import responses_tool_image_relay as relay_module
+
+    secret = "sensitive-test-provider-key"
+    partial = b'data: {"type":"response.created"}\n\n'
+
+    class Response:
+        status_code = 200
+        headers = {"Content-Type": "text/event-stream"}
+        def __enter__(self): return self
+        def __exit__(self, *_args): return False
+        def iter_content(self, chunk_size):
+            if failure_phase == "partial_sse":
+                yield partial
+            raise requests.exceptions.ChunkedEncodingError("sensitive-test-stream-body")
+
+    def fake_post(*_args, **_kwargs):
+        if failure_phase == "before_headers":
+            raise requests.exceptions.SSLError("sensitive-test-stream-body")
+        return Response()
+
+    monkeypatch.setattr(relay_module.requests, "post", fake_post)
+    log_path = tmp_path / "events.jsonl"
+    server = make_server("127.0.0.1", 0, "http://127.0.0.1:9/v1", secret,
+                         log_path, client_token="run-token")
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        client = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+        client.request("POST", "/actor/B/v1/responses", body=b'{"model":"test"}',
+                       headers={"Authorization": "Bearer run-token"})
+        response = client.getresponse()
+        payload = response.read()
+        assert response.status == (502 if failure_phase == "before_headers" else 200)
+        if failure_phase == "partial_sse":
+            assert payload == partial
+        elif failure_phase == "after_headers":
+            assert payload == b""
+        assert b"HTTP/1.1 502" not in payload
+        for _ in range(50):
+            if log_path.exists() and log_path.stat().st_size:
+                break
+            time.sleep(.01)
+        log_text = log_path.read_text()
+        event = json.loads(log_text)
+        assert event["actor"] == "B"
+        assert event["headers_sent"] is (failure_phase != "before_headers")
+        assert event["phase"] == ("upstream_connect" if failure_phase == "before_headers" else "upstream_stream")
+        assert event["forwarded_bytes"] == (len(partial) if failure_phase == "partial_sse" else 0)
+        assert event["error_type"] == ("SSLError" if failure_phase == "before_headers" else "ChunkedEncodingError")
+        assert secret not in log_text and "sensitive-test-stream-body" not in log_text
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
