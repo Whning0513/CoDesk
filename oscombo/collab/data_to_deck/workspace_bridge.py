@@ -7,9 +7,11 @@ GUI input. It does not coordinate the actors' mouse or keyboard actions.
 from __future__ import annotations
 
 import base64
+import fcntl
 import hashlib
 import io
 import json
+import secrets
 import shlex
 import shutil
 import subprocess
@@ -31,9 +33,10 @@ class SavedArtifactBridge:
                  case_id: str = spec.CASE_ID, peer_read_only: bool = False,
                  outputs: dict[str, str] | None = None,
                  mime_types: dict[str, str | None] | None = None,
-                 allow_initial_missing: set[str] | None = None):
+                 allow_initial_missing: set[str] | None = None,
+                 peer_view_dirs: dict[str, str] | None = None,
+                 resume: bool = False):
         self.root = Path(root)
-        self.root.mkdir(parents=True, exist_ok=False)
         self.run_id, self.task_root = run_id, task_root
         self.controllers, self.guest_ids = controllers, guest_ids
         self.poll_seconds = poll_seconds
@@ -44,6 +47,9 @@ class SavedArtifactBridge:
             "B": "application/vnd.oasis.opendocument.presentation",
         } if mime_types is None else mime_types)
         self.allow_initial_missing = set(allow_initial_missing or ())
+        self.peer_view_dirs = dict(peer_view_dirs or {})
+        if resume and not self.peer_view_dirs:
+            raise ValueError("resume requires the peer-view writer lease")
         if set(self.outputs) != {"A", "B"} or set(self.mime_types) != {"A", "B"}:
             raise ValueError("bridge needs one output and MIME contract per role")
         if not self.allow_initial_missing <= {"A", "B"}:
@@ -51,20 +57,83 @@ class SavedArtifactBridge:
         if any(not path or Path(path).is_absolute() or ".." in Path(path).parts
                for path in self.outputs.values()):
             raise ValueError("bridge output paths must remain under the task root")
+        if not set(self.peer_view_dirs) <= {"A", "B"}:
+            raise ValueError("peer views need an owner role")
+        for directory in self.peer_view_dirs.values():
+            if (not isinstance(directory, str) or not directory or
+                    Path(directory).is_absolute() or ".." in Path(directory).parts or
+                    directory in (".", "..")):
+                raise ValueError("peer view directory must remain under the task root")
+            parts = Path(directory).parts
+            if any(Path(p).parts[:len(parts)] == parts or parts[:len(Path(p).parts)] == Path(p).parts
+                   for p in self.outputs.values()):
+                raise ValueError("peer view directory must not overlap a role output")
+        view_parts = [Path(p).parts for p in self.peer_view_dirs.values()]
+        if any(a[:len(b)] == b or b[:len(a)] == a
+               for i, a in enumerate(view_parts) for b in view_parts[i + 1:]):
+            raise ValueError("peer view directories must not overlap")
+        self.root.mkdir(parents=True, exist_ok=resume)
         self.current: dict[str, dict] = {}
         self.peer_hashes: dict[str, str] = {}
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._thread = None
         self.errors: list[str] = []
-        (self.root / "ownership.json").write_text(json.dumps({
+        self._closed = False
+        self._writer_lock_handle = None
+        if self.peer_view_dirs:
+            self._writer_lock_handle = (self.root / "writer.lock").open("a")
+            try:
+                fcntl.flock(self._writer_lock_handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as exc:
+                self._writer_lock_handle.close()
+                self._writer_lock_handle = None
+                raise RuntimeError("bridge run already has a live writer") from exc
+        ownership = {
             "run_id": run_id, "case_id": case_id,
             "outputs": self.outputs, "writer_roles": {p: r for r, p in self.outputs.items()},
             "guest_ids": guest_ids, "root": str(self.root.resolve()),
             "scope": "saved-file publication ownership; GUI role discipline is separate",
             "peer_read_only": peer_read_only,
             "allow_initial_missing": sorted(self.allow_initial_missing),
-        }, indent=2) + "\n")
+            "peer_view_dirs": self.peer_view_dirs,
+        }
+        ownership_path = self.root / "ownership.json"
+        try:
+            if resume:
+                saved = json.loads(ownership_path.read_text())
+                if saved != ownership:
+                    raise ValueError("cannot resume a bridge with different ownership")
+                current_path = self.root / "current.json"
+                if current_path.exists():
+                    restored = json.loads(current_path.read_text())
+                    for actor, item in restored.items():
+                        if (actor not in self.outputs or item.get("actor") != actor or
+                                (not item.get("delivered") and not item.get("peer_view_invalidated"))):
+                            raise ValueError("invalid committed bridge state")
+                        archive = self.root / actor / f"revision-{item['revision']:06d}{Path(self.outputs[actor]).suffix}"
+                        if not archive.is_file() or digest(archive.read_bytes()) != item.get("sha256"):
+                            raise ValueError("committed bridge revision is missing or corrupt")
+                        if actor in self.peer_view_dirs and item.get("peer_view_path") != self._relative_view_path(actor, item["revision"]):
+                            raise ValueError("committed peer view path is invalid")
+                    self.current = restored
+                    self.peer_hashes = {actor: item["sha256"] for actor, item in restored.items()}
+            else:
+                ownership_path.write_text(json.dumps(ownership, indent=2) + "\n")
+        except BaseException:
+            self.close()
+            raise
+
+    def close(self):
+        """Release the optional run writer lease after the worker has stopped."""
+        with self._lock:
+            if self._thread and self._thread.is_alive():
+                raise RuntimeError("cannot release bridge writer while worker is running")
+            self._closed = True
+            if self._writer_lock_handle is not None:
+                fcntl.flock(self._writer_lock_handle, fcntl.LOCK_UN)
+                self._writer_lock_handle.close()
+                self._writer_lock_handle = None
 
     def _record(self, **event):
         with (self.root / "events.jsonl").open("a") as stream:
@@ -100,6 +169,94 @@ class SavedArtifactBridge:
         if digest(self._read(role, path)) != digest(data):
             raise RuntimeError("Guest artifact read-back hash mismatch")
 
+    def _archive_revision(self, actor: str, first_revision: int, suffix: str,
+                          data: bytes) -> tuple[int, Path]:
+        """Keep failed publication attempts immutable and reuse only matching bytes."""
+        directory = self.root / actor
+        directory.mkdir(exist_ok=True)
+        revision = first_revision
+        while True:
+            local = directory / f"revision-{revision:06d}{suffix}"
+            try:
+                with local.open("xb") as stream:
+                    stream.write(data)
+                return revision, local
+            except FileExistsError:
+                if local.read_bytes() == data:
+                    return revision, local
+                revision += 1
+
+    def _pending_revisions(self, actor: str, committed_revision: int) -> list[dict]:
+        path = self.root / f"pending-{actor}.json"
+        if not path.exists():
+            return []
+        items = json.loads(path.read_text())
+        if not isinstance(items, list):
+            raise RuntimeError("invalid bridge pending state")
+        verified = []
+        for item in items:
+            revision = item.get("revision")
+            if not isinstance(revision, int) or revision < 0 or not isinstance(item.get("sha256"), str):
+                raise RuntimeError("invalid bridge pending revision")
+            if revision <= committed_revision:
+                continue
+            local = self.root / actor / f"revision-{revision:06d}{Path(self.outputs[actor]).suffix}"
+            if not local.is_file() or digest(local.read_bytes()) != item["sha256"]:
+                raise RuntimeError("pending bridge revision is missing or corrupt")
+            verified.append({"revision": revision, "sha256": item["sha256"]})
+        return verified
+
+    def _save_pending_revision(self, actor: str, pending: list[dict], candidate: dict) -> None:
+        item = {"revision": candidate["revision"], "sha256": candidate["sha256"]}
+        if item not in pending:
+            pending = [*pending, item]
+        path = self.root / f"pending-{actor}.json"
+        temporary = self.root / f"pending-{actor}.tmp"
+        temporary.write_text(json.dumps(pending, indent=2) + "\n")
+        temporary.replace(path)
+        self._record(event="revision_pending", actor=actor, **item)
+
+    def _relative_view_path(self, actor: str, revision: int) -> str:
+        source = Path(self.outputs[actor])
+        return str(Path(self.peer_view_dirs[actor]) /
+                   f"{source.stem}-r{revision:06d}{source.suffix}")
+
+    def _ensure_peer_view(self, actor: str, revision: int, data: bytes) -> str:
+        """Create a verified, immutable saved-file view before publishing metadata."""
+        peer = "B" if actor == "A" else "A"
+        relative = self._relative_view_path(actor, revision)
+        path = f"{self.task_root}/{relative}"
+        expected = digest(data)
+        if not self._exists(peer, path):
+            temporary = path + ".codesk-view-" + secrets.token_hex(8)
+            encoded = base64.b64encode(data).decode("ascii")
+            # The exclusive hard link is atomic and cannot replace an existing
+            # revision even if another process creates it after the check.
+            cleanup = shlex.quote(f"rm -f -- {shlex.quote(temporary)}")
+            script = ("set -eu\numask 022\n"
+                      f"trap {cleanup} EXIT\n"
+                      f"printf %s {shlex.quote(encoded)} | base64 -d > {shlex.quote(temporary)}\n"
+                      f"chmod 444 -- {shlex.quote(temporary)}\n"
+                      f"ln -- {shlex.quote(temporary)} {shlex.quote(path)}\n")
+            result = self.controllers[peer].run_bash_script(script, timeout=30)
+            if (not isinstance(result, dict) or result.get("status") != "success"
+                    or result.get("returncode", 0)):
+                if not self._exists(peer, path):
+                    raise RuntimeError("immutable peer view transfer failed")
+        actual = digest(self._read(peer, path))
+        mode_result = self.controllers[peer].run_bash_script(
+            f"stat -c %a -- {shlex.quote(path)}", timeout=30)
+        mode = (mode_result.get("output") or "").strip() if isinstance(mode_result, dict) else ""
+        if actual != expected or not isinstance(mode_result, dict) or mode_result.get("status") != "success" or mode != "444":
+            self._record(event="peer_view_conflict", actor=actor, peer=peer, revision=revision,
+                         peer_view_path=relative, expected_sha256=expected, actual_sha256=actual,
+                         mode=mode)
+            raise RuntimeError("immutable peer view conflict or read-only verification failed")
+        self._record(event="peer_view_verified", actor=actor, peer=peer, revision=revision,
+                     peer_view_path=relative, sha256=expected, mode=mode,
+                     destination_guest=self.guest_ids[peer])
+        return relative
+
     def _protect_peer(self, owner: str) -> None:
         if not self.peer_read_only or self.guest_ids["A"] == self.guest_ids["B"]:
             return
@@ -120,6 +277,8 @@ class SavedArtifactBridge:
         if actor not in self.controllers or actor not in self.outputs:
             raise ValueError("no output owned by this actor")
         with self._lock:
+            if self._closed:
+                raise RuntimeError("bridge writer is closed")
             started = time.time()
             path = f"{self.task_root}/{self.outputs[actor]}"
             data = self._read(actor, path)
@@ -152,11 +311,14 @@ class SavedArtifactBridge:
             previous = self.current.get(actor)
             peer = "B" if actor == "A" else "A"
             distinct = self.guest_ids[actor] != self.guest_ids[peer]
+            pending = (self._pending_revisions(actor, previous["revision"] if previous else -1)
+                       if actor in self.peer_view_dirs else [])
             if distinct:
                 peer_hash = digest(self._read(peer, path)) if (
                     actor not in self.allow_initial_missing or self._exists(peer, path)) else None
                 # Never silently overwrite an unexpected peer edit or broken sync.
                 allowed = {sha, self.peer_hashes[actor]} if actor in self.peer_hashes else {sha}
+                allowed.update(item["sha256"] for item in pending)
                 if actor in self.allow_initial_missing and actor not in self.peer_hashes:
                     allowed.add(None)
                 if peer_hash not in allowed:
@@ -166,28 +328,49 @@ class SavedArtifactBridge:
             if not previous or previous["sha256"] != sha:
                 # A file that is absent in both Guests at setup has no seed
                 # revision. Its first delivered save is the first handoff.
-                revision = (1 if actor in self.allow_initial_missing else 0) if previous is None else previous["revision"] + 1
-                local = self.root / actor / f"revision-{revision:06d}{Path(path).suffix}"
-                local.parent.mkdir(exist_ok=True)
-                with local.open("xb") as stream:
-                    stream.write(data)
-                self.current[actor] = {"actor": actor, "revision": revision, "sha256": sha,
-                                       "bytes": len(data), "guest_path": path,
-                                       "delivered": not distinct}
-                self._record(event="revision_saved", **self.current[actor],
+                first = (1 if actor in self.allow_initial_missing else 0) if previous is None else previous["revision"] + 1
+                revision, local = self._archive_revision(actor, first, Path(path).suffix, data)
+                candidate = {"actor": actor, "revision": revision, "sha256": sha,
+                             "bytes": len(data), "guest_path": path, "delivered": False}
+                self._record(event="revision_saved", **candidate,
                              source_guest=self.guest_ids[actor], file=str(local.relative_to(self.root)))
+            else:
+                candidate = dict(previous)
+            if actor in self.peer_view_dirs and (not previous or previous["sha256"] != sha):
+                self._save_pending_revision(actor, pending, candidate)
             if distinct and peer_hash != sha:
                 self._write(peer, path, data)
                 self._protect_peer(actor)
-                self._record(event="transfer_verified", **{**self.current[actor], "delivered": True},
+                self._record(event="transfer_verified", **{**candidate, "delivered": True},
                              destination_guest=self.guest_ids[peer], elapsed_s=time.time() - started)
-            self.peer_hashes[actor] = sha
-            self.current[actor]["delivered"] = True
-            # current.json is audit metadata only, never mounted in either Guest.
+            if actor in self.peer_view_dirs:
+                try:
+                    candidate["peer_view_path"] = self._ensure_peer_view(actor, candidate["revision"], data)
+                except Exception as exc:
+                    self._record(event="peer_view_error", actor=actor, revision=candidate["revision"],
+                                 sha256=sha, error=f"{type(exc).__name__}: {exc}")
+                    if previous and previous["sha256"] == sha:
+                        # A once-valid published view is no longer verified.
+                        # Keep its history, but do not advertise it as usable.
+                        invalid = {**previous, "delivered": False,
+                                   "peer_view_invalidated": True}
+                        committed = {**self.current, actor: invalid}
+                        temp = self.root / "current.tmp"
+                        temp.write_text(json.dumps(committed, indent=2) + "\n")
+                        temp.replace(self.root / "current.json")
+                        self.current = committed
+                    raise
+                candidate.pop("peer_view_invalidated", None)
+            candidate["delivered"] = True
+            # Do not publish a partial in-memory state: a different role may
+            # commit while a peer-view retry is pending.
+            committed = {**self.current, actor: candidate}
             temp = self.root / "current.tmp"
-            temp.write_text(json.dumps(self.current, indent=2) + "\n")
+            temp.write_text(json.dumps(committed, indent=2) + "\n")
             temp.replace(self.root / "current.json")
-            return dict(self.current[actor])
+            self.current = committed
+            self.peer_hashes[actor] = sha
+            return dict(candidate)
 
     def snapshot(self) -> dict:
         # publish() can hold _lock while a slow Guest read or peer transfer is
@@ -208,6 +391,8 @@ class SavedArtifactBridge:
             self.publish(role)
 
     def start(self):
+        if self._closed:
+            raise RuntimeError("bridge writer is closed")
         self.sync()  # initial peer copies must already be byte-identical
         for owner in ("A", "B"):
             self._protect_peer(owner)
@@ -229,4 +414,7 @@ class SavedArtifactBridge:
             self._thread.join(timeout=130)
             if self._thread.is_alive():
                 raise RuntimeError("workspace bridge did not stop; preserve Guests for inspection")
-        self.sync()
+        try:
+            self.sync()
+        finally:
+            self.close()
