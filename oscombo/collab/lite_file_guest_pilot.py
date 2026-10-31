@@ -345,6 +345,22 @@ def _activate_or_restore_saved_editor(guest, app: str, path: str, run_id: str,
     return False
 
 
+def _restore_closed_case7_writer(guest, path: str, run_id: str) -> bool:
+    """Restore only a demonstrably closed saved Writer after model execution."""
+    try:
+        _activate(guest, "writer", path)
+        return False
+    except RuntimeError:
+        listing = _guest_script(guest, "wmctrl -l", timeout=15)
+        if listing.get("status") != "success":
+            raise RuntimeError("could not verify Writer window list")
+        if Path(path).name.casefold() in (listing.get("output") or "").casefold():
+            raise RuntimeError("Writer window exists but activation failed")
+        _launch(guest, "writer", path, run_id)
+        _activate(guest, "writer", path)
+        return True
+
+
 def _editor_has_unsaved_buffer(title: str, path: str) -> bool:
     return f"*{Path(path).name}".casefold() in title.casefold()
 
@@ -1085,6 +1101,8 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                     if case == "build_verify" and condition.endswith("shared"):
                         restored_closed_window = False
                         _launch(guest, "editor", path, run_id)
+                    elif case == "workspace_assembly_v2" and app == "writer" and model:
+                        restored_closed_window = _restore_closed_case7_writer(guest, path, run_id)
                     else:
                         restored_closed_window = _activate_or_restore_saved_editor(
                             guest, app, path, run_id, bool(model))
