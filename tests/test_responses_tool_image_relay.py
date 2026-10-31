@@ -183,3 +183,25 @@ def test_codex_loopback_mode_does_not_inherit_provider_key(tmp_path, monkeypatch
     relay_env = relay_harness.env(relay_ctx)
     assert relay_env.get("CODESK_PROVIDER_TEST_KEY") is None
     assert relay_env.get("CODESK_RUN_RELAY_TOKEN") == "ephemeral-run-token"
+
+
+def test_version_probe_does_not_inherit_provider_or_run_credentials(monkeypatch):
+    from types import SimpleNamespace
+    from oscombo.harness import external
+
+    monkeypatch.setenv("CODESK_PROVIDER_TEST_KEY", "provider-sentinel")
+    monkeypatch.setenv("CODESK_RUN_RELAY_TOKEN", "relay-sentinel")
+    monkeypatch.setenv("CODESK_CDD_COLLAB_TOKEN_A", "collab-sentinel")
+    seen = {}
+
+    def fake_run(argv, **kwargs):
+        seen.update(kwargs["env"])
+        return SimpleNamespace(stdout="codex test-version\n")
+
+    monkeypatch.setattr(external.subprocess, "run", fake_run)
+    harness = CodexHarness({"model": "test", "options": {}})
+    harness.opts = {"api_key_env": "CODESK_RUN_RELAY_TOKEN",
+                    "redact_env_keys": ["CODESK_PROVIDER_TEST_KEY"]}
+    assert harness.version("codex") == "codex test-version"
+    assert not {"CODESK_PROVIDER_TEST_KEY", "CODESK_RUN_RELAY_TOKEN",
+                "CODESK_CDD_COLLAB_TOKEN_A"} & seen.keys()
