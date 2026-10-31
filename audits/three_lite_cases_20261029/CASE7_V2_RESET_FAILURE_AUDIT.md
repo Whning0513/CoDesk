@@ -1,6 +1,6 @@
 # Case 7 v2 Isolated 正控：reset 超时与容器归属审计
 
-本记录为本机未跟踪审计，不改变原运行或源提交。原运行位于 `/data2/whn/CoDesk-case7-v2-dualfs/runs/wa-lite-v2-dualfs-positive-isolated-eoffix-20261031b/`，源提交 `b09d2aadbcb5bc42c1390666c7c5f0d43bf394d9`。最终为 **INVALID_INFRA_OR_RUNNER_ERROR**，不能计为正控 PASS 或模型结果。
+本记录不改变原运行或源提交。原运行位于 `/data2/whn/CoDesk-case7-v2-dualfs/runs/wa-lite-v2-dualfs-positive-isolated-eoffix-20261031b/`，源提交 `b09d2aadbcb5bc42c1390666c7c5f0d43bf394d9`。最终为 **INVALID_INFRA_OR_RUNNER_ERROR**，不能计为正控 PASS 或模型结果。
 
 真实 GUI 阶段完成：A/B/联合独立 Oracle 均通过；`control_B_peer_view.json` 显示 B 的 Writer 打开 revision 1 只读视图，模式 444、A 源文件 644；`reopen_evidence.json` 显示两个产物分别重开且字节一致。桥记录一次 B 保存中内容变化重试，随后完整版本经传输 SHA/权限核验并提交；最终诊断 unresolved/unknown/historical faults 均为空。这些证据不替代 reset。
 
