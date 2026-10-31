@@ -10,7 +10,8 @@ from PIL import Image
 from oscombo.collab.model_and_review_lite_v1.oracle import evaluate_snapshots, evaluate
 from oscombo.collab.lite_file_guest_pilot import (
     _blender_dimension_region_change, _blender_frame_ready,
-    _blender_quick_setup_visible, _blender_welcome_visible,
+    _blender_quick_setup_visible, _blender_revert_confirmation_visible,
+    _blender_welcome_visible,
 )
 
 
@@ -53,6 +54,18 @@ def test_scripted_peer_gui_read_rejects_stale_blender_frame():
     after = BytesIO()
     initial.save(after, format="PNG")
     assert _blender_dimension_region_change(before.getvalue(), after.getvalue()) > 3
+
+
+def test_blender_revert_confirmation_requires_visible_blue_button():
+    frame = Image.new("RGB", (1920, 1080), (63, 63, 63))
+    buffer = BytesIO()
+    frame.save(buffer, format="PNG")
+    assert not _blender_revert_confirmation_visible(buffer.getvalue())
+    frame.paste((20, 20, 20), (845, 520, 1144, 625))
+    frame.paste((71, 114, 179), (1026, 585, 1128, 610))
+    buffer = BytesIO()
+    frame.save(buffer, format="PNG")
+    assert _blender_revert_confirmation_visible(buffer.getvalue())
 
 
 def scenes():
