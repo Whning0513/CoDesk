@@ -431,6 +431,10 @@ def test_pilot_gate_checks_behavior_and_infrastructure_not_success_selection(tmp
 
 def test_model_runner_reads_private_credential_file_without_logging(tmp_path):
     import os
+    # These tests launch a fake provider only. Avoid contending with a real
+    # Case 6 experiment's host admission lock while checking credential flow.
+    bin_dir = tmp_path / "bin"; bin_dir.mkdir()
+    flock = bin_dir / "flock"; flock.write_text("#!/bin/sh\nexit 0\n"); flock.chmod(0o700)
     probe = tmp_path / "probe.json"
     osworld = tmp_path / "provider"
     python = osworld / ".venv/bin/python"; python.parent.mkdir(parents=True)
@@ -444,7 +448,7 @@ def test_model_runner_reads_private_credential_file_without_logging(tmp_path):
     config = tmp_path / "env.sh"
     config.write_text(f"export OSWORLD_DIR={osworld}\nexport OSCOMBO_GUEST_IMAGE=/image\n"
                       "export OSCOMBO_RUNTIME_IMAGE=example\nexport AIGCBEST_API_KEY=decoy-env-key\n")
-    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "CODESK_ENV_FILE": str(config),
+    env = {"PATH": f"{bin_dir}:{os.environ.get('PATH', '/usr/bin:/bin')}", "CODESK_ENV_FILE": str(config),
            "CODESK_CASE6_KEY_FILE": str(key), "CODESK_CASE6_V12_CONTROLS_MANIFEST": str(tmp_path / "missing"),
            "CODESK_TEST_PROBE": str(probe)}
     completed = subprocess.run(["bash", "oscombo/collab/spreadsheet_handoff_lite_v1_2/run_model.sh", "pilot"],
@@ -463,6 +467,7 @@ def test_only_model_driver_inherits_file_key_not_sampler_or_audits(tmp_path):
     (repo / "audits/three_lite_cases_20261029").mkdir(parents=True)
     (repo / "runs").mkdir()
     bin_dir = tmp_path / "bin"; bin_dir.mkdir()
+    flock = bin_dir / "flock"; flock.write_text("#!/bin/sh\nexit 0\n"); flock.chmod(0o700)
     git = bin_dir / "git"
     git.write_text("#!/bin/sh\nif [ \"$2\" = --show-toplevel ]; then printf '%s\\n' \"$CODESK_TEST_REPO\"; "
                    "elif [ \"$1\" = rev-parse ]; then printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n'; fi\nexit 0\n")
