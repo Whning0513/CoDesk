@@ -3,7 +3,7 @@ import json
 import pytest
 
 from oscombo import combo, runner
-from oscombo.guest import Guest
+from oscombo.guest import Guest, InfraError
 
 from fakes import FakeEnv, task
 
@@ -23,6 +23,14 @@ def fake_osworld(monkeypatch, tmp_path):
     monkeypatch.setattr(combo, "boot", boot)
     monkeypatch.setattr(runner, "load_task", lambda spec: TASKS[spec])
     monkeypatch.setattr(Guest, "execute", lambda self, argv, timeout=60: {"output": "Some Window"})
+    # This suite tests runner orchestration using an in-memory controller,
+    # not OSWorld's HTTP transport; deadline tests exercise the real HTTP path.
+    def fake_screenshot(self, patience=None):
+        shot = self.env.controller.get_screenshot()
+        if not shot:
+            raise InfraError("fake Guest screenshot unavailable")
+        return shot
+    monkeypatch.setattr(Guest, "screenshot", fake_screenshot)
     return envs
 
 
