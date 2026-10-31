@@ -11,6 +11,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import secrets
 import shlex
 import subprocess
@@ -134,16 +135,43 @@ def _result_exit_code(status: str) -> int:
 
 def _maximize_case7_files(guest):
     """Set the same broad Files viewport before either model Actor starts."""
-    result = _guest_script(guest,
-        "wmctrl -r incoming -b add,maximized_vert,maximized_horz; "
-        "sleep 2; wmctrl -lG", timeout=15)
-    windows = (result.get("output") or "").splitlines()
-    incoming = [line.split() for line in windows if line.rstrip().endswith(" incoming")]
-    if not incoming or len(incoming[-1]) < 8:
-        raise RuntimeError("Case 7 Files window not found after maximize")
-    # wmctrl -lG: id, desktop, x, y, width, height, host, title.
-    width, height = map(int, incoming[-1][4:6])
+    def geometry():
+        # wmctrl -lG: id, desktop, x, y, width, height, host, title.
+        result = _guest_script(guest, "wmctrl -lG", timeout=15)
+        incoming = [line.split() for line in (result.get("output") or "").splitlines()
+                    if line.rstrip().endswith(" incoming")]
+        if not incoming or len(incoming[-1]) < 8:
+            raise RuntimeError("Case 7 Files window not found during maximize")
+        row = incoming[-1]
+        if not re.fullmatch(r"0x[0-9a-fA-F]+", row[0]):
+            raise RuntimeError("Case 7 Files window ID is invalid")
+        return row[0], int(row[4]), int(row[5])
+
+    window_id, width, height = geometry()
+    attempts = [{"method": "initial", "width": width, "height": height}]
+    for _ in range(2):
+        if width >= 1500 and height >= 800:
+            break
+        # Select the exact Nautilus window, then request both maximize states.
+        _guest_script(guest,
+            f"wmctrl -i -a {shlex.quote(window_id)}; "
+            f"wmctrl -i -r {shlex.quote(window_id)} -b add,maximized_vert,maximized_horz; "
+            "sleep 3", timeout=15)
+        _, width, height = geometry()
+        attempts.append({"method": "wmctrl_exact_id", "width": width, "height": height})
     if width < 1500 or height < 800:
+        # GNOME can ignore a WM state request just after the window appears.
+        # Use its standard maximize shortcut in the same pre-Actor setup for
+        # both desktop topologies.
+        guest.actor = "system"
+        guest.run_pyautogui("import pyautogui, time; "
+                            "pyautogui.hotkey('winleft','up'); time.sleep(3)")
+        _, width, height = geometry()
+        attempts.append({"method": "gui_super_up", "width": width, "height": height})
+    (guest.root / "case7_files_setup.json").write_text(json.dumps(attempts, indent=2) + "\n")
+    if width < 1500 or height < 800:
+        shot = guest.screenshot(patience=45)
+        (guest.root / "screenshots" / f"{guest.guest_key}-files-unmaximized.png").write_bytes(shot)
         raise RuntimeError(f"Case 7 Files window was not maximized: {width}x{height}")
     shot = guest.screenshot(patience=45)
     (guest.root / "screenshots" / f"{guest.guest_key}-files-maximized.png").write_bytes(shot)
