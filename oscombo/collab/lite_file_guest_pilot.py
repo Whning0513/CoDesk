@@ -328,6 +328,19 @@ def _activate(guest, app: str, path: str):
         raise RuntimeError(f"cannot activate {hint}")
 
 
+def _activate_or_restore_saved_editor(guest, app: str, path: str, run_id: str,
+                                      model_episode: bool) -> bool:
+    """Reopen a model-closed Text Editor from the already scored saved file."""
+    try:
+        _activate(guest, app, path)
+    except RuntimeError:
+        if not model_episode or app != "editor":
+            raise
+        _launch(guest, app, path, run_id)
+        return True
+    return False
+
+
 def _editor_has_unsaved_buffer(title: str, path: str) -> bool:
     return f"*{Path(path).name}".casefold() in title.casefold()
 
@@ -888,35 +901,43 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
             try:
                 if app != "files":
                     if case == "build_verify" and condition.endswith("shared"):
+                        restored_closed_window = False
                         _launch(guest, "editor", path, run_id)
                     else:
-                        _activate(guest, app, path)
+                        restored_closed_window = _activate_or_restore_saved_editor(
+                            guest, app, path, run_id, bool(model))
                     # A dirty Text Editor tab may not be safely closed from
                     # the generic GUI path. Preserve the already scored bytes
                     # and record that GUI reopen was not verified.
                     active_title = guest.active_window() or ""
-                    if app == "editor" and _editor_has_unsaved_buffer(active_title, path):
+                    if (not restored_closed_window and app == "editor"
+                            and _editor_has_unsaved_buffer(active_title, path)):
                         reopen.append({"role": role, "guest": guest.guest_key,
                                        "same_bytes": True, "gui_reopen": "skipped_unsaved_buffer",
                                        "saved_sha256": hashlib.sha256(data_before).hexdigest()})
                         continue
-                    guest.actor = "system"
-                    guest.run_pyautogui("import pyautogui, time; pyautogui.hotkey('alt','f4'); time.sleep(2)"
-                                        if app == "blender" else
-                                        "import pyautogui, time; pyautogui.hotkey('ctrl','w'); time.sleep(2)")
-                    discarded_after_close = core._discard_postscore_unsaved_dialog(
-                        guest, f"reopen-{role}-close")
-                    discarded_unsaved = role == discarded_shared_editor_role or discarded_after_close
-                    _launch(guest, app, path, run_id)
+                    if restored_closed_window:
+                        discarded_unsaved = role == discarded_shared_editor_role
+                    else:
+                        guest.actor = "system"
+                        guest.run_pyautogui("import pyautogui, time; pyautogui.hotkey('alt','f4'); time.sleep(2)"
+                                            if app == "blender" else
+                                            "import pyautogui, time; pyautogui.hotkey('ctrl','w'); time.sleep(2)")
+                        discarded_after_close = core._discard_postscore_unsaved_dialog(
+                            guest, f"reopen-{role}-close")
+                        discarded_unsaved = role == discarded_shared_editor_role or discarded_after_close
+                        _launch(guest, app, path, run_id)
                 else:
                     discarded_unsaved = False
+                    restored_closed_window = False
                     _launch(guest, "files", f"{task_root}/outputs/agent_A", run_id)
                 data_after = guest.env.controller.get_file(path)
                 if data_before != data_after:
                     raise RuntimeError(f"{role} saved bytes changed during GUI reopen")
                 reopen.append({"role": role, "guest": guest.guest_key,
                     "sha256": hashlib.sha256(data_after).hexdigest(), "same_bytes": True,
-                    "discarded_uncommitted_buffer_after_scoring": discarded_unsaved})
+                    "discarded_uncommitted_buffer_after_scoring": discarded_unsaved,
+                    "restored_closed_window": restored_closed_window})
             except (RuntimeError, TimeoutError) as exc:
                 # Oracle already scored the saved bytes. Keep its judgement
                 # separate from a blocked postscore GUI lifecycle and reset
