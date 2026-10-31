@@ -1,0 +1,18 @@
+{
+  "attempts.jsonl": {
+    "bytes": 1299,
+    "sha256": "75dcb14cf73b31f89de7ec0a3b15988b3c8a0f954b5e9f9e30f5139383fcb2c2"
+  },
+  "exit-code.txt": {
+    "bytes": 2,
+    "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+  },
+  "launch.json": {
+    "bytes": 333,
+    "sha256": "2af6fb1fd2caa8aeb9b5fa11524c952a9fa8f1eeece30ce9f61ab8aa56272172"
+  },
+  "summary.json": {
+    "bytes": 702,
+    "sha256": "60151052b7fedb333fc7fc1bccd7ba83a3a4b6e84c1fff231c5161a6a582e027"
+  }
+}

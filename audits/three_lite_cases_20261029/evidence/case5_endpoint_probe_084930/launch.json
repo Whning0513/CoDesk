@@ -1,0 +1,13 @@
+{
+  "run_id": "case5-endpoint-probe-20261031T084930Z",
+  "pid": 540721,
+  "model": "gpt-6-astra",
+  "order": [
+    "haogpt",
+    "docode",
+    "docode",
+    "haogpt"
+  ],
+  "attempts_per_endpoint": 2,
+  "log": "/data3/whn/Project2/CoDesk-case5/audits/three_lite_cases_20261029/case5-endpoint-probe-20261031T084930Z-supervisor.log"
+}
