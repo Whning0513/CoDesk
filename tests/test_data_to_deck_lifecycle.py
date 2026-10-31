@@ -3,12 +3,31 @@ from __future__ import annotations
 
 import json
 import threading
+from io import BytesIO
 from pathlib import Path
 
+from PIL import Image, ImageDraw
 from oscombo.collab.data_to_deck import live_pilot
 from oscombo.harness.base import AgentResult
 from oscombo.harness.external import CodexHarness
 from audits.lite_v2_lifecycle_20261028.oracle_equivalence_audit import extended_amount
+
+
+def test_desktop_readiness_rejects_uniform_gray_boot_frame_with_cursor():
+    frame = Image.new("RGB", (1920, 1080), (34, 34, 34))
+    ImageDraw.Draw(frame).rectangle((950, 530, 954, 544), fill="white")
+    png = BytesIO()
+    frame.save(png, format="PNG")
+    assert not live_pilot._desktop_frame_ready(png.getvalue())
+
+    # A rendered desktop has broad, visually distinct regions.
+    draw = ImageDraw.Draw(frame)
+    draw.rectangle((0, 0, 1919, 29), fill=(25, 25, 25))
+    draw.rectangle((0, 30, 1919, 1079), fill=(95, 43, 65))
+    draw.rectangle((0, 100, 70, 950), fill=(35, 35, 35))
+    png = BytesIO()
+    frame.save(png, format="PNG")
+    assert live_pilot._desktop_frame_ready(png.getvalue())
 
 
 class Client:
