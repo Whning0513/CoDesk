@@ -5,7 +5,10 @@ Several agents use one ``Guest`` from different threads; every call here is a st
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 import time
+from pathlib import Path
 from typing import Any
 
 import requests
@@ -42,16 +45,35 @@ class Guest:
             return None
 
     def screenshot(self, patience: float | None = None) -> bytes:
-        """PNG bytes; a slow (TCG) Guest under load may return nothing for a while, so retry up to ``patience`` s."""
+        """Get image bytes with a bounded local wall time, including retries.
+
+        A run-owned helper is terminated and reaped on timeout/interruption;
+        an already-started read-only request may still finish in the Guest.
+        """
         patience = float(os.environ.get("OSCOMBO_SHOT_PATIENCE", "120")) if patience is None else patience
-        shot = self.env.controller.get_screenshot()
         deadline = time.monotonic() + patience
-        while not shot and time.monotonic() < deadline:
-            time.sleep(5)
-            shot = self.env.controller.get_screenshot()
-        if not shot:
-            raise InfraError(f"no Guest screenshot for {patience:.0f} s")
-        return shot
+        if patience <= 0:
+            raise InfraError("Guest screenshot deadline expired")
+        worker = Path(__file__).with_name("guest_screenshot_worker.py")
+        # Keep provider/model keys out of the helper.  The in-Guest endpoint
+        # is local HTTP and requires no upstream provider credentials.
+        env = {key: os.environ[key] for key in ("PATH", "LANG", "LC_ALL") if key in os.environ}
+        proc = subprocess.Popen([sys.executable, "-I", str(worker), self.env.controller.http_server, str(patience)],
+                                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env)
+        try:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(proc.args, patience)
+            shot, _ = proc.communicate(timeout=remaining)
+            if proc.returncode == 0 and shot:
+                return shot
+        except subprocess.TimeoutExpired as exc:
+            raise InfraError(f"Guest screenshot exceeded {patience:.1f} s deadline") from exc
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.communicate()
+        raise InfraError(f"no Guest screenshot within {patience:.1f} s")
 
     def accessibility_tree(self) -> str | None:
         return self.env.controller.get_accessibility_tree()
