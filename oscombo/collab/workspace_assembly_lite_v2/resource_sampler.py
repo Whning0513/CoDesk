@@ -96,6 +96,8 @@ def summarize(run_root: Path) -> dict:
         return {"valid": False, "reason": "resource samples missing"}
     rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
     provenance = json.loads((run_root / "provenance.json").read_text())
+    result_path = run_root / "result.json"
+    result = json.loads(result_path.read_text()) if result_path.exists() else {}
     cmds = {}
     for row in rows:
         for guest in row.get("guests", []):
@@ -110,6 +112,12 @@ def summarize(run_root: Path) -> dict:
     expected_ids = {item.get("container_id") for item in provenance.get("guests", [])}
     sampled = [guest for row in rows for guest in row.get("guests", [])]
     required_fields = {"VmRSS", "VmSwap", "read_bytes", "write_bytes"}
+    times = sorted(float(row["time"]) for row in rows if isinstance(row.get("time"), (int, float)))
+    max_gap = max((b - a for a, b in zip(times, times[1:])), default=float("inf"))
+    started, elapsed = provenance.get("started_at"), result.get("elapsed_s")
+    timing_covered = (isinstance(started, (int, float)) and isinstance(elapsed, (int, float)) and
+                      len(times) >= 2 and times[0] <= started + 60 and
+                      times[-1] >= started + elapsed - 60 and max_gap <= 60)
     valid = (requested == {"cpus": "8", "ram": "8G"} and bool(cmds)
              and len(expected_ids) == int(provenance.get("guest_count", 0)) > 0
              and None not in expected_ids and expected_ids <= set(cmds)
@@ -120,9 +128,10 @@ def summarize(run_root: Path) -> dict:
                      for cid in expected_ids)
              and all({"MemAvailable", "SwapTotal", "SwapFree"} <= set(row.get("host_meminfo", {}))
                      and bool(row.get("host_io_pressure")) for row in rows)
-             and not any(r.get("sample_error") for r in rows))
+             and timing_covered and not any(r.get("sample_error") for r in rows))
     return {"valid": valid, "requested": requested, "actual_qemu_argv": cmds,
-            "peak_observed_guests": peak, "samples": len(rows),
+            "peak_observed_guests": peak, "samples": len(rows), "timing_covered": timing_covered,
+            "max_sample_gap_s": round(max_gap, 3) if times and len(times) >= 2 else None,
             "sample_errors": [r["sample_error"] for r in rows if r.get("sample_error")]}
 
 

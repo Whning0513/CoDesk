@@ -21,13 +21,13 @@ def make_control(root: Path, *, negative=False):
                         f"Attachment: inspection_note.txt; tag {'WRONG-00' if negative else tag}.")
     score = oracle.evaluate(root / "fixtures/inspection_note.txt", root / "artifacts/A/incoming/inspection_note.txt",
         root / "artifacts/A/inspection_note.txt", root / "fixtures/handoff_report.odt", root / "artifacts/B/handoff_report.odt")
-    meta = {"run_id": root.name, "case_id": spec.CASE_ID, "case_version": spec.CASE_VERSION,
+    meta = {"started_at": 0, "run_id": root.name, "case_id": spec.CASE_ID, "case_version": spec.CASE_VERSION,
         "source_commit": "abc", "fixture_seed": freeze.CONTROL_SEED, "condition": "collaborative_shared",
         "guest_count": 1, "guests": [{"container_id": "guest1"}], "model_called": False,
         "guest_resources_requested": {"cpus": "8", "ram": "8G"},
         "scripted_negative_control": negative, "scripted_view_version_probe": False}
     (root / "provenance.json").write_text(json.dumps(meta))
-    res = {"postscore_lifecycle_ok": True, "reopen_complete": True, "bridge_valid": True, "oracle_fixture_valid": True,
+    res = {"elapsed_s": 10, "postscore_lifecycle_ok": True, "reopen_complete": True, "bridge_valid": True, "oracle_fixture_valid": True,
            "reopen": [{"role": "A", "same_bytes": True}, {"role": "B", "same_bytes": True}],
            "reset": [{"workspace_clean": True}], "status": "FAIL" if negative else "PASS", "oracle": score}
     (root / "result.json").write_text(json.dumps(res))
@@ -43,7 +43,7 @@ def make_control(root: Path, *, negative=False):
                           "rss_and_io": fields}],
         "host_meminfo": {"MemAvailable": "1 kB", "SwapTotal": "1 kB", "SwapFree": "1 kB"},
         "host_io_pressure": "some avg10=0.00"}
-    (root / "resource_samples_v2.jsonl").write_text(json.dumps(sample) + "\n")
+    (root / "resource_samples_v2.jsonl").write_text("".join(json.dumps({**sample, "time": t}) + "\n" for t in (0, 10)))
     (root / "resource_audit.json").write_text(json.dumps(resource_sampler.summarize(root)))
     fixtures.report_odt(root / "control_prework.odt", "Audience: Operations.")
     (root / "control_prework.json").write_text(json.dumps({"sha256": freeze._sha(root / "control_prework.odt"),
@@ -78,9 +78,10 @@ def test_freeze_control_rejects_resource_gap_and_wrong_negative(tmp_path):
     root = tmp_path / "negative"
     make_control(root, negative=True)
     assert freeze._control(root, "abc", "negative_shared")["status"] == "FAIL"
-    data = json.loads((root / "resource_samples_v2.jsonl").read_text())
-    data["guests"][0]["argv"][-1] = "4"
-    (root / "resource_samples_v2.jsonl").write_text(json.dumps(data) + "\n")
+    data = [json.loads(line) for line in (root / "resource_samples_v2.jsonl").read_text().splitlines()]
+    for row in data:
+        row["guests"][0]["argv"][-1] = "4"
+    (root / "resource_samples_v2.jsonl").write_text("".join(json.dumps(row) + "\n" for row in data))
     with pytest.raises(ValueError, match="resource audit"):
         freeze._control(root, "abc", "negative_shared")
 

@@ -231,9 +231,10 @@ def test_resource_audit_requires_actual_qemu_configuration_and_complete_samples(
     from oscombo.collab.workspace_assembly_lite_v2 import resource_sampler
     root = tmp_path / "run"
     root.mkdir()
-    meta = {"guest_resources_requested": {"cpus": "8", "ram": "8G"},
+    meta = {"started_at": 0, "guest_resources_requested": {"cpus": "8", "ram": "8G"},
             "guest_count": 2, "guests": [{"container_id": "a"}, {"container_id": "b"}]}
     (root / "provenance.json").write_text(json.dumps(meta))
+    (root / "result.json").write_text(json.dumps({"elapsed_s": 10}))
     def guest(cid):
         return {"container_id": cid, "argv": ["qemu-system-x86_64", "-m", "8G", "-smp", "8"],
                 "rss_and_io": {"VmRSS": "10 kB", "VmSwap": "0 kB", "read_bytes": "0", "write_bytes": "0"}}
@@ -241,14 +242,18 @@ def test_resource_audit_requires_actual_qemu_configuration_and_complete_samples(
            "host_meminfo": {"MemAvailable": "9 kB", "SwapTotal": "10 kB", "SwapFree": "9 kB"},
            "host_io_pressure": "some avg10=0.00"}
     samples = root / "resource_samples_v2.jsonl"
-    samples.write_text(json.dumps(row) + "\n")
+    samples.write_text("".join(json.dumps({**row, "time": t}) + "\n" for t in (0, 10)))
     assert resource_sampler.summarize(root)["valid"] is True
+    samples.write_text(json.dumps({**row, "time": 0}) + "\n")
+    assert resource_sampler.summarize(root)["valid"] is False
+    samples.write_text("".join(json.dumps({**row, "time": t}) + "\n" for t in (0, 100)))
+    assert resource_sampler.summarize(root)["valid"] is False
     row["guests"][1]["argv"][-1] = "4"
-    samples.write_text(json.dumps(row) + "\n")
+    samples.write_text("".join(json.dumps({**row, "time": t}) + "\n" for t in (0, 10)))
     assert resource_sampler.summarize(root)["valid"] is False
     row["guests"][1]["argv"][-1] = "8"
     del row["guests"][1]["rss_and_io"]["VmSwap"]
-    samples.write_text(json.dumps(row) + "\n")
+    samples.write_text("".join(json.dumps({**row, "time": t}) + "\n" for t in (0, 10)))
     assert resource_sampler.summarize(root)["valid"] is False
 
 
@@ -315,3 +320,23 @@ def test_model_contract_checks_actual_tools_and_transport(tmp_path):
     relay[0]["upstream_status"] = None
     write_rows(tmp_path / "codex_relay_events.jsonl", relay)
     assert any("transport" in error for error in contract.audit(tmp_path)["errors"])
+
+
+def test_postscore_closed_writer_restore_requires_absent_window(monkeypatch):
+    from oscombo.collab import lite_file_guest_pilot as pilot
+    guest = object()
+    calls = []
+    def activate(*args):
+        calls.append("activate")
+        if calls.count("activate") == 1:
+            raise RuntimeError("no active window")
+    monkeypatch.setattr(pilot, "_activate", activate)
+    monkeypatch.setattr(pilot, "_launch", lambda *args: calls.append("launch"))
+    monkeypatch.setattr(pilot, "_guest_script", lambda *args, **kwargs: {"status": "success", "output": "other"})
+    assert pilot._restore_closed_case7_writer(guest, "/tmp/handoff_report.odt", "run") is True
+    assert calls == ["activate", "launch", "activate"]
+    calls.clear()
+    monkeypatch.setattr(pilot, "_guest_script", lambda *args, **kwargs: {"status": "success", "output": "handoff_report.odt"})
+    with pytest.raises(RuntimeError, match="exists"):
+        pilot._restore_closed_case7_writer(guest, "/tmp/handoff_report.odt", "run")
+    assert calls == ["activate"]

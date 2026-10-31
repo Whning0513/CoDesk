@@ -191,6 +191,22 @@ def _activate(guest, app: str, path: str):
         raise RuntimeError(f"cannot activate {hint}")
 
 
+def _restore_closed_case7_writer(guest, path: str, run_id: str) -> bool:
+    """Restore only a demonstrably closed saved Writer after model execution."""
+    try:
+        _activate(guest, "writer", path)
+        return False
+    except RuntimeError:
+        listing = _guest_script(guest, "wmctrl -l", timeout=15)
+        if listing.get("status") != "success":
+            raise RuntimeError("could not verify Writer window list")
+        if Path(path).name.casefold() in (listing.get("output") or "").casefold():
+            raise RuntimeError("Writer window exists but activation failed")
+        _launch(guest, "writer", path, run_id)
+        _activate(guest, "writer", path)
+        return True
+
+
 def _editor_has_unsaved_buffer(title: str, path: str) -> bool:
     return f"*{Path(path).name}".casefold() in title.casefold()
 
@@ -775,6 +791,8 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 if app != "files":
                     if case == "build_verify" and condition.endswith("shared"):
                         _activate_editor_tab(guest, role, True)
+                    elif case == "workspace_assembly_v2" and app == "writer" and model:
+                        restored_closed_writer = _restore_closed_case7_writer(guest, path, run_id)
                     else:
                         _activate(guest, app, path)
                     # A dirty Text Editor tab may not be safely closed from
@@ -786,13 +804,16 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                                        "same_bytes": True, "gui_reopen": "skipped_unsaved_buffer",
                                        "saved_sha256": hashlib.sha256(data_before).hexdigest()})
                         continue
-                    guest.actor = "system"
-                    guest.run_pyautogui("import pyautogui, time; pyautogui.hotkey('alt','f4'); time.sleep(2)"
-                                        if app == "blender" else
-                                        "import pyautogui, time; pyautogui.hotkey('ctrl','w'); time.sleep(2)")
-                    discarded_unsaved = core._discard_postscore_unsaved_dialog(
-                        guest, f"reopen-{role}-close")
-                    _launch(guest, app, path, run_id)
+                    if case == "workspace_assembly_v2" and app == "writer" and model and restored_closed_writer:
+                        discarded_unsaved = False
+                    else:
+                        guest.actor = "system"
+                        guest.run_pyautogui("import pyautogui, time; pyautogui.hotkey('alt','f4'); time.sleep(2)"
+                                            if app == "blender" else
+                                            "import pyautogui, time; pyautogui.hotkey('ctrl','w'); time.sleep(2)")
+                        discarded_unsaved = core._discard_postscore_unsaved_dialog(
+                            guest, f"reopen-{role}-close")
+                        _launch(guest, app, path, run_id)
                 else:
                     discarded_unsaved = False
                     _launch(guest, "files", f"{task_root}/outputs/agent_A", run_id)
