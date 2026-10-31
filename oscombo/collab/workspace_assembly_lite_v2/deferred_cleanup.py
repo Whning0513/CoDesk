@@ -12,8 +12,20 @@ import re
 from pathlib import Path
 
 
+def _valid_ids(ids) -> bool:
+    if not isinstance(ids, dict) or not ids:
+        return False
+    primary = {key for key in ids if key in {"shared", "A", "B"}}
+    if primary not in ({"shared"}, {"A", "B"}):
+        return False
+    if set(ids) - primary - {f"{key}:previous" for key in primary}:
+        return False
+    return (all(isinstance(cid, str) and re.fullmatch(r"[0-9a-f]{64}", cid) for cid in ids.values())
+            and len(set(ids.values())) == len(ids))
+
+
 def write_pending(root: Path, run_id: str, ids: dict[str, str], error: str) -> None:
-    if root.name != run_id or not ids or any(not re.fullmatch(r"[0-9a-f]{64}", cid or "") for cid in ids.values()):
+    if root.name != run_id or not _valid_ids(ids):
         raise ValueError("invalid deferred cleanup ownership")
     pending = {"run_id": run_id, "coordinator_pid": os.getpid(), "guest_ids": ids,
                "reason": error, "status": "awaiting_coordinator_exit"}
@@ -33,9 +45,7 @@ def cleanup(root: Path, client, *, pid_alive=None, not_found=None) -> dict:
             pending["coordinator_pid"] <= 1):
         raise ValueError("invalid deferred cleanup run identity")
     ids = pending.get("guest_ids")
-    if (not isinstance(ids, dict) or set(ids) not in ({"shared"}, {"A", "B"}) or
-            len(set(ids.values())) != len(ids) or any(not isinstance(cid, str) or
-            not re.fullmatch(r"[0-9a-f]{64}", cid) for cid in ids.values())):
+    if not _valid_ids(ids):
         raise ValueError("invalid deferred cleanup container IDs")
     if pid_alive is None:
         def pid_alive(pid):

@@ -252,6 +252,60 @@ def _stop_bridge_before_cleanup(bridge, case, run_root, run_id, container_ids, c
         return True
 
 
+def _cleanup_candidates(envs, container_ids, reset_uncertain=()):
+    """Capture both the registered ID and any replacement, without Docker mutation."""
+    candidates = {}
+    for key, env in envs.items():
+        old = container_ids[key]
+        current = getattr(getattr(env.provider, "container", None), "id", None)
+        if key in reset_uncertain and current is None:
+            raise RuntimeError(f"{key}: reset failed and provider identity is unavailable; preserve resources")
+        for cid in (old, current):
+            if cid is not None and (not isinstance(cid, str) or not re.fullmatch(r"[0-9a-f]{64}", cid)):
+                raise RuntimeError(f"{key}: full container identity unavailable; preserve resources")
+        if not old:
+            raise RuntimeError(f"{key}: registered container identity unavailable")
+        candidates[key] = current or old
+        if current and current != old:
+            candidates[f"{key}:previous"] = old
+    if len(set(candidates.values())) != len(candidates):
+        raise RuntimeError("duplicate Guest container IDs; preserve resources")
+    return candidates
+
+
+def _cleanup_exact_guest(key, env, candidates, run_id, run_root=None):
+    """Close only IDs that independently pass full-ID and exact-label checks."""
+    ids = [candidates[key]]
+    if f"{key}:previous" in candidates:
+        ids.append(candidates[f"{key}:previous"])
+    verified = {}
+    for cid in ids:
+        if not re.fullmatch(r"[0-9a-f]{64}", cid):
+            raise RuntimeError("invalid full container ID")
+        if not core._missing_container(cid):
+            verified[cid] = core._verify_container(cid, run_id)
+    current = getattr(getattr(env.provider, "container", None), "id", None)
+    if current is not None:
+        if current != candidates[key] or current not in verified:
+            raise RuntimeError(f"{key}: current provider container is not verified; preserve resources")
+        # Check again immediately before the provider dereferences the pointer.
+        if getattr(getattr(env.provider, "container", None), "id", None) != current:
+            raise RuntimeError(f"{key}: provider container changed; preserve resources")
+        overlay = getattr(env.provider, "_oscombo_overlay", None)
+        if overlay and (run_root is None or not Path(overlay).resolve().is_relative_to((run_root / "overlay" / key).resolve())):
+            raise RuntimeError(f"{key}: provider overlay is outside this run; preserve resources")
+        env.close()
+        if not core._missing_container(current):
+            raise RuntimeError(f"owned Guest {current} remains after close")
+        verified.pop(current)
+    # Any older full ID still present was checked above and is removed by its
+    # verified object, never via a run-label enumeration.
+    for cid, container in verified.items():
+        container.remove(force=True, v=False)
+        if not core._missing_container(cid):
+            raise RuntimeError(f"owned Guest {cid} remains after exact-ID remove")
+
+
 def _editor_has_unsaved_buffer(title: str, path: str) -> bool:
     return f"*{Path(path).name}".casefold() in title.casefold()
 
@@ -524,6 +578,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
     server_thread.start()
     clients = {r: CollaborationClient(f"http://127.0.0.1:{server.server_port}", r, tokens[r]) for r in "AB"}
     envs, guests, container_ids = {}, {}, {}
+    reset_uncertain: set[str] = set()
     resource_stop = threading.Event()
     resource_thread = threading.Thread(target=core._sample_guest_resources,
         args=(run_root, container_ids, resource_stop), daemon=True)
@@ -896,12 +951,14 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
             os.environ["SWCUB_VM_OVERLAY"] = str(run_root / "overlay" / key)
             os.environ["OSCOMBO_RUN_LABEL"] = run_id
             env.is_environment_used = True
+            reset_uncertain.add(key)
             env.reset()
             new_container, labels = core._owned_container(env, run_id)
             if new_container.id == old_id or not core._missing_container(old_id):
                 raise RuntimeError("reset did not replace run-owned Guest")
             _guest_script(guests[key], f"test ! -e {shlex.quote(task_root)} && ! pgrep -x soffice.bin >/dev/null")
             container_ids[key] = new_container.id
+            reset_uncertain.discard(key)
             reset_evidence.append({"guest": key, "old": old_id, "new": new_container.id,
                                    "workspace_clean": True, "labels": labels})
         (run_root / "reset_evidence.json").write_text(json.dumps(reset_evidence, indent=2) + "\n")
@@ -923,19 +980,22 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
     finally:
         resource_stop.set()
         resource_thread.join(timeout=10)
+        try:
+            cleanup_candidates = _cleanup_candidates(envs, container_ids, reset_uncertain)
+            identities_uncertain = False
+        except Exception as exc:
+            cleanup_candidates = dict(container_ids)
+            identities_uncertain = True
+            cleanup_errors.append(f"Guest identity unavailable: {type(exc).__name__}: {exc}")
         defer_guests = _stop_bridge_before_cleanup(
-            bridge, case, run_root, run_id, container_ids, cleanup_errors)
+            bridge, case, run_root, run_id, {} if identities_uncertain else cleanup_candidates, cleanup_errors)
         for name in env_token_names:
             os.environ.pop(name, None)
-        for key, env in (() if defer_guests else envs.items()):
-            cid = container_ids[key]
+        for key, env in (() if defer_guests or identities_uncertain else envs.items()):
             try:
-                core._verify_container(cid, run_id)
-                env.close()
-                if not core._missing_container(cid):
-                    raise RuntimeError(f"owned Guest {cid} remains after close")
+                _cleanup_exact_guest(key, env, cleanup_candidates, run_id, run_root)
                 core._append(run_root / "resource_actions.jsonl", {"event": "guest_closed",
-                    "guest": key, "full_container_id": cid, "run_id": run_id})
+                    "guest": key, "full_container_id": cleanup_candidates[key], "run_id": run_id})
             except Exception as exc:
                 cleanup_errors.append(f"{key}: {type(exc).__name__}: {exc}")
                 core._append(run_root / "cleanup_errors.jsonl", {"guest": key, "error": str(exc)})
