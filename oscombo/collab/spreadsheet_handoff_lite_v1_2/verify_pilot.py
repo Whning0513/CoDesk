@@ -5,6 +5,8 @@ import hashlib
 import json
 import sys
 from pathlib import Path
+from . import spec
+from .verify_controls import _fixture_fingerprint, verify as verify_controls
 
 
 def _json(path: Path) -> dict:
@@ -23,8 +25,10 @@ def _rows(path: Path) -> list[dict]:
         return []
 
 
-def verify(root: Path) -> dict:
+def verify(root: Path, expected_commit: str | None = None,
+           controls_manifest: Path | None = None, run_base: Path = Path("runs")) -> dict:
     result, sync = _json(root / "result.json"), _json(root / "workspace_sync_result.json")
+    provenance, fingerprint = _json(root / "provenance.json"), _fixture_fingerprint(root)
     resources = _json(root / "resource_profile_check.json")
     audit, review = _json(root / "handoff_audit.json"), _json(root / "pilot_visual_review.json")
     boundary = _json(root / "actor_tool_boundary_audit.json")
@@ -66,7 +70,21 @@ def verify(root: Path) -> dict:
                     and audit.get("B_formula_before_view_candidate_actions")
                     and audit.get("B_saved_revision_after_view_candidate") and visual and prework_reviewed)
     reset = result.get("reset") or []
-    infra = bool(result.get("condition") == "collaborative_isolated"
+    source = provenance.get("source_commit")
+    source_ok = bool(provenance.get("case_id") == spec.CASE_ID
+                     and provenance.get("case_version") == spec.CASE_VERSION
+                     and isinstance(source, str) and len(source) == 40
+                     and (expected_commit is None or source == expected_commit)
+                     and provenance.get("model") == "gpt-6-astra" and provenance.get("effort") == "medium"
+                     and provenance.get("actor_mcp_only") is True
+                     and provenance.get("diagnostic_step_limit") == 18
+                     and provenance.get("active_model_timeout_s") == 900
+                     and provenance.get("handoff_lifecycle") is True
+                     and provenance.get("yield_wait_lifecycle") is True and fingerprint is not None)
+    controls = verify_controls(controls_manifest, run_base, expected_commit) if controls_manifest else None
+    fixture_matches = bool(fingerprint is not None and
+                           (controls is None or (controls.get("valid") and controls.get("fixture_sha256") == fingerprint)))
+    infra = bool(source_ok and fixture_matches and result.get("condition") == "collaborative_isolated"
                  and result.get("status") in {"PASS", "FAIL"}
                  and result.get("reopen_complete") is True and len(reset) == 2
                  and all(x.get("workspace_clean") is True for x in reset)
@@ -76,6 +94,7 @@ def verify(root: Path) -> dict:
                  and resources.get("resource_observation_complete") is True)
     return {"run_id": root.name, "artifact_status": result.get("status"),
             "infrastructure_and_resource_valid": infra, "request_tool_boundary_valid": allowlist_ok,
+            "source_and_model_config_valid": source_ok, "fixture_matches_controls": fixture_matches,
             "handoff_behavior_visually_reviewed": behavior,
             "gate_passed": bool(infra and allowlist_ok and behavior),
             "note": "The gate checks execution and evidence; artifact PASS is not selected or required."}
@@ -84,7 +103,10 @@ def verify(root: Path) -> dict:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("run_root", type=Path)
+    parser.add_argument("--expected-commit")
+    parser.add_argument("--controls-manifest", type=Path)
+    parser.add_argument("--run-base", type=Path, default=Path("runs"))
     args = parser.parse_args()
-    result = verify(args.run_root)
+    result = verify(args.run_root, args.expected_commit, args.controls_manifest, args.run_base)
     print(json.dumps(result, indent=2))
     sys.exit(0 if result["gate_passed"] else 3)

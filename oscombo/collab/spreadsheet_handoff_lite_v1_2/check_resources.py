@@ -10,13 +10,20 @@ def check(root: Path, guest_count: int) -> dict:
     profile_path = root / "resource_profile.json"
     samples_path = root / "resource_samples.jsonl"
     profile = json.loads(profile_path.read_text()) if profile_path.exists() else {}
-    samples = []
+    provenance_path, result_path = root / "provenance.json", root / "result.json"
+    provenance = json.loads(provenance_path.read_text()) if provenance_path.exists() else {}
+    result = json.loads(result_path.read_text()) if result_path.exists() else {}
+    samples, malformed = [], 0
     if samples_path.exists():
         for line in samples_path.read_text().splitlines():
             try:
-                samples.append(json.loads(line))
+                value = json.loads(line)
+                if isinstance(value, dict):
+                    samples.append(value)
+                else:
+                    malformed += 1
             except json.JSONDecodeError:
-                pass
+                malformed += 1
     guest_profiles = {}
     for sample in samples:
         for guest in sample.get("guests", []):
@@ -35,10 +42,21 @@ def check(root: Path, guest_count: int) -> dict:
     profile_ok = profile.get("requested_guest_cpus") == "8" and profile.get("requested_guest_ram") == "8G"
     qemu_ok = (len(guest_profiles) >= guest_count
                and all(valid_config(config) for config in guest_profiles.values()))
+    times = [x.get("time") for x in samples if type(x.get("time")) in (int, float)]
+    start, elapsed = provenance.get("started_at"), result.get("elapsed_s")
+    interval = profile.get("sample_interval_s", 5)
+    cadence_ok = (len(times) == len(samples) and len(times) >= 2 and times == sorted(times)
+                  and all(b - a <= max(60, 5 * interval) for a, b in zip(times, times[1:])))
+    span_ok = (type(start) in (int, float) and type(elapsed) in (int, float) and elapsed > 0
+               and bool(times) and times[0] <= start + 60
+               and times[-1] >= start + elapsed - max(30, 4 * interval))
     return {"run_id": root.name, "requested_profile_ok": profile_ok,
             "qemu_profile_observed": guest_profiles, "expected_initial_guest_count": guest_count,
             "actual_profile_ok": qemu_ok, "host_resource_coverage": host_coverage,
-            "resource_observation_complete": bool(profile_ok and qemu_ok and host_coverage)}
+            "sample_cadence_ok": cadence_ok, "sample_time_span_ok": span_ok,
+            "malformed_sample_lines": malformed,
+            "resource_observation_complete": bool(profile_ok and qemu_ok and host_coverage
+                                                   and cadence_ok and span_ok and not malformed)}
 
 
 if __name__ == "__main__":
