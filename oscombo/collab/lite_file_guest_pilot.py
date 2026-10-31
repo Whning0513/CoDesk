@@ -231,6 +231,27 @@ def _case7_control_retry_open(guest, run_root: Path, instruction: str, case_id: 
     return True
 
 
+def _stop_bridge_before_cleanup(bridge, case, run_root, run_id, container_ids, cleanup_errors):
+    """Return True only when live bridge access requires deferring Guests."""
+    if bridge is None:
+        return False
+    try:
+        bridge.stop()
+        return False
+    except Exception as exc:
+        core._append(run_root / "workspace_sync_errors.jsonl", {"error": str(exc), "time": time.time()})
+        cleanup_errors.append(f"bridge stop failed: {type(exc).__name__}: {exc}")
+        if case != "workspace_assembly_v2" or not bridge._thread or not bridge._thread.is_alive():
+            return False
+        # Keep the lease and Guests until the worker's process has exited.
+        from oscombo.collab.workspace_assembly_lite_v2.deferred_cleanup import write_pending
+        try:
+            write_pending(run_root, run_id, dict(container_ids), str(exc))
+        except Exception as pending_exc:
+            cleanup_errors.append(f"cannot write deferred cleanup record: {pending_exc}")
+        return True
+
+
 def _editor_has_unsaved_buffer(title: str, path: str) -> bool:
     return f"*{Path(path).name}".casefold() in title.casefold()
 
@@ -902,14 +923,11 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
     finally:
         resource_stop.set()
         resource_thread.join(timeout=10)
-        if bridge is not None:
-            try:
-                bridge.stop()
-            except Exception as exc:
-                core._append(run_root / "workspace_sync_errors.jsonl", {"error": str(exc), "time": time.time()})
+        defer_guests = _stop_bridge_before_cleanup(
+            bridge, case, run_root, run_id, container_ids, cleanup_errors)
         for name in env_token_names:
             os.environ.pop(name, None)
-        for key, env in envs.items():
+        for key, env in (() if defer_guests else envs.items()):
             cid = container_ids[key]
             try:
                 core._verify_container(cid, run_id)
@@ -932,6 +950,15 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
         server.server_close()
         server_thread.join(timeout=5)
         if cleanup_errors:
+            result_path = run_root / "result.json"
+            if result_path.exists():
+                existing = json.loads(result_path.read_text())
+                existing["pre_cleanup_status"] = existing.get("status")
+                existing["status"] = "INVALID_INFRA_OR_RUNNER_ERROR"
+                existing["cleanup_errors"] = cleanup_errors
+                tmp = result_path.with_suffix(".json.tmp")
+                tmp.write_text(json.dumps(existing, indent=2, sort_keys=True) + "\n")
+                tmp.replace(result_path)
             raise RuntimeError("run-owned Guest cleanup incomplete: " + "; ".join(cleanup_errors))
 
 

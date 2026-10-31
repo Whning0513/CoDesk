@@ -144,6 +144,15 @@ fi
 wait "$driver_pid"
 exit_code=$?
 if [[ -n "$sampler_pid" ]]; then kill "$sampler_pid" 2>/dev/null || true; wait "$sampler_pid" 2>/dev/null || true; fi
+if [[ -f "$run_root/bridge_cleanup_pending.json" ]]; then
+    # wait above proves the coordinator (and its daemon writer) exited.
+    # This helper acquires the old lease and removes only exact labelled IDs.
+    if ! "$python" -m oscombo.collab.workspace_assembly_lite_v2.deferred_cleanup "$run_root" \
+        > "${log%.log}-deferred-cleanup.log" 2>&1; then
+        echo 'Deferred Guest cleanup failed; retain run-owned resources for review' >&2
+    fi
+    exit_code=3
+fi
 mark_resource_invalid() {
     if [[ -f "$run_root/result.json" ]]; then
         "$python" - "$run_root/result.json" "${1:-QEMU configuration or resource samples not verified}" <<'PY'
