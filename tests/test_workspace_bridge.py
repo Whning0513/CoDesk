@@ -712,3 +712,45 @@ def test_peer_view_is_exposed_to_peer_via_public_collaboration_api(tmp_path):
         server.server_close()
         thread.join(timeout=5)
         bridge.close()
+
+
+def test_empty_owner_save_is_durable_retry_until_later_valid_commit(tmp_path):
+    bridge, a, b, opts = make_view_bridge(tmp_path, shared=True)
+    bridge.publish("A")
+    path = "/task/outputs/agent_A/note.txt"
+    a.files[path] = b""
+    with pytest.raises(RuntimeError, match="no saved artifact"):
+        bridge.publish("A")
+    assert bridge.diagnostics()["infrastructure_review_required"]
+    assert len(bridge.diagnostics()["unresolved_save_validation_retries"]) == 1
+    bridge.close()
+    resumed = SavedArtifactBridge(bridge.root, "views", "/task", {"A": a, "B": b},
+                                  bridge.guest_ids, resume=True, **opts)
+    assert resumed.diagnostics()["infrastructure_review_required"]
+    a.files[path] = b"completed\n"
+    resumed.publish("A")
+    assert not resumed.diagnostics()["infrastructure_review_required"]
+    resumed.close()
+
+
+def test_empty_published_peer_view_is_a_fault_not_owner_save_retry(tmp_path):
+    bridge, _, b, _ = make_view_bridge(tmp_path, shared=True)
+    revision = bridge.publish("A")
+    b.files["/task/" + revision["peer_view_path"]] = b""
+    with pytest.raises(RuntimeError, match="no saved artifact"):
+        bridge.publish("A")
+    diagnostics = bridge.diagnostics()
+    assert diagnostics["infrastructure_review_required"]
+    assert diagnostics["save_validation_retries"] == 0
+    assert any(e["event"] == "guest_read_error" for e in diagnostics["historical_faults"])
+    assert bridge.snapshot()["A"]["delivered"] is False
+    bridge.close()
+
+
+def test_diagnostics_treats_non_object_json_as_malformed(tmp_path):
+    bridge, _, _, _ = make_view_bridge(tmp_path, shared=True)
+    (bridge.root / "events.jsonl").write_text('[]\nnull\n42\n')
+    diagnostics = bridge.diagnostics()
+    assert diagnostics["malformed_event_lines"] == 3
+    assert diagnostics["infrastructure_review_required"]
+    bridge.close()
