@@ -232,6 +232,20 @@ def _blender_dimension_region_change(before: bytes, after: bytes) -> float:
         return round(ImageStat.Stat(ImageChops.difference(a.crop(box), b.crop(box))).mean[0], 3)
 
 
+def _blender_revert_confirmation_visible(screenshot: bytes) -> bool:
+    """Recognize Blender 5.0's Revert confirmation in the pinned Guest UI."""
+    from io import BytesIO
+    from PIL import Image
+
+    with Image.open(BytesIO(screenshot)) as image:
+        frame = image.convert("RGB")
+        w, h = frame.size
+        blue = frame.getpixel((round(1050 * w / 1920), round(598 * h / 1080)))
+        modal = frame.getpixel((round(950 * w / 1920), round(545 * h / 1080)))
+        return (max(modal) < 60 and 40 <= blue[0] <= 120
+                and blue[1] > blue[0] + 20 and blue[2] > blue[1] + 30)
+
+
 def _postscore_lifecycle_ok(reopen: list[dict]) -> bool:
     """Distinguish an absent task output from failure to reopen a saved one."""
     return len(reopen) == 2 and all(
@@ -619,17 +633,33 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                     guest_b.run_pyautogui("import pyautogui, time; "
                         "pyautogui.moveTo(900,500); pyautogui.press('f3'); time.sleep(1); "
                         "pyautogui.write('Revert', 0.12); pyautogui.press('enter'); time.sleep(3)")
+                    confirm_png = guest_b.screenshot(patience=45)
+                    (run_root / "screenshots" / "scripted-peer-blender-revert-confirm.png").write_bytes(confirm_png)
+                    if not _blender_revert_confirmation_visible(confirm_png):
+                        raise RuntimeError("B Blender Revert confirmation did not appear")
                     guest_b.run_pyautogui("import pyautogui, time; "
-                        "pyautogui.press('enter'); time.sleep(8)")
+                        "pyautogui.click(1105,598); time.sleep(8)")
                 else:
                     _activate(guest_b, "blender", a_path)
                 peer_shot = run_root / "screenshots" / "scripted-peer-blender-after-handoff.png"
-                peer_png = guest_b.screenshot(patience=45)
+                if condition.endswith("isolated"):
+                    for attempt in range(1, 13):
+                        peer_png = guest_b.screenshot(patience=45)
+                        (run_root / "screenshots" /
+                         f"scripted-peer-blender-reload-{attempt:02d}.png").write_bytes(peer_png)
+                        display_change = _blender_dimension_region_change(initial_blender, peer_png)
+                        if (display_change >= 3.0 and _blender_frame_ready(peer_png)
+                                and not _blender_revert_confirmation_visible(peer_png)):
+                            break
+                        if attempt < 12:
+                            time.sleep(4)
+                    else:
+                        peer_shot.write_bytes(peer_png)
+                        raise RuntimeError("B Blender GUI still shows the pre-handoff dimensions")
+                else:
+                    peer_png = guest_b.screenshot(patience=45)
+                    display_change = None
                 peer_shot.write_bytes(peer_png)
-                display_change = (_blender_dimension_region_change(initial_blender, peer_png)
-                                  if condition.endswith("isolated") else None)
-                if display_change is not None and display_change < 3.0:
-                    raise RuntimeError("B Blender GUI still shows the pre-handoff dimensions")
                 (run_root / "scripted_peer_blender_read.json").write_text(json.dumps({
                     "published_A_revision": a_revision["revision"],
                     "guest_key": guest_b.guest_key,
