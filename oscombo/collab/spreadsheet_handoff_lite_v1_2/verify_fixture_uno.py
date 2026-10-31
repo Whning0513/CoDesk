@@ -41,6 +41,18 @@ def main() -> None:
                 actual = (addr.StartColumn, addr.StartRow)
                 widths = [doc.Sheets.getByIndex(0).Columns.getByIndex(i).Width for i in range(9)]
                 print(f"{filename}: selected={actual}, expected={expected}, column_widths_100th_mm={widths}")
+                if filename == "order_template.ods":
+                    cells = doc.Sheets.getByIndex(0)
+                    units, cost = cells.getCellRangeByName("E3"), cells.getCellRangeByName("F3")
+                    if str(units.Type.value) != "EMPTY":
+                        raise RuntimeError(f"E3 must be empty, got {units.Type}")
+                    cost.setFormula("=E3*C3")
+                    if cost.Error != 0 or cost.Value != 0:
+                        raise RuntimeError(f"Pre-handoff formula error={cost.Error} value={cost.Value}")
+                    units.Value = 80
+                    if cost.Error != 0 or cost.Value != 2240:
+                        raise RuntimeError(f"Formula after entry error={cost.Error} value={cost.Value}")
+                    print("order_template.ods: blank E3 and pre-handoff cost formula verified")
                 doc.close(True)
                 if actual != expected:
                     raise RuntimeError(f"Initial selection mismatch for {filename}")

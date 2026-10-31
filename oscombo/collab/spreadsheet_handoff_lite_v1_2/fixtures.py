@@ -43,6 +43,11 @@ def _set_public_layout(path: Path, sheet: str, cursor_column: int) -> None:
         table.insert(0, ET.Element(q("table", "table-column"), {q("table", "style-name"): "wide", q("table", "number-columns-repeated"): "9", q("table", "default-cell-style-name"): "legible"}))
         for table_row in table.findall(q("table", "table-row")):
             table_row.set(q("table", "style-name"), "tall")
+            for cell_node in table_row.findall(q("table", "table-cell")):
+                paragraphs = cell_node.findall(q("text", "p"))
+                if cell_node.get(q("office", "value-type")) == "string" and len(paragraphs) == 1 and not (paragraphs[0].text or ""):
+                    cell_node.attrib.pop(q("office", "value-type"))
+                    cell_node.remove(paragraphs[0])
     updated = ET.tostring(root, encoding="utf-8", xml_declaration=True)
     settings = f'''<?xml version="1.0" encoding="UTF-8"?>
 <office:document-settings xmlns:office="{NS['office']}" xmlns:config="urn:oasis:names:tc:opendocument:xmlns:config:1.0" xmlns:ooo="http://openoffice.org/2004/office" office:version="1.2">
