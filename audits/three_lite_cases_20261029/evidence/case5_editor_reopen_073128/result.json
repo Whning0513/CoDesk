@@ -1,0 +1,48 @@
+{
+  "cleanup": [
+    {
+      "container_id": "62ddd04dc89528a9bec66eb266ab0849d485d5ed5ea7f500b1fcb2ea60c57dca",
+      "removed": true
+    }
+  ],
+  "cleanup_complete": true,
+  "editor_reopen": {
+    "active_title": "shade_review.txt (/tmp/codesk-model-review-lite-v1/outputs/agent_B) - gedit",
+    "production_restore_branch": true,
+    "same_bytes": true,
+    "sha256": "37b3c738d14d7115e570f4f5e37e9fd9f7d57915bf18e1abdba6c51e6453eeb5"
+  },
+  "ended_at": 1793432702.773696,
+  "events": [],
+  "gui_frame_mean_difference": 24.222,
+  "inotify_after": {
+    "allocated": 2,
+    "errno": 28,
+    "error_name": "ENOSPC",
+    "max_user_watches": 65536,
+    "requested": 64
+  },
+  "inotify_before": {
+    "allocated": 2,
+    "errno": 28,
+    "error_name": "ENOSPC",
+    "max_user_watches": 65536,
+    "requested": 64
+  },
+  "model_called": false,
+  "new_container": "62ddd04dc89528a9bec66eb266ab0849d485d5ed5ea7f500b1fcb2ea60c57dca",
+  "old_container": "9afed28651fcd6d5d9f9ffc54c324796a970334150770b76fa7c1636549e6135",
+  "reset_labels": {
+    "org.opencontainers.image.ref.name": "ubuntu",
+    "org.opencontainers.image.version": "22.04",
+    "oscombo": "1",
+    "oscombo.run": "case5-lifecycle-health-20261031T073128Z"
+  },
+  "reset_marker_absent": true,
+  "reset_replaced_container": true,
+  "reset_s": 276.24,
+  "run_id": "case5-lifecycle-health-20261031T073128Z",
+  "screenshot_after_reset_s": 151.273,
+  "screenshot_before_s": 19.886,
+  "status": "PASS"
+}
