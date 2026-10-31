@@ -1,0 +1,15 @@
+{
+  "cleanup_complete": true,
+  "container_id": "b0ff184898355146093bd6d2c07048faa8dbcfbb216ef30c8ac19ccd8b33d1fe",
+  "pid": 397830,
+  "run_id": "case5-lifecycle-health-20261031T071228Z",
+  "time_utc": "2026-10-31T07:25:51.406655+00:00",
+  "trigger": "driver execution session exited 143 before result or cleanup",
+  "verified_labels": {
+    "org.opencontainers.image.ref.name": "ubuntu",
+    "org.opencontainers.image.version": "22.04",
+    "oscombo": "1",
+    "oscombo.run": "case5-lifecycle-health-20261031T071228Z"
+  },
+  "verified_overlay": true
+}

@@ -1,0 +1,35 @@
+{
+  "run_id": "case5-lifecycle-health-20261031T065907Z",
+  "original_result_status": "PASS",
+  "audited_status": "PARTIAL_READINESS_FALSE_POSITIVE",
+  "reason": "post-reset screenshot is a uniform dark gray frame, not a visible Ubuntu desktop; existing readiness threshold accepts gray >=24",
+  "valid_observations": [
+    "pre-reset GUI screenshot and Super input",
+    "reset replaced exact container",
+    "marker absent",
+    "run-owned container cleanup"
+  ],
+  "missing_evidence": [
+    "usable post-reset desktop"
+  ],
+  "screenshots": {
+    "before-input.png": {
+      "sha256": "722a3f2791f42eec74af27227adf1c11a364b18aba121a16813cd215b6b28737",
+      "sampled_unique_colors": 1506,
+      "sampled_chromatic_pixels": 2205,
+      "pixels_sampled": 2304
+    },
+    "after-super.png": {
+      "sha256": "cb46deb0a5d0463798dda4fb1b2d04a2daebf816c55ef3f45a600f524361f215",
+      "sampled_unique_colors": 1298,
+      "sampled_chromatic_pixels": 1488,
+      "pixels_sampled": 2304
+    },
+    "after-reset.png": {
+      "sha256": "d768db126a25770d1f2b3a2551b008079abf506b9af83084b77ac9e432f31dbc",
+      "sampled_unique_colors": 5,
+      "sampled_chromatic_pixels": 0,
+      "pixels_sampled": 2304
+    }
+  }
+}

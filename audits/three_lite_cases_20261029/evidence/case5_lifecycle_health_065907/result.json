@@ -1,0 +1,41 @@
+{
+  "cleanup": [
+    {
+      "container_id": "1641077309a713c4fd5f5908e7920af23ca12c68c36eb666cec658063c820516",
+      "removed": true
+    }
+  ],
+  "ended_at": 1793430566.7295654,
+  "events": [],
+  "gui_frame_mean_difference": 24.222,
+  "inotify_after": {
+    "allocated": 2,
+    "errno": 28,
+    "error_name": "ENOSPC",
+    "max_user_watches": 65536,
+    "requested": 64
+  },
+  "inotify_before": {
+    "allocated": 2,
+    "errno": 28,
+    "error_name": "ENOSPC",
+    "max_user_watches": 65536,
+    "requested": 64
+  },
+  "model_called": false,
+  "new_container": "1641077309a713c4fd5f5908e7920af23ca12c68c36eb666cec658063c820516",
+  "old_container": "74734081855fd1f4a2459372a740fec79faf0342f5cea23206f3417cb958a237",
+  "reset_labels": {
+    "org.opencontainers.image.ref.name": "ubuntu",
+    "org.opencontainers.image.version": "22.04",
+    "oscombo": "1",
+    "oscombo.run": "case5-lifecycle-health-20261031T065907Z"
+  },
+  "reset_marker_absent": true,
+  "reset_replaced_container": true,
+  "reset_s": 259.521,
+  "run_id": "case5-lifecycle-health-20261031T065907Z",
+  "screenshot_after_reset_s": 105.237,
+  "screenshot_before_s": 23.34,
+  "status": "PASS"
+}
