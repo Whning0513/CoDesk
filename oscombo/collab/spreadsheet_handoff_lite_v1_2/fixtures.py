@@ -33,7 +33,7 @@ def _set_public_layout(path: Path, sheet: str, cursor_column: int) -> None:
     q = lambda ns, local: f"{{{NS[ns]}}}{local}"
     styles = ET.Element(q("office", "automatic-styles"))
     col = ET.SubElement(styles, q("style", "style"), {q("style", "name"): "wide", q("style", "family"): "table-column"})
-    ET.SubElement(col, q("style", "table-column-properties"), {q("style", "column-width"): "2.45cm"})
+    ET.SubElement(col, q("style", "table-column-properties"), {q("style", "column-width"): "3.8cm"})
     row = ET.SubElement(styles, q("style", "style"), {q("style", "name"): "tall", q("style", "family"): "table-row"})
     ET.SubElement(row, q("style", "table-row-properties"), {q("style", "row-height"): "0.85cm"})
     cell = ET.SubElement(styles, q("style", "style"), {q("style", "name"): "legible", q("style", "family"): "table-cell"})
