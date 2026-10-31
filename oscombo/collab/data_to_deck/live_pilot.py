@@ -243,6 +243,44 @@ def _spreadsheet_lite_order_actions(units: int) -> list[str]:
     ]
 
 
+def _spreadsheet_lite_v1_2_forecast_actions() -> list[str]:
+    return [_spreadsheet_lite_select_cell(7),
+            "import pyautogui, time; pyautogui.write('=AVERAGE(B3:D3)*2+G3-E3-F3', 0.08); time.sleep(1)",
+            "import pyautogui, time; pyautogui.press('enter'); time.sleep(1)",
+            "import pyautogui, time; pyautogui.hotkey('ctrl','s'); time.sleep(3)", "DONE"]
+
+
+def _spreadsheet_lite_v1_2_prepare_actions() -> list[str]:
+    return [_spreadsheet_lite_select_cell(5),
+            "import pyautogui, time; pyautogui.write('=E3*C3', 0.12); time.sleep(1)",
+            "import pyautogui, time; pyautogui.press('enter'); time.sleep(1)", "DONE"]
+
+
+def _spreadsheet_lite_v1_2_open_view_actions(path: str) -> list[str]:
+    return ["import pyautogui, time; pyautogui.hotkey('ctrl','o'); time.sleep(3)",
+            f"import pyautogui, time; pyautogui.write({path!r}, 0.03); time.sleep(1)",
+            "import pyautogui, time; pyautogui.press('enter'); time.sleep(8)", "DONE"]
+
+
+def _spreadsheet_lite_v1_2_order_actions(units: int) -> list[str]:
+    return [_spreadsheet_lite_select_cell(4),
+            f"import pyautogui, time; pyautogui.write({str(units)!r}, 0.12); time.sleep(1)",
+            "import pyautogui, time; pyautogui.press('enter'); time.sleep(1)",
+            "import pyautogui, time; pyautogui.hotkey('ctrl','s'); time.sleep(3)", "DONE"]
+
+
+def _workspace_sync_audit(final_versions: dict, errors: list[str], strict: bool,
+                          history: dict | None = None, diagnostics: dict | None = None) -> dict:
+    """Retain recovered errors and conservatively invalidate strict cohorts."""
+    return {"final_versions": final_versions, "final_sync_ok": True,
+            "verified": bool(history and history.get("history_clean")
+                             and diagnostics and diagnostics.get("infrastructure_review_required") is False)
+            if strict else True,
+            "transient_errors": list(errors), "persistent_history": history, "diagnostics": diagnostics,
+            "strict_error_history_gate": strict,
+            "scope": "saved output bytes verified in both Guests; does not prove GUI reopen"}
+
+
 def _lite_v2_impress_actions(change: float) -> list[str]:
     # The optional LibreOffice donation banners shift the slide canvas down
     # about 40 pixels on a fresh Guest. Search the unique draft sentence in
@@ -1001,15 +1039,18 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
               case_lite_v2_1: bool = False,
               case_spreadsheet_lite_v1: bool = False,
               case_spreadsheet_lite_v1_1: bool = False,
+              case_spreadsheet_lite_v1_2: bool = False,
               handoff_lifecycle: bool = False,
               yield_wait_lifecycle: bool = False,
               scripted_negative: bool = False,
               gui_input_lock: bool = False) -> dict[str, Any]:
     if sum(bool(value) for value in (case_lite_v1, case_lite_v2, case_lite_v2_1,
-                                    case_spreadsheet_lite_v1, case_spreadsheet_lite_v1_1)) > 1:
+                                    case_spreadsheet_lite_v1, case_spreadsheet_lite_v1_1,
+                                    case_spreadsheet_lite_v1_2)) > 1:
         raise ValueError("select only one case version")
     lite_v2_family = case_lite_v2 or case_lite_v2_1
-    spreadsheet_family = case_spreadsheet_lite_v1 or case_spreadsheet_lite_v1_1
+    spreadsheet_family = (case_spreadsheet_lite_v1 or case_spreadsheet_lite_v1_1
+                          or case_spreadsheet_lite_v1_2)
     lite_handoff_family = lite_v2_family or spreadsheet_family
     if scripted_negative and (not lite_handoff_family or model):
         raise ValueError("scripted_negative applies only to supported Lite scripted controls")
@@ -1018,7 +1059,11 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
         raise ValueError("handoff_lifecycle requires a collaborative Lite model run")
     if yield_wait_lifecycle and not handoff_lifecycle:
         raise ValueError("yield_wait_lifecycle requires handoff_lifecycle")
-    if case_spreadsheet_lite_v1_1:
+    if case_spreadsheet_lite_v1_2:
+        from oscombo.collab.spreadsheet_handoff_lite_v1_2 import spec as case_spec
+        from oscombo.collab.spreadsheet_handoff_lite_v1_2.fixtures import build_fixture as case_build_fixture
+        from oscombo.collab.spreadsheet_handoff_lite_v1_2.oracle import evaluate as case_evaluate
+    elif case_spreadsheet_lite_v1_1:
         from oscombo.collab.spreadsheet_handoff_lite_v1_1 import spec as case_spec
         from oscombo.collab.spreadsheet_handoff_lite_v1_1.fixtures import build_fixture as case_build_fixture
         from oscombo.collab.spreadsheet_handoff_lite_v1_1.oracle import evaluate as case_evaluate
@@ -1142,11 +1187,13 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
     qwen_base_url = base_url
     relay_process: subprocess.Popen | None = None
     workspace_bridge = None
+    workspace_integrity_ok = True
     model_base_url = base_url
     relay_client_token_env: str | None = None
     # Guest overlays are episode-private; a fixed public path keeps the role
     # prompts identical across conditions without exposing the treatment name.
-    task_root = ("/tmp/codesk-spreadsheet-handoff-lite-v1-1" if case_spreadsheet_lite_v1_1 else
+    task_root = (case_spec.TASK_ROOT if case_spreadsheet_lite_v1_2 else
+                 "/tmp/codesk-spreadsheet-handoff-lite-v1-1" if case_spreadsheet_lite_v1_1 else
                  "/tmp/codesk-spreadsheet-handoff-lite-v1" if case_spreadsheet_lite_v1 else
                  "/tmp/codesk-data-to-deck-lite-v2-1" if case_lite_v2_1 else
                  "/tmp/codesk-data-to-deck-lite-v2" if case_lite_v2 else
@@ -1188,6 +1235,8 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
                 "labels": _owned_container(env, run_id)[1], "time_utc": _stamp()})
             _install_fixture(guest, fixture_dir, task_root, case_spec,
                              ("forecast", "order") if spreadsheet_family else ("authority", "draft"))
+            if case_spreadsheet_lite_v1_2:
+                _shell(guest, f"mkdir -p {shlex.quote(task_root + '/views/B')}")
 
         guest_a = guests["shared"] if condition == "collaborative_shared" else (
             guests["solo"] if is_solo else guests["A"])
@@ -1204,6 +1253,7 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
                 {"A": guest_a.guest_key, "B": guest_b.guest_key},
                 case_id=case_spec.CASE_ID, peer_read_only=case_lite_v1 or lite_handoff_family,
                 outputs=case_spec.OUTPUTS,
+                **({"peer_view_dirs": {"A": "views/B"}} if case_spreadsheet_lite_v1_2 else {}),
                 mime_types=({"A": "application/vnd.oasis.opendocument.spreadsheet",
                              "B": "application/vnd.oasis.opendocument.spreadsheet"}
                             if spreadsheet_family else None))
@@ -1321,6 +1371,80 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
             if outcomes["B"]["status"] != "done":
                 raise RuntimeError(f"Lite v2 B scripted GUI did not finish: {outcomes['B']}")
             workspace_bridge.publish("B")
+        elif case_spreadsheet_lite_v1_2:
+            from oscombo.collab.spreadsheet_handoff_lite_v1_2.private.gold import expected_plan
+            from oscombo.collab.spreadsheet_handoff_lite_v1_2.fixtures import order_rows
+            _, units, _ = expected_plan()
+            seed = workspace_bridge.snapshot().get("A", {})
+            seed_view = seed.get("peer_view_path", "")
+            if (seed.get("revision") != 0 or not seed.get("delivered")
+                    or not seed_view.startswith("views/B/") or ".." in Path(seed_view).parts):
+                raise RuntimeError("Spreadsheet Lite v1.2 initial revision view not delivered")
+            _launch(guest_b, "calc", b_output, f"/tmp/{run_id}/order-calc.log")
+            prework = _run_actor("B", guest_b, case_spec.AGENT_B_INSTRUCTION,
+                _spreadsheet_lite_v1_2_prepare_actions(), run_root,
+                max_steps=case_spec.ROLE_BUDGET["B"]["steps"], case_id=case_spec.CASE_ID)
+            if prework["status"] != "done":
+                raise RuntimeError("Spreadsheet Lite v1.2 B formula preparation failed")
+            _activate_ready_document(guest_a, a_output, "v1p2-forecast-before-A")
+            outcomes["A"] = _run_actor("A", guest_a, case_spec.AGENT_A_INSTRUCTION,
+                _spreadsheet_lite_v1_2_forecast_actions(), run_root,
+                max_steps=case_spec.ROLE_BUDGET["A"]["steps"], case_id=case_spec.CASE_ID)
+            if outcomes["A"]["status"] != "done":
+                raise RuntimeError("Spreadsheet Lite v1.2 A scripted GUI did not finish")
+            delivered = workspace_bridge.publish("A")
+            relative_view = delivered.get("peer_view_path", "")
+            if (delivered.get("revision", 0) < 1 or not delivered.get("delivered")
+                    or not relative_view.startswith("views/B/")
+                    or Path(relative_view).is_absolute() or ".." in Path(relative_view).parts):
+                raise RuntimeError("Spreadsheet Lite v1.2 saved revision view not delivered")
+            view_path = f"{task_root}/{relative_view}"
+            view_data = guest_b.env.controller.get_file(view_path)
+            if __import__("hashlib").sha256(view_data).hexdigest() != delivered["sha256"]:
+                raise RuntimeError("Spreadsheet Lite v1.2 peer-view SHA mismatch")
+            message = clients["A"].send_message("B", "Saved forecast is ready for review.")
+            if not any(m["message_id"] == message["message_id"] for m in clients["B"].read_messages()):
+                raise RuntimeError("Spreadsheet Lite v1.2 B did not receive ready message")
+            _activate_ready_document(guest_b, b_output, "v1p2-order-before-view")
+            seed_path = f"{task_root}/{seed_view}"
+            seed_data = guest_b.env.controller.get_file(seed_path)
+            if (__import__("hashlib").sha256(seed_data).hexdigest() != seed.get("sha256")
+                    or seed["sha256"] == delivered["sha256"] or seed_view == relative_view):
+                raise RuntimeError("Spreadsheet Lite v1.2 stale revision not independently preserved")
+            stale_view = _run_actor("B", guest_b, case_spec.AGENT_B_INSTRUCTION,
+                _spreadsheet_lite_v1_2_open_view_actions(seed_path), run_root,
+                max_steps=case_spec.ROLE_BUDGET["B"]["steps"], case_id=case_spec.CASE_ID)
+            if stale_view["status"] != "done" or Path(seed_path).name not in (guest_b.active_window() or ""):
+                raise RuntimeError("Spreadsheet Lite v1.2 stale revision did not open in Calc")
+            stale_shot = run_root / "screenshots" / "scripted-stale-forecast-view.png"
+            stale_shot.write_bytes(guest_b.screenshot(patience=45))
+            (run_root / "scripted_stale_view.json").write_text(json.dumps({
+                "peer_view_path": seed_view, "revision": seed["revision"], "sha256": seed["sha256"],
+                "latest_revision": delivered["revision"], "latest_sha256": delivered["sha256"],
+                "active_window": guest_b.active_window(),
+                "screenshot": str(stale_shot.relative_to(run_root)),
+                "stale_revision_rejected": seed["revision"] != delivered["revision"],
+                "visual_value_requires_manual_review": True}, indent=2) + "\n")
+            viewed = _run_actor("B", guest_b, case_spec.AGENT_B_INSTRUCTION,
+                _spreadsheet_lite_v1_2_open_view_actions(view_path), run_root,
+                max_steps=case_spec.ROLE_BUDGET["B"]["steps"], case_id=case_spec.CASE_ID)
+            if viewed["status"] != "done" or Path(view_path).name not in (guest_b.active_window() or ""):
+                raise RuntimeError("Spreadsheet Lite v1.2 peer revision did not open in Calc")
+            view_shot = run_root / "screenshots" / "scripted-peer-forecast-view.png"
+            view_shot.write_bytes(guest_b.screenshot(patience=45))
+            (run_root / "scripted_peer_view.json").write_text(json.dumps({
+                "peer_view_path": relative_view, "revision": delivered["revision"],
+                "sha256": delivered["sha256"], "active_window": guest_b.active_window(),
+                "screenshot": str(view_shot.relative_to(run_root)),
+                "ready_message_id": message["message_id"], "view_opened_at": time.time(),
+                "visual_value_requires_manual_review": True}, indent=2) + "\n")
+            _activate_ready_document(guest_b, b_output, "v1p2-order-after-view")
+            outcomes["B"] = _run_actor("B", guest_b, case_spec.AGENT_B_INSTRUCTION,
+                _spreadsheet_lite_v1_2_order_actions(units // order_rows()[2][1] if scripted_negative else units),
+                run_root, max_steps=case_spec.ROLE_BUDGET["B"]["steps"], case_id=case_spec.CASE_ID)
+            if outcomes["B"]["status"] != "done":
+                raise RuntimeError("Spreadsheet Lite v1.2 B scripted GUI did not finish")
+            workspace_bridge.publish("B")
         elif spreadsheet_family:
             if case_spreadsheet_lite_v1_1:
                 from oscombo.collab.spreadsheet_handoff_lite_v1_1.private.gold import expected_plan
@@ -1432,11 +1556,23 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
 
         if workspace_bridge is not None:
             workspace_bridge.stop()
-            (run_root / "workspace_sync_result.json").write_text(json.dumps({
-                "final_versions": workspace_bridge.snapshot(), "verified": True,
-                "transient_errors": workspace_bridge.errors,
-                "scope": "saved output bytes verified in both Guests; does not prove GUI reopen",
-            }, indent=2) + "\n")
+            final_versions = workspace_bridge.snapshot()
+            if case_spreadsheet_lite_v1_2:
+                from oscombo.collab.spreadsheet_handoff_lite_v1_2.bridge_audit import audit_bridge_history
+                history = audit_bridge_history(run_root / "workspace_versions", final_versions)
+                try:
+                    diagnostics = workspace_bridge.diagnostics()
+                except Exception as exc:
+                    diagnostics = {"infrastructure_review_required": True,
+                                   "diagnostics_error": f"{type(exc).__name__}: {exc}"}
+            else:
+                history = None
+                diagnostics = None
+            sync_audit = _workspace_sync_audit(final_versions, workspace_bridge.errors,
+                                              strict=case_spreadsheet_lite_v1_2, history=history,
+                                              diagnostics=diagnostics)
+            workspace_integrity_ok = sync_audit["verified"]
+            (run_root / "workspace_sync_result.json").write_text(json.dumps(sync_audit, indent=2) + "\n")
             workspace_bridge = None
 
         # Verify each saved output is present and hash it in the Guest before
@@ -1633,9 +1769,12 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
                    "scored_success": bool(score_success),
                    "protocol_event_log": str(store.log_path),
                    "elapsed_s": round(time.time() - metadata["started_at"], 2),
+                   "workspace_integrity_ok": workspace_integrity_ok,
                    "status": _episode_result_status(
                        bool(score_success), len(reset_results) == guest_count and reopen_complete,
                        outcomes, bool(model))}
+        if case_spreadsheet_lite_v1_2 and not workspace_integrity_ok:
+            summary["status"] = "INVALID_INFRA_OR_RUNNER_ERROR"
         (run_root / "result.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
         return summary
     finally:
@@ -1723,6 +1862,8 @@ def main(argv: list[str] | None = None) -> None:
                         help="run the independent Spreadsheet Handoff Lite v1 profile")
     parser.add_argument("--case-spreadsheet-lite-v1-1", action="store_true",
                         help="run the versioned Spreadsheet Handoff Lite v1.1 profile")
+    parser.add_argument("--case-spreadsheet-lite-v1-2", action="store_true",
+                        help="run the independent Spreadsheet Handoff Lite v1.2 profile")
     parser.add_argument("--handoff-lifecycle", action="store_true",
                         help="suspend a v2 B Actor that exits before A's public handoff, then resume it")
     parser.add_argument("--yield-wait-lifecycle", action="store_true",
@@ -1790,6 +1931,7 @@ def main(argv: list[str] | None = None) -> None:
                            case_lite_v2_1=args.case_lite_v2_1,
                            case_spreadsheet_lite_v1=args.case_spreadsheet_lite_v1,
                            case_spreadsheet_lite_v1_1=args.case_spreadsheet_lite_v1_1,
+                           case_spreadsheet_lite_v1_2=args.case_spreadsheet_lite_v1_2,
                            handoff_lifecycle=args.handoff_lifecycle,
                            yield_wait_lifecycle=args.yield_wait_lifecycle,
                            scripted_negative=args.scripted_negative,
