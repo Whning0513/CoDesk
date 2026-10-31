@@ -139,6 +139,13 @@ class CommandHarness(Harness):
 
     def env_for_version(self) -> dict[str, str]:
         env = dict(os.environ)
+        # Version detection never needs provider or run-scoped credentials.
+        env.pop(self.opts.get("api_key_env", "OPENAI_API_KEY"), None)
+        for name in self.opts.get("redact_env_keys", []):
+            env.pop(name, None)
+        for name in list(env):
+            if name.startswith("CODESK_CDD_COLLAB_TOKEN_"):
+                env.pop(name, None)
         if self.opts.get("node_bin"):
             env["PATH"] = self.opts["node_bin"] + os.pathsep + env["PATH"]
         return env
