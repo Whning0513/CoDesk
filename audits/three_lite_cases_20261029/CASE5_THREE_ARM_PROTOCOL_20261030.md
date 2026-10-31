@@ -2,6 +2,13 @@
 
 Status: candidate, **not frozen**. Freeze only after a clean Isolated Guest scripted positive, a real GUI wrong-width negative, request-level tool allowlist verification, and one bounded Isolated model Pilot. Keep every attempted run ID, including infrastructure-invalid starts.
 
+## Fixed gates before model comparison
+
+1. Resource gate: no unrelated active Guest, at least 15 GiB free, unique run ID, and the run-owned QEMU/container cleanup path available. Run `run_case5_isolated_control.sh` only after the shared resource owner releases the window.
+2. Isolated scripted positive: both real Guest desktops and Blender/Text Editor render; A's *new* saved revision is at least 1, delivered to B with the same SHA and read-only peer mode before A's handoff message; B's post-Revert screenshot visibly shows the saved 1.46 m width and the pinned dimension-display change is at least 3.0. Host Oracle must report A/B/joint true, both saved outputs reopen byte-identically, two Guest resets succeed, and the bridge reports no unresolved error. A mere artifact PASS with B still viewing 1.20 m is an invalid process control.
+3. Isolated model Pilot: one concurrent no-lock run, `gpt-6-astra` medium, 12 desktop calls and 600 active seconds per role, same prompts/fixtures/tools as full runs. Inspect relay request allowlist, model/tool logs, GUI screenshots, A revision and B handoff/reload. A task failure with sound environment remains a valid diagnostic failure; it is not a reason to retune only one topology. An app, bridge, relay, or cleanup fault is infrastructure-invalid and must be repaired symmetrically before the full triad.
+4. Full triad: freeze one commit and the listed model/budget/Oracle settings, then execute Isolated → Shared → Shared+Lock once each. Exit 2 is a retained task failure and does not stop the triad; exit 3 or another runner error stops before the next arm. Never select a replacement run because its score was low.
+
 ## Task and common settings
 
 `CDD-MAR-LITE-001` uses the existing Blender 5.0 public `Lamp_Review.blend`, role prompts, saved-file bridge, host-only Gold/Oracle, `gpt-6-astra` at medium effort, Codex GUI/collaboration MCP-only request allowlist, B yield/wake lifecycle, 25 desktop calls per role and 1200 seconds per role. A changes only `Lamp_Shade` X/Y dimensions to 1.46 m and publishes a saved `.blend` revision; B independently opens/reverts that revision in Blender, reads the actual width, computes radial clearance, and publishes a text review. The same fixture, prompt, step/time budget, model endpoint and scorer apply to all arms. No Actor sees Gold or Oracle.
