@@ -23,10 +23,36 @@ case "$mode" in
 esac
 blender_bin="/data3/whn/Project2/.codesk-deps/blender-5.0.0/blender-5.0.0-linux-x64/blender"
 test -x "$blender_bin" || exit 3
-stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+stamp="${CODESK_TRIAD_STAMP:-$(date -u +%Y%m%dT%H%M%SZ)}"
+[[ "$stamp" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] || { echo 'Invalid run stamp' >&2; exit 3; }
+frozen_commit="${CODESK_FROZEN_COMMIT:-$(git rev-parse HEAD)}"
+[[ "$(git rev-parse HEAD)" == "$frozen_commit" ]] || { echo 'Frozen commit mismatch' >&2; exit 3; }
+git diff --quiet && git diff --cached --quiet || { echo 'Tracked worktree changes; refusing to start' >&2; exit 3; }
 manifest="audits/three_lite_cases_20261029/case5-${mode}-${stamp}.tsv"
+[[ ! -e "$manifest" ]] || { echo 'Manifest already exists' >&2; exit 3; }
 printf 'mode\tarm\trun_id\texit_code\n' > "$manifest"
+printf '{"mode":"%s","stamp":"%s","frozen_commit":"%s","model":"gpt-6-astra","inotify_exhaustion_observed":true}\n' \
+    "$mode" "$stamp" "$frozen_commit" > "audits/three_lite_cases_20261029/case5-${mode}-${stamp}-config.json"
+driver_pid=''
+sampler_pid=''
+host_sampler_pid=''
+run_id=''
+on_term() {
+    trap - TERM INT
+    if [[ -n "$driver_pid" ]]; then
+        kill -TERM "$driver_pid" 2>/dev/null || true
+        wait "$driver_pid" 2>/dev/null || true
+        printf '%s\t%s\t%s\t%s\n' "$mode" "${arm:-unknown}" "$run_id" 3 >> "$manifest"
+    fi
+    [[ -z "$sampler_pid" ]] || kill -TERM "$sampler_pid" 2>/dev/null || true
+    [[ -z "$host_sampler_pid" ]] || kill -TERM "$host_sampler_pid" 2>/dev/null || true
+    echo 'Supervisor interrupted; active arm is infrastructure-invalid and cleanup was requested.' >&2
+    exit 143
+}
+trap on_term TERM INT
 for arm in "${arms[@]}"; do
+    [[ "$(git rev-parse HEAD)" == "$frozen_commit" ]] && git diff --quiet && git diff --cached --quiet || {
+        echo 'Frozen source changed; stopping triad' >&2; exit 3; }
     available_bytes="$(df -PB1 . | awk 'NR==2 {print $4}')"
     if (( available_bytes < 15 * 1024 * 1024 * 1024 )); then
         echo "Stopping before next Guest: disk available ${available_bytes} bytes (<15 GiB)" >&2
@@ -41,7 +67,8 @@ for arm in "${arms[@]}"; do
     log="audits/three_lite_cases_20261029/${run_id}-driver.log"
     echo "Starting ${run_id} at $(date -u +%FT%TZ)"
     /data3/whn/Project2/OSWorld-V2/.venv/bin/python \
-        -m oscombo.collab.model_and_review_lite_v1.live_pilot \
+        audits/three_lite_cases_20261029/case5_signal_safe_module.py \
+        oscombo.collab.model_and_review_lite_v1.live_pilot \
         --condition "$condition" --run-root "$run_root" \
         --provider "$OSWORLD_DIR" --image "$OSCOMBO_GUEST_IMAGE" \
         --runtime "$OSCOMBO_RUNTIME_IMAGE" --blender-bin "$blender_bin" \
@@ -57,18 +84,31 @@ for arm in "${arms[@]}"; do
         sleep 0.1
     done
     sampler_pid=""
+    host_sampler_pid=""
     if [[ -d "$run_root" ]] && kill -0 "$driver_pid" 2>/dev/null; then
         /data3/whn/Project2/OSWorld-V2/.venv/bin/python \
             audits/three_lite_cases_20261029/sample_qemu.py "$run_root" \
             --interval 5 --max-seconds 3600 \
             > "audits/three_lite_cases_20261029/${run_id}-qemu-sampler.log" 2>&1 &
         sampler_pid=$!
+        /data3/whn/Project2/OSWorld-V2/.venv/bin/python \
+            audits/three_lite_cases_20261029/sample_case5_host.py "$run_root" \
+            --interval 5 --max-seconds 3600 \
+            > "audits/three_lite_cases_20261029/${run_id}-host-sampler.log" 2>&1 &
+        host_sampler_pid=$!
     fi
     wait "$driver_pid"
     exit_code=$?
+    driver_pid=''
     if [[ -n "$sampler_pid" ]]; then
         kill "$sampler_pid" 2>/dev/null || true
         wait "$sampler_pid" 2>/dev/null || true
+        sampler_pid=''
+    fi
+    if [[ -n "$host_sampler_pid" ]]; then
+        kill "$host_sampler_pid" 2>/dev/null || true
+        wait "$host_sampler_pid" 2>/dev/null || true
+        host_sampler_pid=''
     fi
     printf '%s\t%s\t%s\t%s\n' "$mode" "$arm" "$run_id" "$exit_code" >> "$manifest"
     if [[ -s "$run_root/qemu_process_resources.jsonl" ]]; then
@@ -92,5 +132,15 @@ for arm in "${arms[@]}"; do
         echo "Stopping triad after infrastructure or runner error in ${run_id}" >&2
         exit "$exit_code"
     fi
+    if ! /data3/whn/Project2/OSWorld-V2/.venv/bin/python \
+        audits/three_lite_cases_20261029/case5_audit_completed_arm.py "$run_root" \
+        --exit-code "$exit_code" --condition "$condition" \
+        --boundary "audits/three_lite_cases_20261029/${run_id}-tool-boundary.json" \
+        --resources "audits/three_lite_cases_20261029/${run_id}-qemu-metrics.json" \
+        > "$run_root/completed_arm_audit.json"; then
+        echo "Stopping triad: ${run_id} evidence requires review" >&2
+        exit 3
+    fi
+    case5_require_no_active_oscombo_guests || exit 4
 done
 echo "Manifest: ${manifest}"

@@ -42,7 +42,7 @@ def test_case5_entrypoints_check_guest_gate_before_launch():
     for name in ("run_case5_isolated_control.sh", "run_case5_model.sh"):
         script = (GATE.parent / name).read_text()
         assert script.index("case5_require_no_active_oscombo_guests || exit 4") < script.index(
-            "-m oscombo.collab.model_and_review_lite_v1.live_pilot")
+            "oscombo.collab.model_and_review_lite_v1.live_pilot")
 
 
 def test_case5_guest_gate_rejects_missing_docker(tmp_path):
