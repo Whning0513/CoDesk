@@ -2,6 +2,8 @@
 set -u
 cd "$(dirname "$0")/../../.."
 source "${CODESK_ENV_FILE:-/data3/whn/Project2/CoDesk/env.local.sh}"
+# env.local.sh may point at the main checkout; import this experiment worktree first.
+export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
 : "${AIGCBEST_API_KEY:?Set the API key in the coordinator environment only}"
 trap 'unset AIGCBEST_API_KEY' EXIT
 python_bin="$OSWORLD_DIR/.venv/bin/python"
