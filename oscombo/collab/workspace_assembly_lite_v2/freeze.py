@@ -8,7 +8,7 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
-from . import fixtures, oracle, resource_sampler, spec
+from . import contract, fixtures, oracle, resource_sampler, spec
 from .private.gold import TAG_PATTERN
 from oscombo.collab.workspace_assembly.fixtures import read_odt
 
@@ -46,7 +46,28 @@ def _sha(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _common(root: Path, commit: str, seed: str, condition: str) -> tuple[dict, dict]:
+def _validate_reopens(root: Path, result: dict, allow_missing_outputs: bool) -> None:
+    reopen = result.get("reopen", [])
+    missing = _read(root / "missing_outputs.json")
+    _require(isinstance(missing, list) and set(missing) <= {"A", "B"} and
+             len(missing) == len(set(missing)) and len(reopen) == 2 and
+             {item.get("role") for item in reopen} == {"A", "B"},
+             f"{root.name}: reopen roles or missing-output record incomplete")
+    for item in reopen:
+        if item.get("missing_output") is True:
+            _require(allow_missing_outputs and item.get("role") in missing,
+                     f"{root.name}: unapproved missing output")
+        else:
+            _require(item.get("role") not in missing and item.get("same_bytes") is True and
+                     item.get("gui_reopen") != "skipped_unsaved_buffer",
+                     f"{root.name}: saved output reopen failed")
+    if not allow_missing_outputs:
+        _require(not missing and result.get("reopen_complete") is True,
+                 f"{root.name}: control did not reopen both outputs")
+
+
+def _common(root: Path, commit: str, seed: str, condition: str,
+            allow_missing_outputs: bool = False) -> tuple[dict, dict]:
     meta, result = _read(root / "provenance.json"), _read(root / "result.json")
     _require(meta.get("case_id") == spec.CASE_ID and meta.get("case_version") == spec.CASE_VERSION,
              f"{root.name}: wrong case/version")
@@ -58,8 +79,10 @@ def _common(root: Path, commit: str, seed: str, condition: str) -> tuple[dict, d
     resource = resource_sampler.summarize(root)
     _require(resource == _read(root / "resource_audit.json") and resource.get("valid") is True,
              f"{root.name}: actual QEMU resource audit missing/invalid")
-    _require(result.get("postscore_lifecycle_ok") is True and result.get("reopen_complete") is True and
-             result.get("bridge_valid") is True, f"{root.name}: reopen/bridge invalid")
+    _require(result.get("postscore_lifecycle_ok") is True and result.get("bridge_valid") is True and
+             result.get("oracle_fixture_valid") is True,
+             f"{root.name}: reopen/bridge invalid")
+    _validate_reopens(root, result, allow_missing_outputs)
     count = 1 if condition == "shared" else 2
     _require(len(result.get("reset", [])) == count and all(x.get("workspace_clean") is True for x in result["reset"]),
              f"{root.name}: reset evidence incomplete")
@@ -88,6 +111,21 @@ def _events(path: Path) -> list[dict]:
         _require(isinstance(obj, dict), f"{path}: malformed event")
         rows.append(obj)
     return rows
+
+
+def _guest_identity(root: Path, image_path: str, image_stat: dict, runtime: str) -> None:
+    meta = _read(root / "provenance.json")
+    _require(meta.get("base_image_path") == image_path and meta.get("base_image_stat") == image_stat,
+             f"{root.name}: Guest base image changed since its run")
+    _require(isinstance(runtime, str) and runtime.startswith("sha256:") and meta.get("runtime_image") == runtime,
+             f"{root.name}: runtime image differs or is not pinned")
+    resources = _read(root / "ownership.json").get("resources", [])
+    guests = [item for item in resources if item.get("kind") == "guest-container"]
+    _require(len(guests) == meta.get("guest_count") and all(
+        item.get("image_id") == runtime and item.get("labels", {}).get("oscombo.run") == root.name and
+        item.get("base_mount", {}).get("Source") == image_path and
+        item.get("base_mount", {}).get("RW") is False for item in guests),
+        f"{root.name}: runtime identity, run ownership or read-only base mount mismatch")
 
 
 def _control(root: Path, commit: str, name: str) -> dict:
@@ -153,7 +191,7 @@ def _control(root: Path, commit: str, name: str) -> dict:
 
 
 def _pilot(root: Path, commit: str, review_path: Path) -> dict:
-    meta, result = _common(root, commit, PILOT_SEED, "isolated")
+    meta, result = _common(root, commit, PILOT_SEED, "isolated", allow_missing_outputs=True)
     _require(meta.get("model_called") is True and meta.get("model") == "gpt-6-astra" and
              meta.get("model_effort") == "medium" and meta.get("model_timeout") == 600 and
              meta.get("diagnostic_step_limit") == 12 and meta.get("actor_mcp_only") is True and
@@ -162,18 +200,13 @@ def _pilot(root: Path, commit: str, review_path: Path) -> dict:
     relay = _events(root / "codex_relay_events.jsonl")
     _require(bool(relay) and all(e.get("actor_mcp_only") is True and e.get("upstream_status") == 200 for e in relay),
              f"{root.name}: Pilot relay/allowlist failure")
+    contract_result = contract.audit(root)
+    _require(contract_result == _read(root / "contract_audit.json") and contract_result.get("valid") is True,
+             f"{root.name}: Pilot actual tool contract audit invalid")
+    prompt_hashes = {role: hashlib.sha256(spec.model_instruction(role).encode("utf-8")).hexdigest() for role in "AB"}
     for role in "AB":
-        path = _file(root, f"actor_runs/{role}/{role}/stdout.log")
-        with path.open(encoding="utf-8") as stream:
-            for line in stream:
-                try:
-                    event = json.loads(line)
-                except ValueError:
-                    continue
-                item = event.get("item") or {}
-                if event.get("type") == "item.started" and "call" in str(item.get("type", "")):
-                    _require(item.get("type") == "mcp_tool_call" and item.get("server") in {"desktop", "collaboration"},
-                             f"{root.name}: Actor used a tool outside the contract")
+        _require(_sha(_file(root, f"actor_runs/{role}/{role}/instruction.txt")) == prompt_hashes[role],
+                 f"{root.name}: Pilot role instruction differs from the case contract")
     _file(root, "behavioral_audit.json")
     metrics = _read(root / "model_metrics_v2.json")
     _require(not metrics.get("lifecycle_errors") and set(metrics.get("actors", {})) == {"A", "B"},
@@ -182,7 +215,8 @@ def _pilot(root: Path, commit: str, review_path: Path) -> dict:
     _require(review.get("run_id") == root.name and review.get("reviewed") is True and
              review.get("decision") == "proceed" and bool(str(review.get("reason", "")).strip()),
              f"{root.name}: explicit Pilot evidence review is missing")
-    return {"run_id": root.name, "status": result["status"], "review": review}
+    return {"run_id": root.name, "status": result["status"], "review": review,
+            "prompt_sha256": prompt_hashes}
 
 
 def create(output: Path, controls: dict[str, Path], control_review: Path,
@@ -215,19 +249,11 @@ def create(output: Path, controls: dict[str, Path], control_review: Path,
     runtimes = set()
     for root in roots:
         meta = _read(root / "provenance.json")
-        _require(meta.get("base_image_path") == str(image) and meta.get("base_image_stat") == image_stat,
-                 f"{root.name}: Guest base image changed since its run")
         runtime = meta.get("runtime_image")
         _require(isinstance(runtime, str) and runtime.startswith("sha256:"),
                  f"{root.name}: runtime image must be pinned by image ID")
         runtimes.add(runtime)
-        resources = _read(root / "ownership.json").get("resources", [])
-        guests = [item for item in resources if item.get("kind") == "guest-container"]
-        _require(len(guests) == meta.get("guest_count") and all(
-            item.get("image_id") == runtime and item.get("labels", {}).get("oscombo.run") == root.name and
-            item.get("base_mount", {}).get("Source") == str(image) and
-            item.get("base_mount", {}).get("RW") is False for item in guests),
-            f"{root.name}: runtime identity, run ownership or read-only base mount mismatch")
+        _guest_identity(root, str(image), image_stat, runtime)
     _require(len(runtimes) == 1, "control and Pilot runtime images differ")
     image_sha = _sha(image)
     final_stat = image.stat()
@@ -237,6 +263,7 @@ def create(output: Path, controls: dict[str, Path], control_review: Path,
               "model": "gpt-6-astra", "model_effort": "medium", "steps_per_role": 25,
               "active_seconds_per_role": 1200, "guest_cpus": 8, "guest_ram": "8G",
               "round_seeds": ROUND_SEEDS, "round_fixture_sha256": round_hashes,
+              "prompt_sha256": pilot_result["prompt_sha256"],
               "formal_sequence": SEQUENCE, "controls_verified": True, "pilot_reviewed": True,
               "controls": control_results, "control_visual_review": visual, "pilot": pilot_result,
               "image_path": str(image), "image_sha256": image_sha,

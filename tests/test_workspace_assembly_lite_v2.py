@@ -42,6 +42,81 @@ def test_fixture_gold_and_positive_negative_controls(tmp_path, tag):
     assert score()["actors"]["A"]["checks"]["source_bytes_preserved"] is False
 
 
+def test_oracle_separates_bad_fixture_from_malformed_actor_artifact(tmp_path):
+    import zipfile
+    fixture = tmp_path / "fixture"
+    fixtures.build_fixture(fixture)
+    delivered = tmp_path / "inspection_note.txt"
+    delivered.write_bytes((fixture / "inspection_note.txt").read_bytes())
+    final = tmp_path / "broken.odt"
+    with zipfile.ZipFile(final, "w") as archive:
+        archive.writestr("mimetype", "application/vnd.oasis.opendocument.text")
+        archive.writestr("content.xml", "<broken")
+    score = oracle.evaluate(fixture / "inspection_note.txt", tmp_path / "missing", delivered,
+                            fixture / "handoff_report.odt", final)
+    assert score["actors"]["B"]["artifact_error"] == "ParseError" and not score["joint_success"]
+    (fixture / "inspection_note.txt").unlink()
+    score = oracle.evaluate(fixture / "inspection_note.txt", tmp_path / "missing", delivered,
+                            fixture / "handoff_report.odt", final)
+    assert score["invalid_fixture"] == "FileNotFoundError" and not score["joint_success"]
+
+
+def test_oracle_scores_roles_independently_and_reports_host_io(tmp_path, monkeypatch):
+    fixture = tmp_path / "fixture"
+    fixtures.build_fixture(fixture)
+    delivered = tmp_path / "inspection_note.txt"
+    final = tmp_path / "report.odt"
+    fixtures.report_odt(final, "Audience: Operations.", "Attachment: inspection_note.txt; tag BIRCH-42.")
+    def score():
+        return oracle.evaluate(fixture / "inspection_note.txt", tmp_path / "missing-incoming", delivered,
+                               fixture / "handoff_report.odt", final)
+    missing_a = score()
+    assert missing_a["actors"]["A"]["success"] is False
+    assert missing_a["actors"]["B"]["success"] is True and missing_a["joint_success"] is False
+    delivered.write_bytes(b"wrong contents\n")
+    wrong_a = score()
+    assert not wrong_a["actors"]["A"]["success"] and wrong_a["actors"]["B"]["success"]
+    delivered.write_bytes((fixture / "inspection_note.txt").read_bytes())
+    final.unlink()
+    missing_b = score()
+    assert missing_b["actors"]["A"]["success"] and not missing_b["actors"]["B"]["success"]
+    assert missing_b["actors"]["B"]["artifact_error"] == "FileNotFoundError"
+    fixtures.report_odt(final, "Audience: Operations.", "Attachment: inspection_note.txt; tag BIRCH-42.")
+    original = Path.read_bytes
+    def deny_report(path):
+        if path == final:
+            raise PermissionError("synthetic host denial")
+        return original(path)
+    monkeypatch.setattr(Path, "read_bytes", deny_report)
+    denied = score()
+    assert denied["invalid_scorer"] == "PermissionError"
+    assert denied["actors"]["A"]["success"] is True and denied["actors"]["B"]["success"] is None
+    assert denied["joint_success"] is None
+
+
+def test_oracle_allows_blank_paragraphs_and_punctuation_but_not_fake_filename(tmp_path):
+    import zipfile
+    fixture = tmp_path / "fixture"
+    fixtures.build_fixture(fixture)
+    delivered = tmp_path / "inspection_note.txt"
+    delivered.write_bytes((fixture / "inspection_note.txt").read_bytes())
+    report = tmp_path / "report.odt"
+    def score():
+        return oracle.evaluate(fixture / "inspection_note.txt", tmp_path / "absent", delivered,
+                               fixture / "handoff_report.odt", report)
+    fixtures.report_odt(report, "Audience： Operations!", "Tag BIRCH-42; file inspection_note.txt.")
+    with zipfile.ZipFile(report) as archive:
+        members = {name: archive.read(name) for name in archive.namelist()}
+    members["content.xml"] = (members["content.xml"].replace(b"Aurora Supply Handoff</text:p>",
+        b"Aurora Supply Handoff!</text:p>").replace(b"</text:p><text:p>", b"</text:p><text:p/><text:p>"))
+    with zipfile.ZipFile(report, "w") as archive:
+        for name, data in members.items(): archive.writestr(name, data)
+    assert score()["actors"]["B"]["success"] is True
+    for name in ("evilinspection_note.txt", "inspection_note.txt.backup"):
+        fixtures.report_odt(report, "Audience: Operations", f"{name} has tag BIRCH-42.")
+        assert score()["actors"]["B"]["checks"]["attachment_named"] is False
+
+
 def test_profile_scripted_critical_path_and_short_root():
     loaded, fixture_module, _ = pilot._profile("workspace_assembly_v2")
     assert loaded is spec and fixture_module is fixtures
@@ -92,8 +167,8 @@ def test_critical_path_counts_physical_gui_inputs_not_compound_calls():
                     assert not any(kw.arg == "presses" for kw in call.keywords)
                     count += 1
         counts[name] = count
-    assert counts == {"A_move": 5, "B_prework": 2, "B_open": 3, "B_finish": 4}
-    assert sum(counts.values()) == 14
+    assert counts == {"A_move": 5, "B_prework": 2, "B_open": 4, "B_finish": 4}
+    assert sum(counts.values()) == 15
 
 
 def test_install_prepares_identical_peer_view_parent_per_guest(tmp_path, monkeypatch):
@@ -115,14 +190,17 @@ def test_trace_audit_records_prework_view_and_message_leak_separately(tmp_path):
     def write(path, rows):
         path.write_text("".join(json.dumps(x) + "\n" for x in rows))
     events = [
+        {"event": "revision_committed", "actor": "B", "revision": 1, "time": 4, "sha256": "pre"},
         {"event": "peer_view_verified", "actor": "A", "revision": 1, "time": 9,
          "peer_view_path": "views/B/inspection_note-r000001.txt", "sha256": "abc", "mode": "444"},
         {"event": "revision_committed", "actor": "A", "revision": 1, "time": 10,
          "peer_view_path": "views/B/inspection_note-r000001.txt", "sha256": "abc"}]
     write(tmp_path / "workspace_versions/events.jsonl", events)
     actions = [
-        {"n": 1, "executed": True, "tool": "type_text", "args": {"text": "Audience: Operations."}, "action_started_at": 1},
-        {"n": 2, "executed": True, "tool": "key", "args": {"keys": "ctrl+s"}, "action_started_at": 2},
+        {"n": 1, "executed": True, "tool": "type_text", "args": {"text": "Audience: Operations."}, "action_started_at": 1,
+         "window_before": "handoff_report.odt - LibreOffice Writer"},
+        {"n": 2, "executed": True, "tool": "key", "args": {"keys": "ctrl+s"}, "action_started_at": 2,
+         "window_before": "handoff_report.odt - LibreOffice Writer"},
         {"n": 3, "executed": True, "tool": "type_text", "args": {"text": "/tmp/wa2/views/B/inspection_note-r000001.txt"}, "action_started_at": 11},
         {"n": 4, "tool": "key", "args": {"keys": "return"}, "action_started_at": 12,
          "window_after": "inspection_note-r000001.txt (read-only) - LibreOffice Writer"}]
@@ -136,6 +214,14 @@ def test_trace_audit_records_prework_view_and_message_leak_separately(tmp_path):
     assert result["B_readonly_view_window_action_numbers"] == [4]
     assert result["A_exact_tag_leak_message_ids"] == []
     assert result["manual_screenshot_review_required"]
+    actions[0]["window_before"] = "inspection_note.txt - gedit"
+    write(tmp_path / "actor_runs/B/B/actions.jsonl", actions)
+    assert not audit.audit(tmp_path)["B_prework_saved_before_A_publish"]
+    actions[0]["window_before"] = "handoff_report.odt - LibreOffice Writer"
+    actions.append({"n": 5, "tool": "type_text", "args": {"text": "/tmp/wa2/input/inspection_note.txt"},
+                    "action_started_at": 14})
+    write(tmp_path / "actor_runs/B/B/actions.jsonl", actions)
+    assert audit.audit(tmp_path)["B_original_input_path_action_candidates"] == [5]
     msg["body"] = "Revision 1 has CEDAR-17."
     write(tmp_path / "collaboration/events.jsonl", [msg])
     assert audit.audit(tmp_path)["A_exact_tag_leak_message_ids"] == ["m1"]
@@ -207,3 +293,25 @@ def test_metrics_exclude_multiple_waits_and_count_lock_overlaps(tmp_path):
     assert out["actors"]["A"]["lock_wait_s"] == 0.5
     assert out["actors"]["B"]["total_tokens"] == 23
     assert out["host_peak_swap_used_bytes"] == 2048
+
+
+def test_model_contract_checks_actual_tools_and_transport(tmp_path):
+    from oscombo.collab.workspace_assembly_lite_v2 import contract
+    def write_rows(path, items):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("".join(json.dumps(item) + "\n" for item in items))
+    relay = [{"actor": actor, "actor_mcp_only": True, "upstream_status": 200} for actor in "AB"]
+    write_rows(tmp_path / "codex_relay_events.jsonl", relay)
+    for actor in "AB":
+        item = {"id": "one", "type": "mcp_tool_call", "server": "desktop", "tool": "screenshot"}
+        write_rows(tmp_path / f"actor_runs/{actor}/{actor}/stdout.log", [
+            {"type": "item.started", "item": item}, {"type": "item.completed", "item": item}])
+    clean = contract.audit(tmp_path)
+    assert clean["valid"] and clean["actor_tool_calls"]["A:mcp_tool_call:desktop"] == 1
+    path = tmp_path / "actor_runs/B/B/stdout.log"
+    with path.open("a") as stream:
+        stream.write(json.dumps({"type": "item.started", "item": {"id": "two", "type": "command_execution"}}) + "\n")
+    assert not contract.audit(tmp_path)["valid"]
+    relay[0]["upstream_status"] = None
+    write_rows(tmp_path / "codex_relay_events.jsonl", relay)
+    assert any("transport" in error for error in contract.audit(tmp_path)["errors"])

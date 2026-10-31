@@ -18,7 +18,7 @@ def b_prepare(audience: str) -> list[str]:
 def b_read(view_path: str) -> list[str]:
     return [
         "import pyautogui, time; pyautogui.hotkey('ctrl','o'); time.sleep(2)",
-        f"import pyautogui, time; pyautogui.write({view_path!r}, 0.01); pyautogui.press('enter'); time.sleep(6)", "DONE"]
+        f"import pyautogui, time; pyautogui.hotkey('ctrl','l'); pyautogui.write({view_path!r}, 0.01); pyautogui.press('enter'); time.sleep(6)", "DONE"]
 
 
 def b_finish(tag: str) -> list[str]:

@@ -27,9 +27,11 @@ def make_control(root: Path, *, negative=False):
         "guest_resources_requested": {"cpus": "8", "ram": "8G"},
         "scripted_negative_control": negative, "scripted_view_version_probe": False}
     (root / "provenance.json").write_text(json.dumps(meta))
-    res = {"postscore_lifecycle_ok": True, "reopen_complete": True, "bridge_valid": True,
+    res = {"postscore_lifecycle_ok": True, "reopen_complete": True, "bridge_valid": True, "oracle_fixture_valid": True,
+           "reopen": [{"role": "A", "same_bytes": True}, {"role": "B", "same_bytes": True}],
            "reset": [{"workspace_clean": True}], "status": "FAIL" if negative else "PASS", "oracle": score}
     (root / "result.json").write_text(json.dumps(res))
+    (root / "missing_outputs.json").write_text("[]\n")
     (root / "oracle.json").write_text(json.dumps(score))
     view_path = "views/B/inspection_note-r000001.txt"
     sync = {"final_sync_succeeded": True, "verified": True,
@@ -89,3 +91,21 @@ def test_freeze_evidence_cannot_escape_run_root(tmp_path):
     (tmp_path / "outside").write_text("outside")
     with pytest.raises(ValueError, match="unsafe"):
         freeze._file(root, "../outside")
+
+
+def test_missing_model_output_is_task_failure_when_other_reopens_succeed(tmp_path):
+    root = tmp_path / "model-failure"
+    make_control(root)
+    (root / "artifacts/A/inspection_note.txt").unlink()
+    score = oracle.evaluate(root / "fixtures/inspection_note.txt", root / "artifacts/A/incoming/inspection_note.txt",
+        root / "artifacts/A/inspection_note.txt", root / "fixtures/handoff_report.odt", root / "artifacts/B/handoff_report.odt")
+    result = json.loads((root / "result.json").read_text())
+    result.update({"status": "FAIL", "oracle": score, "reopen_complete": False,
+        "reopen": [{"role": "A", "same_bytes": False, "missing_output": True},
+                   {"role": "B", "same_bytes": True}]})
+    (root / "result.json").write_text(json.dumps(result))
+    (root / "oracle.json").write_text(json.dumps(score))
+    (root / "missing_outputs.json").write_text('["A"]\n')
+    freeze._common(root, "abc", freeze.CONTROL_SEED, "shared", allow_missing_outputs=True)
+    with pytest.raises(ValueError, match="unapproved missing output"):
+        freeze._common(root, "abc", freeze.CONTROL_SEED, "shared")
