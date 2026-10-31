@@ -1,0 +1,2 @@
+control	condition	run_id	exit_code	status	verdict	free_kib	active_guest_count
+positive	shared	wa-lite-v1p2-scripted-positive-shared-20261031T001041Z-3751013	0	PASS	EXPECTED	17991412	0

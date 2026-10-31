@@ -1,0 +1,50 @@
+[
+  {
+    "order": 1,
+    "run_id": "wa-lite-v1p2-isolated-20261031T014933Z-3911287",
+    "file": "arm1_B_handoff_report.odt",
+    "sha256": "6409db1f727e8f275482cb44ea6ba54f21f1158587b933aa45bc6298606c8181",
+    "bytes": 10827
+  },
+  {
+    "order": 2,
+    "run_id": "wa-lite-v1p2-shared-20261031T022055Z-3972516",
+    "file": "arm2_B_handoff_report.odt",
+    "sha256": "58733c9ae2a98f3cc15d74972f4c8d59c9eabab996b0607c5a52c4b4f3d72cc9",
+    "bytes": 10962
+  },
+  {
+    "order": 3,
+    "run_id": "wa-lite-v1p2-shared_lock-20261031T024037Z-4015653",
+    "file": "arm3_B_handoff_report.odt",
+    "sha256": "107b21053de5eda049c0379e336928777846c10abd103bb24c06c2176a821015",
+    "bytes": 11270
+  },
+  {
+    "order": 4,
+    "run_id": "wa-lite-v1p2-shared_lock-20261031T030848Z-4062373",
+    "file": "arm4_B_handoff_report.odt",
+    "sha256": "416934c525f3d16b02b06eb3b7ac9a78dfdd587ef2c03c5bda511e565ff0c327",
+    "bytes": 11223
+  },
+  {
+    "order": 5,
+    "run_id": "wa-lite-v1p2-shared-20261031T032829Z-4096679",
+    "file": "arm5_B_handoff_report.odt",
+    "sha256": "ba638ecee0ea21852756ca22bbe6222570ef06319966414050f3264f749e5dc2",
+    "bytes": 10825
+  },
+  {
+    "order": 6,
+    "run_id": "wa-lite-v1p2-isolated-20261031T034644Z-4127906",
+    "file": "arm6_B_handoff_report.odt",
+    "sha256": "19e7cad71cea3f2d7b4f851765bfb81d16a321358d1621bbd9e1d8a3f3a49ba2",
+    "bytes": 11122
+  },
+  {
+    "order": "all",
+    "file": "A_inspection_note.txt",
+    "sha256": "4b18022a28c6ed4af5a476469c9f796514fab91711645c53bcba576fbe4b3595",
+    "bytes": 89
+  }
+]
