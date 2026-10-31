@@ -36,6 +36,21 @@ def test_public_handoff_requires_both_saved_revision_and_message():
         "peer_message_ids": ["m1"]}
 
 
+def test_public_handoff_waits_for_explicitly_undelivered_revision():
+    class ClientWithDelivery(Client):
+        delivered = False
+
+        def list_saved_artifacts(self):
+            return {"A": {"revision": 1, "delivered": self.delivered},
+                    "B": {"revision": 0}}
+
+    client = ClientWithDelivery()
+    client.peer_messages = [{"actor": "A", "message_id": "m1"}]
+    assert not live_pilot._public_handoff_state(client, "A", "B")["ready"]
+    client.delivered = True
+    assert live_pilot._public_handoff_state(client, "A", "B")["ready"]
+
+
 def test_observed_message_ids_require_completed_read_result(tmp_path):
     log = tmp_path / "stdout.log"
     log.write_text("\n".join(json.dumps(x) for x in [

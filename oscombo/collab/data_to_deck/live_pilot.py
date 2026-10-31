@@ -827,10 +827,11 @@ def _actor_handoff_lifecycle(role: str, case_spec: Any,
 def _public_handoff_state(client: CollaborationClient, peer: str, actor: str) -> dict[str, Any]:
     """Inspect public revisions and messages only; no evaluator or file contents."""
     versions = client.list_saved_artifacts()
-    peer_revision = int(versions.get(peer, {}).get("revision", 0))
+    peer_artifact = versions.get(peer, {})
+    peer_revision = int(peer_artifact.get("revision", 0))
     own_revision = int(versions.get(actor, {}).get("revision", 0))
     messages = [m for m in client.read_messages() if m.get("actor") == peer]
-    return {"ready": peer_revision > 0 and bool(messages),
+    return {"ready": peer_revision > 0 and peer_artifact.get("delivered", True) is True and bool(messages),
             "peer_revision": peer_revision, "own_revision": own_revision,
             "peer_message_ids": [m["message_id"] for m in messages]}
 
