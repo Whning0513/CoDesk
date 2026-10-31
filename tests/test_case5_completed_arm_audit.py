@@ -14,7 +14,9 @@ module = importlib.util.module_from_spec(module_spec)
 module_spec.loader.exec_module(module)
 
 
-@pytest.mark.parametrize('fault', [None, 'reopen', 'sync', 'relay', 'boundary', 'resources', 'host', 'topology'])
+@pytest.mark.parametrize('fault', [None, 'reopen', 'sync', 'relay', 'boundary', 'resources',
+                                   'host', 'topology', 'system_collision',
+                                   'missing_system_shot', 'missing_actor_shot'])
 def test_audit_retains_model_failure_and_stops_on_evidence_fault(tmp_path, fault):
     root = tmp_path / 'case5-example'
     root.mkdir()
@@ -56,6 +58,16 @@ def test_audit_retains_model_failure_and_stops_on_evidence_fault(tmp_path, fault
         (root / 'host_resources.jsonl').write_text(json.dumps({'time': 1, 'disk_free_bytes': 1,
                                                                'meminfo': {}, 'io_pressure': ''}) + '\n')
     (root / 'actual_guest.png').write_bytes(b'screenshot marker')
+    (root / 'other_guest.png').write_bytes(b'other screenshot marker')
+    paths = ['actual_guest.png', 'actual_guest.png' if fault == 'system_collision' else
+             'missing.png' if fault == 'missing_system_shot' else 'other_guest.png']
+    (root / 'gui_actions.jsonl').write_text(''.join(json.dumps({'screenshot': path}) + '\n' for path in paths))
+    for role in ('A', 'B'):
+        actor_root = root / 'actor_runs' / role / role
+        (actor_root / 'shots').mkdir(parents=True)
+        (actor_root / 'actions.jsonl').write_text(json.dumps({'n': 1, 'tool': 'screenshot'}) + '\n')
+        if not (fault == 'missing_actor_shot' and role == 'B'):
+            (actor_root / 'shots' / '001.png').write_bytes(b'actor screenshot marker')
     boundary_path, resource_path = tmp_path / 'boundary.json', tmp_path / 'resources.json'
     boundary_path.write_text(json.dumps(boundary))
     resource_path.write_text(json.dumps(resources))
