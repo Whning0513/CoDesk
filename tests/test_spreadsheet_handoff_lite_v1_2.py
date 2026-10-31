@@ -4,17 +4,25 @@ from __future__ import annotations
 import zipfile
 import shutil
 import subprocess
+from pathlib import Path
 from xml.etree import ElementTree as ET
 
 import pytest
 from oscombo.collab.data_to_deck.fixtures import NS, _ods
 from oscombo.collab.data_to_deck.oracle import read_ods
-from oscombo.collab.data_to_deck.live_pilot import _workspace_sync_audit
+from oscombo.collab.data_to_deck.live_pilot import (
+    _workspace_sync_audit, _spreadsheet_lite_v1_2_forecast_actions,
+    _spreadsheet_lite_v1_2_prepare_actions, _spreadsheet_lite_v1_2_open_view_actions,
+    _spreadsheet_lite_v1_2_order_actions,
+)
 from oscombo.collab.spreadsheet_handoff_lite_v1_2 import fixtures, oracle, spec
+from oscombo.collab.spreadsheet_handoff_lite_v1_2 import live_pilot
+from oscombo.collab.data_to_deck.live_pilot import run_pilot
 from oscombo.collab.spreadsheet_handoff_lite_v1_2.audit_handoff import audit
 from oscombo.collab.spreadsheet_handoff_lite_v1_2.bridge_audit import audit_bridge_history
 from oscombo.collab.spreadsheet_handoff_lite_v1_2.check_resources import check as check_resources
 from oscombo.collab.spreadsheet_handoff_lite_v1_2.verify_controls import verify as verify_controls
+from oscombo.collab.spreadsheet_handoff_lite_v1_2.verify_pilot import verify as verify_pilot
 from oscombo.collab.spreadsheet_handoff_lite_v1_2.private.gold import expected_plan, write_gold
 
 
@@ -47,6 +55,8 @@ def _set_formula(path, formula):
 def test_public_fixture_has_blank_answers_and_versioned_layout(tmp_path):
     public = tmp_path / "public"
     manifest = fixtures.build_fixture(public)
+    second = fixtures.build_fixture(tmp_path / "public_again")
+    assert manifest["fixture_sha256"] == second["fixture_sha256"]
     forecast = read_ods(public / spec.FIXTURE_NAMES["forecast"])["Forecast"]
     order = read_ods(public / spec.FIXTURE_NAMES["order"])["Order"]
     assert forecast[2][7] == "" and order[2][4:6] == ["", ""]
@@ -60,6 +70,26 @@ def test_public_fixture_has_blank_answers_and_versioned_layout(tmp_path):
             assert z.testzip() is None
             root = ET.fromstring(z.read("content.xml"))
             assert root.find(f".//{{{NS['style']}}}table-column-properties") is not None
+
+
+def test_scripted_core_counts_each_physical_input_separately():
+    paths = (_spreadsheet_lite_v1_2_forecast_actions(), _spreadsheet_lite_v1_2_prepare_actions(),
+             _spreadsheet_lite_v1_2_open_view_actions("/tmp/sh12/views/B/forecast-r000001.ods"),
+             _spreadsheet_lite_v1_2_order_actions(80))
+    actions = [action for path in paths for action in path if action != "DONE"]
+    assert len(actions) == 14
+    assert all(action.count("pyautogui.") == 1 for action in actions)
+
+
+def test_versioned_entrypoint_and_mutually_exclusive_cases(monkeypatch, tmp_path):
+    received = []
+    monkeypatch.setattr(live_pilot, "shared_runner_main", lambda args: received.extend(args))
+    live_pilot.main(["--condition", "collaborative_shared"])
+    assert received == ["--case-spreadsheet-lite-v1-2", "--condition", "collaborative_shared"]
+    with pytest.raises(ValueError, match="select only one case version"):
+        run_pilot("collaborative_shared", tmp_path / "no-run", "unused", tmp_path, "unused",
+                  case_spreadsheet_lite_v1_1=True, case_spreadsheet_lite_v1_2=True)
+    assert not (tmp_path / "no-run").exists()
 
 
 @pytest.mark.parametrize("formula", ["of:=[.E3]*[.C3]", "of:=[.$C$3]*[.$E$3]",
@@ -169,6 +199,16 @@ def test_gold_formula_survives_libreoffice_roundtrip(tmp_path):
     assert score["joint_success"]
 
 
+@pytest.mark.skipif(not shutil.which("libreoffice") or not Path("/usr/lib/python3/dist-packages/uno.py").exists(),
+                    reason="Host LibreOffice UNO unavailable")
+def test_initial_cell_selection_read_by_libreoffice_uno():
+    completed = subprocess.run(["/usr/bin/python3", "-m",
+        "oscombo.collab.spreadsheet_handoff_lite_v1_2.verify_fixture_uno"],
+        check=True, capture_output=True, text=True, timeout=30)
+    assert "selected=(7, 2)" in completed.stdout
+    assert "selected=(5, 2)" in completed.stdout
+
+
 def test_handoff_audit_rejects_stale_view_and_never_claims_visual_read(tmp_path):
     import json
     def write_json(path, value):
@@ -180,36 +220,44 @@ def test_handoff_audit_rejects_stale_view_and_never_claims_visual_read(tmp_path)
     view = "views/B/forecast-r000001.ods"
     a = {"revision": 1, "sha256": "sha1", "peer_view_path": view, "delivered": True}
     write_json(tmp_path / "workspace_versions/current.json", {"A": a})
-    write_json(tmp_path / "oracle.json", {"joint_success": True, "expected_need_evaluator_only": 73})
+    write_json(tmp_path / "oracle.json", {"joint_success": False, "expected_need_evaluator_only": 73,
+                                         "measured": {"saved_forecast_need": 65}})
     events = [{"event": "peer_view_verified", "actor": "A", "revision": 1,
                "peer_view_path": view, "sha256": "sha1", "mode": "444", "time": 10},
-              {"event": "revision_saved", "actor": "B", "revision": 1, "time": 20}]
+              {"event": "revision_saved", "actor": "B", "revision": 1, "time": 20},
+              {"event": "peer_view_verified", "actor": "A", "revision": 1,
+               "peer_view_path": view, "sha256": "sha1", "mode": "444", "time": 25}]
     write_rows(tmp_path / "workspace_versions/events.jsonl", events)
     messages = [{"actor": "A", "recipient": "B", "message_id": "ready", "timestamp": 11,
                  "body": "Saved forecast is ready for review."}]
     write_rows(tmp_path / "collaboration/events.jsonl", messages)
     results = [
+        {"type": "item.started", "item": {"server": "desktop", "tool": "type_text"}},
         {"type": "item.completed", "item": {"server": "collaboration", "tool": "list_saved_artifacts",
          "result": {"structured_content": {"A": a}}}},
         {"type": "item.completed", "item": {"server": "collaboration", "tool": "read_messages",
          "result": {"structured_content": {"result": [{"message_id": "ready"}]}}}},
+        {"type": "item.started", "item": {"server": "desktop", "tool": "key"}},
     ]
     write_rows(tmp_path / "actor_runs/B/B/stdout.log", results)
-    actions = [{"n": 1, "started_at": 3, "tool": "type_text", "args": {"text": "=E3*C3"}},
+    actions = [{"n": 1, "started_at": 3, "screenshot_started_at": 4, "window_after": "order_plan.ods - Calc",
+                "tool": "type_text", "args": {"text": "=E3*C3"}},
                {"n": 2, "screenshot_started_at": 15, "window_after": "forecast-r000001.ods - Calc"}]
     write_rows(tmp_path / "actor_runs/B/B/actions.jsonl", actions)
     shot = tmp_path / "actor_runs/B/B/shots/002.png"
     shot.parent.mkdir(parents=True); shot.write_bytes(b"placeholder for manual review")
+    (shot.parent / "001.png").write_bytes(b"formula manual review")
     result = audit(tmp_path)
     assert result["peer_view_verified_readonly_and_delivered"]
-    assert result["B_metadata_seen_stdout_index"] == 0
+    assert result["B_metadata_seen_stdout_index"] == 1
     assert result["B_formula_prework_candidate_actions"] == [1]
+    assert result["B_formula_prework_screenshot_candidates"][0]["action"] == 1
     assert result["B_saved_revision_after_view_candidate"]
     assert not result["visual_read_verified"]
     actions[1]["window_after"] = "forecast-r000000.ods - Calc"
     write_rows(tmp_path / "actor_runs/B/B/actions.jsonl", actions)
     assert not audit(tmp_path)["B_peer_view_screenshot_candidates"]
-    messages[0]["body"] = "The answer is 73 units."
+    messages[0]["body"] = "The saved answer is 65 units."
     write_rows(tmp_path / "collaboration/events.jsonl", messages)
     result = audit(tmp_path)
     assert result["A_explicit_numeric_result_in_message"]
@@ -288,6 +336,7 @@ def test_control_gate_requires_all_topologies_and_review_of_exact_screenshot(tmp
             result = {"status": "PASS" if is_positive else "FAIL", "reopen_complete": True,
                       "reset": [{"workspace_clean": True}] * (2 if side == "isolated" else 1),
                       "oracle": {"joint_success": is_positive,
+                                 "expected_need_evaluator_only": 73,
                                  "actors": {"B": {"checks": {"correct_whole_case_order": is_positive}}}}}
             values = {"result.json": result,
                       "workspace_sync_result.json": {"verified": True, "transient_errors": [],
@@ -297,7 +346,7 @@ def test_control_gate_requires_all_topologies_and_review_of_exact_screenshot(tmp
                       "scripted_peer_view.json": {"revision": 1, "sha256": "a", "peer_view_path": view,
                                                   "screenshot": "screenshots/view.png", "view_opened_at": 12},
                       "peer_view_visual_review.json": {"revision": 1, "view_path": view, "screenshot_sha256": sha,
-                                                       "visible_H3_matches_scored_A": True, "reviewed_by": "reviewer",
+                                                       "visible_H3_value": 73, "visible_H3_matches_scored_A": True, "reviewed_by": "reviewer",
                                                        "reviewed_at_utc": "2026-10-31T00:00:00Z"},
                       "scripted_stale_view.json": {"revision": 0, "sha256": "seed", "peer_view_path": stale_view,
                                                    "latest_revision": 1, "latest_sha256": "a", "stale_revision_rejected": True,
@@ -317,3 +366,102 @@ def test_control_gate_requires_all_topologies_and_review_of_exact_screenshot(tmp
     assert verify_controls(manifest, runs)["valid"]
     (runs / "positive-shared/screenshots/view.png").write_bytes(b"replaced")
     assert not verify_controls(manifest, runs)["valid"]
+
+
+def test_pilot_gate_checks_behavior_and_infrastructure_not_success_selection(tmp_path):
+    import hashlib
+    import json
+    shot = tmp_path / "actor_runs/B/B/shots/004.png"
+    shot.parent.mkdir(parents=True); shot.write_bytes(b"visual evidence")
+    sha = hashlib.sha256(shot.read_bytes()).hexdigest()
+    prework_shot = shot.parent / "002.png"; prework_shot.write_bytes(b"formula evidence")
+    prework_sha = hashlib.sha256(prework_shot.read_bytes()).hexdigest()
+    view = "views/B/forecast-r000001.ods"
+    values = {
+        "result.json": {"condition": "collaborative_isolated", "status": "FAIL", "reopen_complete": True,
+                        "reset": [{"workspace_clean": True}, {"workspace_clean": True}],
+                        "oracle": {"measured": {"saved_forecast_need": 65}}},
+        "workspace_sync_result.json": {"verified": True, "diagnostics": {"infrastructure_review_required": False},
+                                       "persistent_history": {"history_clean": True}},
+        "resource_profile_check.json": {"resource_observation_complete": True},
+        "handoff_audit.json": {"latest_A_revision": 1, "peer_view_path": view,
+            "peer_view_verified_readonly_and_delivered": True, "A_ready_message_after_delivery": True,
+            "A_explicit_numeric_result_in_message": False, "B_metadata_seen_stdout_index": 0,
+            "B_message_read_stdout_index": 1, "B_formula_before_view_candidate_actions": [2],
+            "B_formula_prework_screenshot_candidates": [{"screenshot": "actor_runs/B/B/shots/002.png"}],
+            "B_saved_revision_after_view_candidate": True,
+            "B_peer_view_screenshot_candidates": [{"screenshot": "actor_runs/B/B/shots/004.png"}]},
+        "pilot_visual_review.json": {"revision": 1, "view_path": view, "screenshot": "actor_runs/B/B/shots/004.png",
+            "screenshot_sha256": sha, "visible_H3_value": 65, "visible_H3_matches_saved_revision": True,
+            "prework_screenshot": "actor_runs/B/B/shots/002.png", "prework_screenshot_sha256": prework_sha,
+            "visible_F3_cost_formula": True,
+            "A_messages_disclose_no_result": True, "reviewed_by": "reviewer", "reviewed_at_utc": "2026-10-31T00:00:00Z"},
+        "actor_tool_boundary_audit.json": {"actors": {role: {"total_tool_calls": 2,
+            "outside_gui_collaboration_contract": {}} for role in ("A", "B")}},
+    }
+    for name, value in values.items(): (tmp_path / name).write_text(json.dumps(value))
+    (tmp_path / "codex_relay_events.jsonl").write_text("\n".join(json.dumps({"actor": role,
+        "upstream_status": 200, "actor_mcp_only": True}) for role in ("A", "B")) + "\n")
+    assert verify_pilot(tmp_path)["gate_passed"]
+    shot.write_bytes(b"modified after review")
+    assert not verify_pilot(tmp_path)["gate_passed"]
+
+
+def test_model_runner_reads_private_credential_file_without_logging(tmp_path):
+    import os
+    probe = tmp_path / "probe.json"
+    osworld = tmp_path / "provider"
+    python = osworld / ".venv/bin/python"; python.parent.mkdir(parents=True)
+    python.write_text("#!/usr/bin/python3\nimport json,os,sys\n"
+        "open(os.environ['CODESK_TEST_PROBE'],'w').write(json.dumps({"
+        "'file_loaded':os.environ.get('AIGCBEST_API_KEY')=='fixture-provider-key',"
+        "'cpus':os.environ.get('OSCOMBO_GUEST_CPUS'),'ram':os.environ.get('OSCOMBO_GUEST_RAM')}))\n"
+        "sys.exit(3)\n")
+    python.chmod(0o700)
+    key = tmp_path / "private.key"; key.write_text("fixture-provider-key\n"); key.chmod(0o600)
+    config = tmp_path / "env.sh"
+    config.write_text(f"export OSWORLD_DIR={osworld}\nexport OSCOMBO_GUEST_IMAGE=/image\n"
+                      "export OSCOMBO_RUNTIME_IMAGE=example\nexport AIGCBEST_API_KEY=decoy-env-key\n")
+    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "CODESK_ENV_FILE": str(config),
+           "CODESK_CASE6_KEY_FILE": str(key), "CODESK_CASE6_V12_CONTROLS_MANIFEST": str(tmp_path / "missing"),
+           "CODESK_TEST_PROBE": str(probe)}
+    completed = subprocess.run(["bash", "oscombo/collab/spreadsheet_handoff_lite_v1_2/run_model.sh", "pilot"],
+                               env=env, capture_output=True, text=True, timeout=15)
+    assert completed.returncode == 3
+    assert "fixture-provider-key" not in completed.stdout + completed.stderr
+    assert "decoy-env-key" not in completed.stdout + completed.stderr
+    import json
+    assert json.loads(probe.read_text()) == {"file_loaded": True, "cpus": "8", "ram": "8G"}
+
+
+def test_relay_actor_env_and_MCP_config_exclude_provider_key(tmp_path, monkeypatch):
+    from oscombo.harness.base import AgentContext
+    from oscombo.harness.external import CodexHarness
+    class Guest:
+        url = "http://127.0.0.1:5000"
+    monkeypatch.setenv("CODESK_PROVIDER_TEST_KEY", "synthetic-provider-secret")
+    monkeypatch.setenv("CODESK_RUN_RELAY_TOKEN", "synthetic-loopback-token")
+    actor_spec = {"harness": "codex", "model": "gpt-6-astra", "options": {
+        "base_url": "http://127.0.0.1:8000/v1", "api_key_env": "CODESK_RUN_RELAY_TOKEN",
+        "redact_env_keys": ["CODESK_PROVIDER_TEST_KEY"], "codex_bin": "true"}}
+    ctx = AgentContext(name="B", task_id="test", instruction="public", guest=Guest(),
+                       out=tmp_path, max_steps=2, spec=actor_spec)
+    harness = CodexHarness(actor_spec); harness.prepare(ctx)
+    assert "CODESK_PROVIDER_TEST_KEY" not in harness.env(ctx)
+    config = (tmp_path / "B/codex_home/config.toml").read_text()
+    assert "synthetic-provider-secret" not in config
+    assert "synthetic-provider-secret" not in repr(harness.env(ctx))
+
+
+@pytest.mark.skipif(not Path("/data3/whn/Project2/OSWorld-V2/desktop_env/providers/docker/provider.py").exists(),
+                    reason="Pinned OSWorld provider unavailable")
+def test_guest_provider_environment_is_explicit_not_inherited(monkeypatch):
+    import importlib
+    import sys
+    monkeypatch.syspath_prepend("/data3/whn/Project2/OSWorld-V2")
+    module = importlib.import_module("desktop_env.providers.docker.provider")
+    monkeypatch.setattr(module.docker, "from_env", lambda: object())
+    monkeypatch.setenv("CODESK_PROVIDER_TEST_KEY", "synthetic-provider-secret")
+    provider = module.DockerProvider("test")
+    assert "CODESK_PROVIDER_TEST_KEY" not in provider.environment
+    assert "synthetic-provider-secret" not in repr(provider.environment)

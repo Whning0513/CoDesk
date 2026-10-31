@@ -151,4 +151,6 @@ def evaluate(source_forecast: str | Path, saved_forecast: str | Path,
             "joint_success": a_success and b_success and global_order_correct,
             "protection_success": input_intact and forecast_intact and order_intact,
             "expected_need_evaluator_only": need,
+            "measured": {"saved_forecast_need": a_need, "order_units": units,
+                         "order_cost_usd": cost, "order_cost_formula": cost_formula},
             "behavioral_handoff": "audit saved revision mirror, GUI view screenshot, messages and edit chronology separately"}

@@ -23,7 +23,7 @@ def order_rows() -> list[list[object]]:
             ["SKU-LAMP", 10, 28, 2300, "", "", "forecast.ods"]]
 
 
-def _set_public_layout(path: Path) -> None:
+def _set_public_layout(path: Path, sheet: str, cursor_column: int) -> None:
     """Increase default grid font and cell dimensions without changing data."""
     for prefix in ("office", "table", "text", "style", "fo"):
         ET.register_namespace(prefix, NS[prefix])
@@ -44,9 +44,33 @@ def _set_public_layout(path: Path) -> None:
         for table_row in table.findall(q("table", "table-row")):
             table_row.set(q("table", "style-name"), "tall")
     updated = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+    settings = f'''<?xml version="1.0" encoding="UTF-8"?>
+<office:document-settings xmlns:office="{NS['office']}" xmlns:config="urn:oasis:names:tc:opendocument:xmlns:config:1.0" xmlns:ooo="http://openoffice.org/2004/office" office:version="1.2">
+ <office:settings><config:config-item-set config:name="ooo:view-settings">
+  <config:config-item-map-indexed config:name="Views"><config:config-item-map-entry>
+   <config:config-item config:name="ViewId" config:type="string">view1</config:config-item>
+   <config:config-item-map-named config:name="Tables"><config:config-item-map-entry config:name="{sheet}">
+    <config:config-item config:name="CursorPositionX" config:type="int">{cursor_column}</config:config-item>
+    <config:config-item config:name="CursorPositionY" config:type="int">2</config:config-item>
+    <config:config-item config:name="ActiveSplitRange" config:type="short">2</config:config-item>
+    <config:config-item config:name="PositionLeft" config:type="int">0</config:config-item>
+    <config:config-item config:name="PositionRight" config:type="int">0</config:config-item>
+    <config:config-item config:name="PositionTop" config:type="int">0</config:config-item>
+    <config:config-item config:name="PositionBottom" config:type="int">0</config:config-item>
+    <config:config-item config:name="ZoomType" config:type="short">0</config:config-item>
+    <config:config-item config:name="ZoomValue" config:type="int">100</config:config-item>
+    <config:config-item config:name="PageViewZoomValue" config:type="int">60</config:config-item>
+    <config:config-item config:name="ShowGrid" config:type="boolean">true</config:config-item>
+   </config:config-item-map-entry></config:config-item-map-named>
+   <config:config-item config:name="ActiveTable" config:type="string">{sheet}</config:config-item>
+   <config:config-item config:name="ZoomType" config:type="short">0</config:config-item>
+   <config:config-item config:name="ZoomValue" config:type="int">100</config:config-item>
+  </config:config-item-map-entry></config:config-item-map-indexed>
+ </config:config-item-set></office:settings></office:document-settings>'''.encode()
     with zipfile.ZipFile(path, "w") as z:
         for info, data in members:
-            z.writestr(info, updated if info.filename == "content.xml" else data)
+            payload = updated if info.filename == "content.xml" else settings if info.filename == "settings.xml" else data
+            z.writestr(info, payload)
 
 
 def build_fixture(root: str | Path) -> dict:
@@ -56,8 +80,8 @@ def build_fixture(root: str | Path) -> dict:
         raise FileExistsError(f"Lite fixture destination is not empty: {root}")
     _ods(root / spec.FIXTURE_NAMES["forecast"], {"Forecast": forecast_rows()})
     _ods(root / spec.FIXTURE_NAMES["order"], {"Order": order_rows()})
-    for key in ("forecast", "order"):
-        _set_public_layout(root / spec.FIXTURE_NAMES[key])
+    for key, sheet, cursor in (("forecast", "Forecast", 7), ("order", "Order", 5)):
+        _set_public_layout(root / spec.FIXTURE_NAMES[key], sheet, cursor)
     (root / spec.FIXTURE_NAMES["brief"]).write_text(
         "# SKU-LAMP replenishment\n\n"
         "A calculates two-month non-negative need from the visible three monthly sales and stock data. "

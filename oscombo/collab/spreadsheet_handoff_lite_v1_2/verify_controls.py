@@ -69,6 +69,8 @@ def verify(manifest: Path, run_base: Path) -> dict:
         screenshot_reviewed = bool(shot_sha and review.get("screenshot_sha256") == shot_sha
                                    and review.get("revision") == shot_info.get("revision")
                                    and review.get("view_path") == shot_info.get("peer_view_path")
+                                   and type(review.get("visible_H3_value")) in (int, float)
+                                   and review.get("visible_H3_value") == oracle.get("expected_need_evaluator_only")
                                    and review.get("visible_H3_matches_scored_A") is True
                                    and review.get("reviewed_by") and review.get("reviewed_at_utc"))
         good = bool(row.get("exit_code") == expected_exit
