@@ -17,12 +17,18 @@ if [[ ! -x "$osworld_python" ]]; then
     echo "OSWorld Python is not executable: ${osworld_python}" >&2
     exit 3
 fi
+case "${1:-all}" in
+    all) entries=('positive shared' 'positive isolated' 'negative shared' 'negative isolated') ;;
+    shared_positive_only) entries=('positive shared') ;;
+    after_shared_positive) entries=('positive isolated' 'negative shared' 'negative isolated') ;;
+    *) echo 'Usage: run_case7_v1p2_controls.sh [all|shared_positive_only|after_shared_positive]' >&2; exit 2 ;;
+esac
 
 stamp="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 manifest="audits/three_lite_cases_20261029/case7-v1p2-controls-${stamp}.tsv"
 printf 'control\tcondition\trun_id\texit_code\tstatus\tverdict\tfree_kib\tactive_guest_count\n' > "$manifest"
 min_free_kib=$((15 * 1024 * 1024))
-for entry in 'positive shared' 'positive isolated' 'negative shared' 'negative isolated'; do
+for entry in "${entries[@]}"; do
     read -r control side <<< "$entry"
     run_id="wa-lite-v1p2-scripted-${control}-${side}-${stamp}"
     run_root="runs/${run_id}"
