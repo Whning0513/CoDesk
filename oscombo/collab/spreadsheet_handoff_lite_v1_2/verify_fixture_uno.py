@@ -39,10 +39,13 @@ def main() -> None:
                     raise RuntimeError(f"LibreOffice could not open {filename}")
                 addr = doc.CurrentController.Selection.RangeAddress
                 actual = (addr.StartColumn, addr.StartRow)
-                print(f"{filename}: selected={actual}, expected={expected}")
+                widths = [doc.Sheets.getByIndex(0).Columns.getByIndex(i).Width for i in range(9)]
+                print(f"{filename}: selected={actual}, expected={expected}, column_widths_100th_mm={widths}")
                 doc.close(True)
                 if actual != expected:
                     raise RuntimeError(f"Initial selection mismatch for {filename}")
+                if any(width < 3700 for width in widths):
+                    raise RuntimeError(f"Column width mismatch for {filename}: {widths}")
         finally:
             proc.terminate()
             try:
