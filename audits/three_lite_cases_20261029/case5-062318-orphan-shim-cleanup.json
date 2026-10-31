@@ -1,0 +1,20 @@
+{
+  "time_utc": "2026-10-31T06:40:04.786834+00:00",
+  "run_id": "mar-lite-v1-triad1-isolated-20261031T062318Z",
+  "targets": [
+    {
+      "pid": 307721,
+      "container_id": "01e86325df12be824c4ff09dc5bfa2fd0cda3fd9a9f894f558a0a2037b4aa571",
+      "cmdline": "/usr/bin/containerd-shim-runc-v2 -namespace moby -id 01e86325df12be824c4ff09dc5bfa2fd0cda3fd9a9f894f558a0a2037b4aa571 -address /data3/whn/Project2/.codesk-docker/exec/containerd/containerd.sock ",
+      "children": "",
+      "signal": "SIGTERM"
+    },
+    {
+      "pid": 313676,
+      "container_id": "e40fd98967b001bd8fd8577c808c966eb5d543fceb79f232ce4c68faf3f32a74",
+      "cmdline": "/usr/bin/containerd-shim-runc-v2 -namespace moby -id e40fd98967b001bd8fd8577c808c966eb5d543fceb79f232ce4c68faf3f32a74 -address /data3/whn/Project2/.codesk-docker/exec/containerd/containerd.sock ",
+      "children": "",
+      "signal": "SIGTERM"
+    }
+  ]
+}
