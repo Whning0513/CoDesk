@@ -9,6 +9,7 @@ else
     echo 'Missing env.local.sh for Guest paths' >&2
     exit 3
 fi
+export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
 : "${OSWORLD_DIR:?Set OSWORLD_DIR}"
 : "${OSCOMBO_GUEST_IMAGE:?Set OSCOMBO_GUEST_IMAGE}"
 : "${OSCOMBO_RUNTIME_IMAGE:?Set OSCOMBO_RUNTIME_IMAGE}"
@@ -17,8 +18,19 @@ if [[ ! -x "$osworld_python" ]]; then
     echo "OSWorld Python is not executable: ${osworld_python}" >&2
     exit 3
 fi
-: "${AIGCBEST_API_KEY:?Set AIGCBEST_API_KEY in the coordinator environment}"
-trap 'unset AIGCBEST_API_KEY' EXIT
+credential_file="${CODESK_HAOGPT_KEY_FILE:-../.codesk-secrets/haogpt_20261027.key}"
+if [[ ! -f "$credential_file" || "$(stat -c %a "$credential_file")" != 600 ||
+      "$(stat -c %u "$credential_file")" != "$(id -u)" ]]; then
+    echo "Model credential file must exist, be owned by this user and have mode 600: ${credential_file}" >&2
+    exit 3
+fi
+IFS= read -r credential_value < "$credential_file"
+: "${credential_value:?Model credential file is empty}"
+# Supply the provider key only to the run coordinator. Its relay receives the
+# key, while Codex Actor processes explicitly redact this variable. The QEMU
+# sampler and metrics commands inherit no provider credential.
+unset AIGCBEST_API_KEY
+trap 'unset credential_value AIGCBEST_API_KEY' EXIT
 
 arm="${1:-}"
 case "$arm" in
@@ -59,7 +71,7 @@ if [[ "$status" == NOT_STARTED_GUEST_CHECK_ERROR || "$active_guest_count" -ne 0 
     exit 3
 fi
 echo "Starting ${run_id} at $(date -u +%FT%TZ)"
-"$osworld_python" \
+AIGCBEST_API_KEY="$credential_value" "$osworld_python" \
     -m oscombo.collab.workspace_assembly_lite_v1p2.live_pilot \
     --condition "collaborative_${side}" --run-root "$run_root" \
     --provider "$OSWORLD_DIR" --image "$OSCOMBO_GUEST_IMAGE" \
@@ -68,6 +80,7 @@ echo "Starting ${run_id} at $(date -u +%FT%TZ)"
     --mcp-python "$osworld_python" \
     --yield-wait-lifecycle --actor-mcp-only "${extra[@]}" > "$log" 2>&1 &
 driver_pid=$!
+unset credential_value
 for _ in {1..100}; do
     [[ -d "$run_root" ]] && break
     kill -0 "$driver_pid" 2>/dev/null || break

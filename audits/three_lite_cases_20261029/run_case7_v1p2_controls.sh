@@ -9,6 +9,7 @@ else
     echo 'Missing env.local.sh for Guest paths' >&2
     exit 3
 fi
+export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
 : "${OSWORLD_DIR:?Set OSWORLD_DIR}"
 : "${OSCOMBO_GUEST_IMAGE:?Set OSCOMBO_GUEST_IMAGE}"
 : "${OSCOMBO_RUNTIME_IMAGE:?Set OSCOMBO_RUNTIME_IMAGE}"
