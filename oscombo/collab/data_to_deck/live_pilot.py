@@ -246,26 +246,29 @@ def _spreadsheet_lite_order_actions(units: int) -> list[str]:
 
 
 def _spreadsheet_lite_v1_2_forecast_actions() -> list[str]:
-    return [_spreadsheet_lite_select_cell(7),
-            "import pyautogui, time; pyautogui.write('=AVERAGE(B3:D3)*2+G3-E3-F3', 0.08); time.sleep(1)",
+    # H3 is selected in the public workbook's view settings. Each physical
+    # input is a separate recorded action; do not hide navigation in a script.
+    return ["import pyautogui, time; pyautogui.write('=AVERAGE(B3:D3)*2+G3-E3-F3', 0.08); time.sleep(1)",
             "import pyautogui, time; pyautogui.press('enter'); time.sleep(1)",
             "import pyautogui, time; pyautogui.hotkey('ctrl','s'); time.sleep(3)", "DONE"]
 
 
 def _spreadsheet_lite_v1_2_prepare_actions() -> list[str]:
-    return [_spreadsheet_lite_select_cell(5),
-            "import pyautogui, time; pyautogui.write('=E3*C3', 0.12); time.sleep(1)",
+    # F3 is selected in B's public workbook; Enter leaves F4 selected.
+    return ["import pyautogui, time; pyautogui.write('=E3*C3', 0.12); time.sleep(1)",
             "import pyautogui, time; pyautogui.press('enter'); time.sleep(1)", "DONE"]
 
 
 def _spreadsheet_lite_v1_2_open_view_actions(path: str) -> list[str]:
     return ["import pyautogui, time; pyautogui.hotkey('ctrl','o'); time.sleep(3)",
+            "import pyautogui, time; pyautogui.hotkey('ctrl','l'); time.sleep(1)",
             f"import pyautogui, time; pyautogui.write({path!r}, 0.03); time.sleep(1)",
             "import pyautogui, time; pyautogui.press('enter'); time.sleep(8)", "DONE"]
 
 
 def _spreadsheet_lite_v1_2_order_actions(units: int) -> list[str]:
-    return [_spreadsheet_lite_select_cell(4),
+    return ["import pyautogui, time; pyautogui.press('up'); time.sleep(1)",
+            "import pyautogui, time; pyautogui.press('left'); time.sleep(1)",
             f"import pyautogui, time; pyautogui.write({str(units)!r}, 0.12); time.sleep(1)",
             "import pyautogui, time; pyautogui.press('enter'); time.sleep(1)",
             "import pyautogui, time; pyautogui.hotkey('ctrl','s'); time.sleep(3)", "DONE"]
@@ -1164,6 +1167,12 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
                 "guest_count": guest_count, "provider_commit": "3d778a3c9a34a079316f70df023b166700445792",
                 "provider_path": str(provider), "base_qcow2": image,
                 "runtime_image": runtime, "started_at": time.time()}
+    if case_spreadsheet_lite_v1_2:
+        metadata["requested_guest_profile"] = {
+            "cpus": os.environ.get("OSCOMBO_GUEST_CPUS", "4"),
+            "ram": os.environ.get("OSCOMBO_GUEST_RAM", "4G"),
+            "actual_cmdline_evidence": "resource_samples.jsonl",
+        }
     ledger = RunLedger(run_root, metadata)
     (run_root / "ownership.json").write_text(json.dumps({"project": "CoDesk Data-to-Deck",
         "run_id": run_id, "owner": os.environ.get("USER"), "created_utc": _stamp(),
