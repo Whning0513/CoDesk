@@ -1,0 +1,73 @@
+{
+  "actor_execution_overlap_s": 224.017,
+  "actor_phase_s": 415.007,
+  "actors": {
+    "A": {
+      "actor_elapsed_s": 224.02,
+      "actor_status": "done",
+      "cached_input_tokens": 188900,
+      "desktop_tool_calls": 8,
+      "executed_gui_actions": 7,
+      "gui_action_s": 29.164,
+      "input_tokens": 215175,
+      "model_http_statuses": {
+        "200": 12
+      },
+      "model_request_s": 135.245,
+      "model_requests": 12,
+      "output_tokens": 1251,
+      "screenshot_s": 34.755,
+      "total_tokens": 216426
+    },
+    "B": {
+      "actor_elapsed_s": 415.01,
+      "actor_status": "done",
+      "cached_input_tokens": 225719,
+      "desktop_tool_calls": 9,
+      "executed_gui_actions": 7,
+      "gui_action_s": 29.275,
+      "input_tokens": 286253,
+      "model_http_statuses": {
+        "200": 18
+      },
+      "model_request_s": 141.504,
+      "model_requests": 18,
+      "output_tokens": 1113,
+      "screenshot_s": 39.851,
+      "total_tokens": 287366
+    }
+  },
+  "case_id": "CDD-SH-LITE-001",
+  "condition": "collaborative_isolated",
+  "gui_action_overlap_s": 0.0,
+  "model": "gpt-6-astra",
+  "model_request_overlap_s": 26.863,
+  "oracle_actor_success": {
+    "A": true,
+    "B": true
+  },
+  "oracle_joint_success": true,
+  "qemu_cpu_seconds_sampled": 6136.93,
+  "qemu_peak_sampled_sum_rss_gib": 9.748,
+  "qemu_peak_single_rss_gib": 4.896,
+  "qemu_process_count": 4,
+  "reset_guests": 2,
+  "result_status": "PASS",
+  "role_step_budget": {
+    "A": 25,
+    "B": 25
+  },
+  "run_id": "sh-lite-v1p1-triad1-isolated-20261030T225247Z",
+  "scope": "Actor/API/GUI overlap is measured from timestamps; it does not by itself prove focus interference.",
+  "setup_until_actor_s": 689.493,
+  "total_elapsed_s": 1513.53,
+  "workspace_sync_errors": [],
+  "workspace_transfers": 2
+}
+{
+  "run_id": "sh-lite-v1p1-triad1-isolated-20261030T225247Z",
+  "actor_handoff_wait_s": {
+    "B": 174.965
+  },
+  "actor_active_overlap_excluding_handoff_wait_s": 49.053
+}
