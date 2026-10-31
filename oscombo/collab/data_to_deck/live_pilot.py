@@ -39,15 +39,17 @@ def _stamp() -> str:
 
 
 def _desktop_frame_ready(png: bytes) -> bool:
-    """Reject boot-time black frames even when the screenshot HTTP API is live."""
-    from PIL import Image
+    """Reject blank boot frames even when the screenshot HTTP API is live."""
+    from PIL import Image, ImageStat
     with Image.open(io.BytesIO(png)) as frame:
         if frame.size != (1920, 1080):
             return False
         histogram = frame.convert("L").histogram()
-        # A cursor on a black X root is not a usable desktop. This is only a
-        # startup gate, never a filter of observations during actor execution.
-        return sum(histogram[24:]) / (frame.width * frame.height) > 0.02
+        # A cursor on a black or uniformly gray X root is not a usable desktop.
+        # This startup gate never filters observations during actor execution.
+        if sum(histogram[24:]) / (frame.width * frame.height) <= 0.02:
+            return False
+        return ImageStat.Stat(frame.convert("L").resize((192, 108))).stddev[0] >= 5.0
 
 
 def _wait_for_visible_desktop(guest, timeout: float = 300) -> bytes:
