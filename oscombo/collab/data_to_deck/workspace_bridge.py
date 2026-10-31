@@ -52,6 +52,8 @@ class SavedArtifactBridge:
             raise ValueError("resume requires the peer-view writer lease")
         if set(self.outputs) != {"A", "B"} or set(self.mime_types) != {"A", "B"}:
             raise ValueError("bridge needs one output and MIME contract per role")
+        if self.outputs["A"] == self.outputs["B"]:
+            raise ValueError("bridge role outputs must be distinct")
         if not self.allow_initial_missing <= {"A", "B"}:
             raise ValueError("unknown role allowed to create an output")
         if any(not path or Path(path).is_absolute() or ".." in Path(path).parts
@@ -147,6 +149,16 @@ class SavedArtifactBridge:
                          error=f"{type(exc).__name__}: {exc}")
             raise
         if not data:
+            owner_path = f"{self.task_root}/{self.outputs[role]}"
+            if path == owner_path:
+                if self._exists(role, path):
+                    self._record(event="save_validation_retry", actor=role, path=path,
+                                 error="empty saved owner artifact")
+                else:
+                    self._record(event="owner_output_missing", actor=role, path=path)
+            else:
+                self._record(event="guest_read_error", actor=role, path=path,
+                             error="empty or missing peer artifact")
             raise RuntimeError(f"no saved artifact returned by Guest {self.guest_ids[role]}")
         return data
 
@@ -429,7 +441,11 @@ class SavedArtifactBridge:
         if event_path.exists():
             for line in event_path.read_text().splitlines():
                 try:
-                    rows.append(json.loads(line))
+                    row = json.loads(line)
+                    if not isinstance(row, dict):
+                        malformed += 1
+                        continue
+                    rows.append(row)
                 except (ValueError, TypeError):
                     malformed += 1
         errors = {"transfer_error", "peer_view_error", "peer_view_conflict",
