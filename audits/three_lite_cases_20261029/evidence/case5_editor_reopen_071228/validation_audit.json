@@ -1,0 +1,32 @@
+{
+  "run_id": "case5-lifecycle-health-20261031T071228Z",
+  "status": "PARTIAL_INVALID_SIGTERM",
+  "reason": "execution session exited 143 before result or reset desktop readiness; exact signal sender not observed",
+  "execution": {
+    "timeout_wrapper_present": false,
+    "observed_session_exit_code": 143,
+    "session_start_utc": "2026-10-31T07:12:28.380497+00:00",
+    "last_reset_readiness_utc": "2026-10-31T07:25:19.450991+00:00"
+  },
+  "editor": {
+    "production_restore_screenshot_visible": true,
+    "close_screenshot_visible": true,
+    "byte_match_durable_evidence": false,
+    "byte_match_control_flow_inference": "script starts reset only after comparing saved bytes; reset was observed but the comparison/hash was not persisted"
+  },
+  "reset_desktop_ready_proven": false,
+  "screenshots": {
+    "editor-before-close.png": {
+      "sha256": "155992913c3f9f2c2b9ce5a3aa9fe6160334920dcc3a7528d021700d8bad5d7f",
+      "captured_utc": "2026-10-31T07:20:16.589080+00:00"
+    },
+    "editor-after-close.png": {
+      "sha256": "2883d791081e6a0068741522d823d7e27753e965b5c705d03432714dcb239410",
+      "captured_utc": "2026-10-31T07:21:16.517238+00:00"
+    },
+    "editor-reopened.png": {
+      "sha256": "57187ed64b12e42624576e346a8c48eaf932389c2c773e8652d39cd533efee2e",
+      "captured_utc": "2026-10-31T07:22:22.689413+00:00"
+    }
+  }
+}
