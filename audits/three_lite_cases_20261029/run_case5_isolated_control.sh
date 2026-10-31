@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 set -u
 cd "$(dirname "$0")/../.."
-source env.local.sh
+source env.local.sh || exit 3
+export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
+source audits/three_lite_cases_20261029/case5_resource_gate.sh || exit 3
 
 available_bytes="$(df -PB1 . | awk 'NR==2 {print $4}')"
 if (( available_bytes < 15 * 1024 * 1024 * 1024 )); then
     echo "Insufficient disk for two new Guests: ${available_bytes} bytes available" >&2
     exit 4
 fi
+case5_require_no_active_oscombo_guests || exit 4
 blender_bin="/data3/whn/Project2/.codesk-deps/blender-5.0.0/blender-5.0.0-linux-x64/blender"
 test -x "$blender_bin" || { echo "Host Blender scorer is unavailable" >&2; exit 3; }
 
