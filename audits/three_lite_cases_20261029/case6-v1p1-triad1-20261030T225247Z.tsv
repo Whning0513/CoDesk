@@ -1,0 +1,4 @@
+mode	arm	run_id	exit_code
+triad1	isolated	sh-lite-v1p1-triad1-isolated-20261030T225247Z	0
+triad1	shared	sh-lite-v1p1-triad1-shared-20261030T225247Z	0
+triad1	sharedlock	sh-lite-v1p1-triad1-sharedlock-20261030T225247Z	2

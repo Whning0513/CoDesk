@@ -1,0 +1,73 @@
+{
+  "actor_execution_overlap_s": 244.021,
+  "actor_phase_s": 460.094,
+  "actors": {
+    "A": {
+      "actor_elapsed_s": 244.02,
+      "actor_status": "done",
+      "cached_input_tokens": 228066,
+      "desktop_tool_calls": 10,
+      "executed_gui_actions": 9,
+      "gui_action_s": 38.583,
+      "input_tokens": 288498,
+      "model_http_statuses": {
+        "200": 14
+      },
+      "model_request_s": 128.165,
+      "model_requests": 14,
+      "output_tokens": 1168,
+      "screenshot_s": 47.489,
+      "total_tokens": 289666
+    },
+    "B": {
+      "actor_elapsed_s": 460.09,
+      "actor_status": "done",
+      "cached_input_tokens": 252744,
+      "desktop_tool_calls": 10,
+      "executed_gui_actions": 8,
+      "gui_action_s": 33.917,
+      "input_tokens": 316309,
+      "model_http_statuses": {
+        "200": 18
+      },
+      "model_request_s": 152.66,
+      "model_requests": 18,
+      "output_tokens": 1209,
+      "screenshot_s": 48.083,
+      "total_tokens": 317518
+    }
+  },
+  "case_id": "CDD-SH-LITE-001",
+  "condition": "collaborative_shared",
+  "gui_action_overlap_s": 0.0,
+  "model": "gpt-6-astra",
+  "model_request_overlap_s": 27.557,
+  "oracle_actor_success": {
+    "A": true,
+    "B": true
+  },
+  "oracle_joint_success": true,
+  "qemu_cpu_seconds_sampled": 3648.91,
+  "qemu_peak_sampled_sum_rss_gib": 4.931,
+  "qemu_peak_single_rss_gib": 4.931,
+  "qemu_process_count": 2,
+  "reset_guests": 1,
+  "result_status": "PASS",
+  "role_step_budget": {
+    "A": 25,
+    "B": 25
+  },
+  "run_id": "sh-lite-v1p1-triad1-shared-20261030T225247Z",
+  "scope": "Actor/API/GUI overlap is measured from timestamps; it does not by itself prove focus interference.",
+  "setup_until_actor_s": 392.668,
+  "total_elapsed_s": 1099.18,
+  "workspace_sync_errors": [],
+  "workspace_transfers": 0
+}
+{
+  "run_id": "sh-lite-v1p1-triad1-shared-20261030T225247Z",
+  "actor_handoff_wait_s": {
+    "B": 194.053
+  },
+  "actor_active_overlap_excluding_handoff_wait_s": 49.968
+}

@@ -1,0 +1,73 @@
+{
+  "actor_execution_overlap_s": 518.036,
+  "actor_phase_s": 865.46,
+  "actors": {
+    "A": {
+      "actor_elapsed_s": 518.04,
+      "actor_status": "done",
+      "cached_input_tokens": 324125,
+      "desktop_tool_calls": 21,
+      "executed_gui_actions": 20,
+      "gui_action_s": 80.089,
+      "input_tokens": 495221,
+      "model_http_statuses": {
+        "200": 22
+      },
+      "model_request_s": 283.036,
+      "model_requests": 22,
+      "output_tokens": 2025,
+      "screenshot_s": 96.987,
+      "total_tokens": 497246
+    },
+    "B": {
+      "actor_elapsed_s": 865.46,
+      "actor_status": "done",
+      "cached_input_tokens": 124129,
+      "desktop_tool_calls": 16,
+      "executed_gui_actions": 14,
+      "gui_action_s": 56.737,
+      "input_tokens": 198979,
+      "model_http_statuses": {
+        "200": 18
+      },
+      "model_request_s": 223.157,
+      "model_requests": 18,
+      "output_tokens": 1128,
+      "screenshot_s": 73.654,
+      "total_tokens": 200107
+    }
+  },
+  "case_id": "CDD-SH-LITE-001",
+  "condition": "collaborative_shared",
+  "gui_action_overlap_s": 0.0,
+  "model": "gpt-6-astra",
+  "model_request_overlap_s": 28.997,
+  "oracle_actor_success": {
+    "A": false,
+    "B": false
+  },
+  "oracle_joint_success": false,
+  "qemu_cpu_seconds_sampled": 3670.2,
+  "qemu_peak_sampled_sum_rss_gib": 4.994,
+  "qemu_peak_single_rss_gib": 4.994,
+  "qemu_process_count": 2,
+  "reset_guests": 1,
+  "result_status": "FAIL",
+  "role_step_budget": {
+    "A": 25,
+    "B": 25
+  },
+  "run_id": "sh-lite-v1p1-triad1-sharedlock-20261030T225247Z",
+  "scope": "Actor/API/GUI overlap is measured from timestamps; it does not by itself prove focus interference.",
+  "setup_until_actor_s": 331.601,
+  "total_elapsed_s": 1427.39,
+  "workspace_sync_errors": [],
+  "workspace_transfers": 0
+}
+{
+  "run_id": "sh-lite-v1p1-triad1-sharedlock-20261030T225247Z",
+  "actor_handoff_wait_s": {
+    "B": 465.41
+  },
+  "actor_active_overlap_excluding_handoff_wait_s": 52.627
+}

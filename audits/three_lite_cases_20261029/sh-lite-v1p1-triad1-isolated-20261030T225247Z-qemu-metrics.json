@@ -1,0 +1,10 @@
+{
+  "run_id": "sh-lite-v1p1-triad1-isolated-20261030T225247Z",
+  "samples": 301,
+  "guest_count_peak": 2,
+  "sampled_duration_s": 1509.353,
+  "peak_sum_rss_gib": 9.748,
+  "peak_single_rss_gib": 4.896,
+  "observed_qemu_cpu_delta_s": 6136.93,
+  "scope": "PID process samples for Docker containers bearing this exact run label; CPU delta excludes boot before first sample and may miss the tail after last sample."
+}
