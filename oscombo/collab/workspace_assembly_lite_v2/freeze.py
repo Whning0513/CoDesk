@@ -138,8 +138,9 @@ def _control(root: Path, commit: str, name: str) -> dict:
     _require(score.get("actors", {}).get("A", {}).get("success") is True, f"{root.name}: A control did not deliver")
     checks = score.get("actors", {}).get("B", {}).get("checks", {})
     if negative:
-        _require(checks.get("tag_matches_source") is False and
-                 all(value is True for key, value in checks.items() if key != "tag_matches_source"),
+        _require(checks.get("tag_matches_delivered") is False and
+                 score["actors"]["B"]["global_checks"].get("tag_matches_source") is False and
+                 all(value is True for key, value in checks.items() if key != "tag_matches_delivered"),
                  f"{root.name}: negative did not isolate wrong tag")
     else:
         _require(score.get("joint_success") is True, f"{root.name}: positive did not pass")

@@ -31,7 +31,7 @@ def test_fixture_gold_and_positive_negative_controls(tmp_path, tag):
     fixtures.report_odt(report, "For: operations team", f"inspection_note.txt carries {tag}")
     assert score()["joint_success"] is True
     fixtures.report_odt(report, "Audience: Operations.", "Attachment: inspection_note.txt; tag WRONG-00.")
-    assert score()["actors"]["B"]["checks"]["tag_matches_source"] is False
+    assert score()["actors"]["B"]["global_checks"]["tag_matches_source"] is False
     fixtures.report_odt(report, None, f"Attachment: inspection_note.txt; tag {tag}.")
     assert score()["actors"]["B"]["success"] is False
     fixtures.report_odt(report, "Audience: Operations.", f"Attachment: inspection_note.txt; tag {tag}.")
@@ -72,10 +72,11 @@ def test_oracle_scores_roles_independently_and_reports_host_io(tmp_path, monkeyp
                                fixture / "handoff_report.odt", final)
     missing_a = score()
     assert missing_a["actors"]["A"]["success"] is False
-    assert missing_a["actors"]["B"]["success"] is True and missing_a["joint_success"] is False
+    assert missing_a["actors"]["B"]["success"] is None and missing_a["joint_success"] is False
+    assert missing_a["actors"]["B"]["checks"]["audience_matches_draft"] is True
     delivered.write_bytes(b"wrong contents\n")
     wrong_a = score()
-    assert not wrong_a["actors"]["A"]["success"] and wrong_a["actors"]["B"]["success"]
+    assert not wrong_a["actors"]["A"]["success"] and wrong_a["actors"]["B"]["success"] is None
     delivered.write_bytes((fixture / "inspection_note.txt").read_bytes())
     final.unlink()
     missing_b = score()
@@ -340,3 +341,26 @@ def test_postscore_closed_writer_restore_requires_absent_window(monkeypatch):
     with pytest.raises(RuntimeError, match="exists"):
         pilot._restore_closed_case7_writer(guest, "/tmp/handoff_report.odt", "run")
     assert calls == ["activate"]
+
+
+def test_b_local_tracks_delivered_tag_and_global_tracks_original(tmp_path):
+    fixture = tmp_path / "fixture"
+    fixtures.build_fixture(fixture, inspection_tag="BIRCH-42")
+    delivered = tmp_path / "inspection_note.txt"
+    delivered.write_bytes((fixture / "inspection_note.txt").read_bytes().replace(b"BIRCH-42", b"CEDAR-17"))
+    report = tmp_path / "report.odt"
+    def score():
+        return oracle.evaluate(fixture / "inspection_note.txt", tmp_path / "absent", delivered,
+                               fixture / "handoff_report.odt", report)
+    fixtures.report_odt(report, "Audience: Operations.", "Attachment: inspection_note.txt; tag CEDAR-17.")
+    s = score()
+    assert s["actors"]["A"]["success"] is False and s["actors"]["B"]["success"] is True
+    assert s["actors"]["B"]["checks"]["tag_matches_delivered"] is True
+    assert s["actors"]["B"]["global_checks"]["tag_matches_source"] is False
+    assert s["joint_success"] is False
+    fixtures.report_odt(report, "Audience: Operations.", "Attachment: inspection_note.txt; tag BIRCH-42.")
+    s = score()
+    assert s["actors"]["B"]["success"] is False
+    assert s["actors"]["B"]["global_checks"]["tag_matches_source"] is True
+    delivered.write_bytes(b"not a valid inspection tag")
+    assert score()["actors"]["B"]["success"] is None
