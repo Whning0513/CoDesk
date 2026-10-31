@@ -6,6 +6,7 @@ import hashlib
 import json
 import sys
 from pathlib import Path
+from . import spec
 
 
 def _json(path: Path) -> dict:
@@ -15,17 +16,44 @@ def _json(path: Path) -> dict:
         return {}
 
 
-def verify(manifest: Path, run_base: Path) -> dict:
+def _fixture_fingerprint(root: Path) -> dict | None:
+    fixture = root / "fixtures"
+    manifest = _json(fixture / "fixture_manifest.json")
+    entries = manifest.get("fixture_sha256") or {}
+    if (manifest.get("case_id") != spec.CASE_ID or manifest.get("case_version") != spec.CASE_VERSION
+            or set(entries) != set(spec.FIXTURE_NAMES.values())):
+        return None
+    fingerprint = {}
+    for name in sorted(entries):
+        info = entries.get(name) or {}
+        path = fixture / name
+        if not path.is_file():
+            return None
+        sha = hashlib.sha256(path.read_bytes()).hexdigest()
+        if info.get("sha256") != sha or info.get("bytes") != path.stat().st_size:
+            return None
+        fingerprint[name] = sha
+    return fingerprint
+
+
+def verify(manifest: Path, run_base: Path, expected_commit: str | None = None) -> dict:
     with manifest.open(newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f, delimiter="\t"))
     expected = {(control, condition) for control in ("positive", "wrong-units")
                 for condition in ("shared", "isolated")}
+    expected_order = [(control, condition) for control in ("positive", "wrong-units")
+                      for condition in ("shared", "isolated")]
     unique = {(r.get("control"), r.get("condition")) for r in rows}
-    checks = []
+    actual_order = [(r.get("control"), r.get("condition")) for r in rows]
+    checks, commits, fingerprints = [], set(), []
     for row in rows:
         kind, side, run_id = row.get("control"), row.get("condition"), row.get("run_id")
         root = run_base / str(run_id)
         result, sync = _json(root / "result.json"), _json(root / "workspace_sync_result.json")
+        provenance = _json(root / "provenance.json")
+        commit, fingerprint = provenance.get("source_commit"), _fixture_fingerprint(root)
+        if isinstance(commit, str): commits.add(commit)
+        if fingerprint is not None: fingerprints.append(fingerprint)
         shot_info, review = _json(root / "scripted_peer_view.json"), _json(root / "peer_view_visual_review.json")
         stale, stale_review = _json(root / "scripted_stale_view.json"), _json(root / "stale_view_visual_review.json")
         resources = _json(root / "resource_profile_check.json")
@@ -74,6 +102,11 @@ def verify(manifest: Path, run_base: Path) -> dict:
                                    and review.get("visible_H3_matches_scored_A") is True
                                    and review.get("reviewed_by") and review.get("reviewed_at_utc"))
         good = bool(row.get("exit_code") == expected_exit
+                    and provenance.get("case_id") == spec.CASE_ID
+                    and provenance.get("case_version") == spec.CASE_VERSION
+                    and isinstance(commit, str) and len(commit) == 40
+                    and (expected_commit is None or commit == expected_commit)
+                    and fingerprint is not None
                     and result.get("status") == ("PASS" if expect_success else "FAIL")
                     and oracle.get("joint_success") is expect_success
                     and (expect_success or b_checks.get("correct_whole_case_order") is False)
@@ -92,9 +125,13 @@ def verify(manifest: Path, run_base: Path) -> dict:
         checks.append({"run_id": run_id, "control": kind, "condition": side,
                        "valid": good, "visual_review_valid": screenshot_reviewed,
                        "stale_view_review_valid": stale_reviewed and stale_verified})
-    valid = len(rows) == 4 and len(unique) == 4 and unique == expected and all(x["valid"] for x in checks)
-    return {"manifest": str(manifest), "required_controls": sorted(map(list, expected)),
-            "controls": checks, "valid": valid,
+    valid = (len(rows) == 4 and len(unique) == 4 and unique == expected and actual_order == expected_order
+             and all(x["valid"] for x in checks)
+             and len(commits) == 1 and len(fingerprints) == 4 and all(x == fingerprints[0] for x in fingerprints))
+    return {"manifest": str(manifest), "required_controls": list(map(list, expected_order)),
+            "actual_order": list(map(list, actual_order)),
+            "controls": checks, "valid": valid, "source_commit": next(iter(commits)) if len(commits) == 1 else None,
+            "fixture_sha256": fingerprints[0] if len(fingerprints) == 4 and all(x == fingerprints[0] for x in fingerprints) else None,
             "scope": "scripted control outcomes and explicit screenshot review; no model result"}
 
 
@@ -102,7 +139,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("manifest", type=Path)
     parser.add_argument("--run-base", type=Path, default=Path("runs"))
+    parser.add_argument("--expected-commit")
     args = parser.parse_args()
-    result = verify(args.manifest, args.run_base)
+    result = verify(args.manifest, args.run_base, args.expected_commit)
     print(json.dumps(result, indent=2))
     sys.exit(0 if result["valid"] else 3)

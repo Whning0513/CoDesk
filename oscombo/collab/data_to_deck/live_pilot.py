@@ -1168,6 +1168,8 @@ def run_pilot(condition: str, run_root: Path, image: str, provider: Path,
                 "provider_path": str(provider), "base_qcow2": image,
                 "runtime_image": runtime, "started_at": time.time()}
     if case_spreadsheet_lite_v1_2:
+        metadata["source_commit"] = os.environ.get("CODESK_CASE6_SOURCE_COMMIT")
+        metadata["active_model_timeout_s"] = model_timeout if model else None
         metadata["requested_guest_profile"] = {
             "cpus": os.environ.get("OSCOMBO_GUEST_CPUS", "4"),
             "ram": os.environ.get("OSCOMBO_GUEST_RAM", "4G"),

@@ -23,6 +23,7 @@ from oscombo.collab.spreadsheet_handoff_lite_v1_2.bridge_audit import audit_brid
 from oscombo.collab.spreadsheet_handoff_lite_v1_2.check_resources import check as check_resources
 from oscombo.collab.spreadsheet_handoff_lite_v1_2.verify_controls import verify as verify_controls
 from oscombo.collab.spreadsheet_handoff_lite_v1_2.verify_pilot import verify as verify_pilot
+from oscombo.collab.spreadsheet_handoff_lite_v1_2.guard_prior import check as guard_prior
 from oscombo.collab.spreadsheet_handoff_lite_v1_2.private.gold import expected_plan, write_gold
 
 
@@ -254,6 +255,10 @@ def test_handoff_audit_rejects_stale_view_and_never_claims_visual_read(tmp_path)
     assert result["B_formula_prework_screenshot_candidates"][0]["action"] == 1
     assert result["B_saved_revision_after_view_candidate"]
     assert not result["visual_read_verified"]
+    actions[1]["tool"] = "screenshot"; actions[1]["window_after"] = None
+    write_rows(tmp_path / "actor_runs/B/B/actions.jsonl", actions)
+    assert audit(tmp_path)["B_peer_view_screenshot_candidates"][0]["candidate_basis"] == "explicit_screenshot"
+    actions[1]["tool"] = "key"
     actions[1]["window_after"] = "forecast-r000000.ods - Calc"
     write_rows(tmp_path / "actor_runs/B/B/actions.jsonl", actions)
     assert not audit(tmp_path)["B_peer_view_screenshot_candidates"]
@@ -301,16 +306,23 @@ def test_persistent_bridge_errors_and_unfinished_revisions_invalidate_even_after
 def test_resource_gate_requires_real_qemu_profile_and_host_observations(tmp_path):
     import json
     (tmp_path / "resource_profile.json").write_text(json.dumps({
-        "requested_guest_cpus": "8", "requested_guest_ram": "8G"}))
+        "requested_guest_cpus": "8", "requested_guest_ram": "8G", "sample_interval_s": 5}))
+    (tmp_path / "provenance.json").write_text(json.dumps({"started_at": 1000}))
+    (tmp_path / "result.json").write_text(json.dumps({"elapsed_s": 100}))
     host = {"disk_available_bytes": 20_000_000_000, "diskstats": "259 1 nvme", "cpu_stat": "cpu 1 2",
             "memory": {k: 1 for k in ("MemTotal_bytes", "MemAvailable_bytes", "SwapTotal_bytes", "SwapFree_bytes")}}
-    sample = {"host": host, "guests": [{"container_id": "a", "qemu_config": {"cpus": "8", "memory": "8G"}},
+    sample = {"time": 1000, "host": host, "guests": [{"container_id": "a", "qemu_config": {"cpus": "8", "memory": "8G"}},
                                         {"container_id": "b", "qemu_config": {"cpus": "8", "memory": "8G"}}]}
     path = tmp_path / "resource_samples.jsonl"
-    path.write_text(json.dumps(sample) + "\n")
+    later = dict(sample, time=1050)
+    final = dict(sample, time=1090)
+    path.write_text("\n".join(json.dumps(x) for x in (sample, later, final)) + "\n")
     assert check_resources(tmp_path, 2)["resource_observation_complete"]
     sample["guests"][1]["qemu_config"]["cpus"] = "4"
-    path.write_text(json.dumps(sample) + "\n")
+    path.write_text("\n".join(json.dumps(x) for x in (sample, later, final)) + "\n")
+    assert not check_resources(tmp_path, 2)["resource_observation_complete"]
+    sample["guests"][1]["qemu_config"]["cpus"] = "8"
+    path.write_text("\n".join(json.dumps(x) for x in (sample, later)) + "\n")
     assert not check_resources(tmp_path, 2)["resource_observation_complete"]
     path.unlink()
     assert not check_resources(tmp_path, 2)["resource_observation_complete"]
@@ -325,6 +337,7 @@ def test_control_gate_requires_all_topologies_and_review_of_exact_screenshot(tmp
     for kind in ("positive", "wrong-units"):
         for side in ("shared", "isolated"):
             run_id = f"{kind}-{side}"; root = runs / run_id; root.mkdir()
+            fixtures.build_fixture(root / "fixtures")
             is_positive = kind == "positive"
             (root / "screenshots").mkdir()
             screenshot = root / "screenshots/view.png"; screenshot.write_bytes(b"reviewable image")
@@ -339,6 +352,8 @@ def test_control_gate_requires_all_topologies_and_review_of_exact_screenshot(tmp
                                  "expected_need_evaluator_only": 73,
                                  "actors": {"B": {"checks": {"correct_whole_case_order": is_positive}}}}}
             values = {"result.json": result,
+                      "provenance.json": {"source_commit": "a" * 40,
+                                          "case_id": spec.CASE_ID, "case_version": spec.CASE_VERSION},
                       "workspace_sync_result.json": {"verified": True, "transient_errors": [],
                                                      "diagnostics": {"infrastructure_review_required": False},
                                                      "persistent_history": {"history_clean": True}},
@@ -363,7 +378,8 @@ def test_control_gate_requires_all_topologies_and_review_of_exact_screenshot(tmp
             (root / "workspace_versions/events.jsonl").write_text(json.dumps(seed_event) + "\n" + json.dumps(event) + "\n")
             lines.append(f"{kind}\t{side}\t{run_id}\t{0 if is_positive else 2}")
     manifest.write_text("\n".join(lines) + "\n")
-    assert verify_controls(manifest, runs)["valid"]
+    assert verify_controls(manifest, runs, "a" * 40)["valid"]
+    assert not verify_controls(manifest, runs, "b" * 40)["valid"]
     (runs / "positive-shared/screenshots/view.png").write_bytes(b"replaced")
     assert not verify_controls(manifest, runs)["valid"]
 
@@ -371,6 +387,7 @@ def test_control_gate_requires_all_topologies_and_review_of_exact_screenshot(tmp
 def test_pilot_gate_checks_behavior_and_infrastructure_not_success_selection(tmp_path):
     import hashlib
     import json
+    fixtures.build_fixture(tmp_path / "fixtures")
     shot = tmp_path / "actor_runs/B/B/shots/004.png"
     shot.parent.mkdir(parents=True); shot.write_bytes(b"visual evidence")
     sha = hashlib.sha256(shot.read_bytes()).hexdigest()
@@ -378,6 +395,10 @@ def test_pilot_gate_checks_behavior_and_infrastructure_not_success_selection(tmp
     prework_sha = hashlib.sha256(prework_shot.read_bytes()).hexdigest()
     view = "views/B/forecast-r000001.ods"
     values = {
+        "provenance.json": {"source_commit": "a" * 40, "case_id": spec.CASE_ID,
+            "case_version": spec.CASE_VERSION, "model": "gpt-6-astra", "effort": "medium",
+            "actor_mcp_only": True, "diagnostic_step_limit": 18, "active_model_timeout_s": 900,
+            "handoff_lifecycle": True, "yield_wait_lifecycle": True},
         "result.json": {"condition": "collaborative_isolated", "status": "FAIL", "reopen_complete": True,
                         "reset": [{"workspace_clean": True}, {"workspace_clean": True}],
                         "oracle": {"measured": {"saved_forecast_need": 65}}},
@@ -402,7 +423,8 @@ def test_pilot_gate_checks_behavior_and_infrastructure_not_success_selection(tmp
     for name, value in values.items(): (tmp_path / name).write_text(json.dumps(value))
     (tmp_path / "codex_relay_events.jsonl").write_text("\n".join(json.dumps({"actor": role,
         "upstream_status": 200, "actor_mcp_only": True}) for role in ("A", "B")) + "\n")
-    assert verify_pilot(tmp_path)["gate_passed"]
+    assert verify_pilot(tmp_path, "a" * 40)["gate_passed"]
+    assert not verify_pilot(tmp_path, "b" * 40)["gate_passed"]
     shot.write_bytes(b"modified after review")
     assert not verify_pilot(tmp_path)["gate_passed"]
 
@@ -414,7 +436,7 @@ def test_model_runner_reads_private_credential_file_without_logging(tmp_path):
     python = osworld / ".venv/bin/python"; python.parent.mkdir(parents=True)
     python.write_text("#!/usr/bin/python3\nimport json,os,sys\n"
         "open(os.environ['CODESK_TEST_PROBE'],'w').write(json.dumps({"
-        "'file_loaded':os.environ.get('AIGCBEST_API_KEY')=='fixture-provider-key',"
+        "'helper_key_absent':'AIGCBEST_API_KEY' not in os.environ,"
         "'cpus':os.environ.get('OSCOMBO_GUEST_CPUS'),'ram':os.environ.get('OSCOMBO_GUEST_RAM')}))\n"
         "sys.exit(3)\n")
     python.chmod(0o700)
@@ -431,7 +453,51 @@ def test_model_runner_reads_private_credential_file_without_logging(tmp_path):
     assert "fixture-provider-key" not in completed.stdout + completed.stderr
     assert "decoy-env-key" not in completed.stdout + completed.stderr
     import json
-    assert json.loads(probe.read_text()) == {"file_loaded": True, "cpus": "8", "ram": "8G"}
+    assert json.loads(probe.read_text()) == {"helper_key_absent": True, "cpus": "8", "ram": "8G"}
+
+
+def test_only_model_driver_inherits_file_key_not_sampler_or_audits(tmp_path):
+    import json
+    import os
+    repo = tmp_path / "repo"; repo.mkdir()
+    (repo / "audits/three_lite_cases_20261029").mkdir(parents=True)
+    (repo / "runs").mkdir()
+    bin_dir = tmp_path / "bin"; bin_dir.mkdir()
+    git = bin_dir / "git"
+    git.write_text("#!/bin/sh\nif [ \"$2\" = --show-toplevel ]; then printf '%s\\n' \"$CODESK_TEST_REPO\"; "
+                   "elif [ \"$1\" = rev-parse ]; then printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n'; fi\nexit 0\n")
+    git.chmod(0o700)
+    provider = tmp_path / "provider"; python = provider / ".venv/bin/python"; python.parent.mkdir(parents=True)
+    python.write_text("#!/usr/bin/python3\nimport json,os,pathlib,sys,time\n"
+        "mod=sys.argv[2] if len(sys.argv)>2 and sys.argv[1]=='-m' else ''\n"
+        "probe=pathlib.Path(os.environ['CODESK_TEST_PROBE_DIR'])\n"
+        "if mod.endswith('.live_pilot'):\n"
+        " p=pathlib.Path(sys.argv[sys.argv.index('--run-root')+1]); p.mkdir(parents=True)\n"
+        " (probe/'driver.json').write_text(json.dumps({'key_correct':os.environ.get('AIGCBEST_API_KEY')=='fixture-provider-key'}))\n"
+        " time.sleep(0.8); sys.exit(3)\n"
+        "if mod.endswith('.sample_resources') or mod.endswith('.check_resources'):\n"
+        " (probe/(mod.rsplit('.',1)[-1]+'.json')).write_text(json.dumps({'key_absent':'AIGCBEST_API_KEY' not in os.environ}))\n"
+        " sys.exit(3)\n"
+        "sys.exit(3)\n")
+    python.chmod(0o700)
+    key = tmp_path / "private.key"; key.write_text("fixture-provider-key\n"); key.chmod(0o600)
+    config = tmp_path / "env.sh"
+    config.write_text(f"export OSWORLD_DIR={provider}\nexport OSCOMBO_GUEST_IMAGE=/image\n"
+                      "export OSCOMBO_RUNTIME_IMAGE=example\nexport AIGCBEST_API_KEY=decoy-env-key\n")
+    common = Path(__file__).resolve().parents[1] / "oscombo/collab/spreadsheet_handoff_lite_v1_2/run_common.sh"
+    command = ('source "$1"; IFS= read -r AIGCBEST_API_KEY < "$CODESK_TEST_KEY"; '
+               'export -n AIGCBEST_API_KEY; case6_preflight() { return 0; }; '
+               'case6_run_case model collaborative_shared fixture-run 1 --model dummy || true')
+    env = {"PATH": f"{bin_dir}:{os.environ.get('PATH', '/usr/bin:/bin')}", "CODESK_ENV_FILE": str(config),
+           "CODESK_TEST_REPO": str(repo), "CODESK_TEST_PROBE_DIR": str(tmp_path), "CODESK_TEST_KEY": str(key)}
+    completed = subprocess.run(["bash", "-c", command, "test", str(common)], env=env,
+                               capture_output=True, text=True, timeout=15)
+    assert completed.returncode == 0
+    assert "fixture-provider-key" not in completed.stdout + completed.stderr
+    assert json.loads((tmp_path / "driver.json").read_text())["key_correct"]
+    assert json.loads((tmp_path / "sample_resources.json").read_text())["key_absent"]
+    assert json.loads((tmp_path / "check_resources.json").read_text())["key_absent"]
+    assert "fixture-provider-key" not in (repo / "audits/three_lite_cases_20261029/fixture-run-driver.log").read_text()
 
 
 def test_relay_actor_env_and_MCP_config_exclude_provider_key(tmp_path, monkeypatch):
@@ -465,3 +531,42 @@ def test_guest_provider_environment_is_explicit_not_inherited(monkeypatch):
     provider = module.DockerProvider("test")
     assert "CODESK_PROVIDER_TEST_KEY" not in provider.environment
     assert "synthetic-provider-secret" not in repr(provider.environment)
+
+
+def test_round_guard_preserves_valid_failures_and_blocks_full_restart(tmp_path):
+    import json
+    audit_dir, runs = tmp_path / "audit", tmp_path / "runs"
+    audit_dir.mkdir(); runs.mkdir(); commit = "a" * 40
+    manifest = audit_dir / "case6-v1p2-triad1-20261031T000000Z-1.tsv"
+    lines = ["mode\tarm\trun_id\texit_code\tdriver_exit_code"]
+    for index, arm in enumerate(("isolated", "shared", "sharedlock")):
+        run_id = f"run-{arm}"; root = runs / run_id; root.mkdir()
+        fixtures.build_fixture(root / "fixtures")
+        exit_code = "2" if index == 1 else "0"
+        provenance = {"source_commit": commit, "case_id": spec.CASE_ID, "case_version": spec.CASE_VERSION,
+                      "model": "gpt-6-astra", "effort": "medium", "endpoint": "https://api.haogpt.net/v1",
+                      "model_request_retries": 2, "actor_mcp_only": True, "handoff_lifecycle": True,
+                      "yield_wait_lifecycle": True, "active_model_timeout_s": 1200,
+                      "effective_role_step_budget": {"A": 25, "B": 25}, "gui_input_lock": arm == "sharedlock"}
+        (root / "provenance.json").write_text(json.dumps(provenance))
+        (root / "result.json").write_text(json.dumps({"status": "FAIL" if exit_code == "2" else "PASS",
+                                                       "condition": "collaborative_isolated" if arm == "isolated" else "collaborative_shared",
+                                                       "reset": [{"workspace_clean": True}] * (2 if arm == "isolated" else 1),
+                                                       "reopen_complete": True}))
+        (root / "resource_profile_check.json").write_text('{"resource_observation_complete": true}')
+        (root / "workspace_sync_result.json").write_text('{"verified": true}')
+        (root / "actor_tool_boundary_audit.json").write_text(json.dumps({"actors": {role: {"total_tool_calls": 1,
+            "outside_gui_collaboration_contract": {}} for role in ("A", "B")}}))
+        (root / "codex_relay_events.jsonl").write_text("\n".join(json.dumps({"actor": role,
+            "upstream_status": 200, "actor_mcp_only": True}) for role in ("A", "B")) + "\n")
+        lines.append(f"triad1\t{arm}\t{run_id}\t{exit_code}\t{exit_code}")
+    manifest.write_text("\n".join(lines) + "\n")
+    status = guard_prior(audit_dir, runs, "triad1", commit)
+    assert not status["safe_to_start_full_round"] and status["round_complete"]
+    assert guard_prior(audit_dir, runs, "triad1", "b" * 40)["safe_to_start_full_round"]
+    manifest.write_text("\n".join((lines[0], lines[2], lines[1], lines[3])) + "\n")
+    assert not guard_prior(audit_dir, runs, "triad1", commit)["round_complete"]
+    manifest.write_text("\n".join(lines) + "\n")
+    (runs / "run-shared/result.json").unlink()
+    status = guard_prior(audit_dir, runs, "triad1", commit)
+    assert not status["round_complete"] and status["unreadable_prior_manifests"]
