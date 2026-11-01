@@ -6,7 +6,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from . import spec
+from . import relay_transport, spec
 from .verify_controls import _fixture_fingerprint, verify as verify_controls
 
 
@@ -45,6 +45,7 @@ def check(audit_dir: Path, run_base: Path, mode: str, commit: str,
                         with (run_base / run_id / "codex_relay_events.jsonl").open() as stream:
                             relay = [json.loads(line) for line in stream]
                         forwarded = [x for x in relay if x.get("upstream_status") is not None]
+                        transport_ok = relay_transport.audit(run_base / run_id)["valid"]
                         arm = row.get("arm")
                         expected_condition = "collaborative_isolated" if arm == "isolated" else "collaborative_shared"
                         expected_guests = 2 if arm == "isolated" else 1
@@ -71,7 +72,7 @@ def check(audit_dir: Path, run_base: Path, mode: str, commit: str,
                                  and actual_fixture is not None
                                  and (expected_fixture is None or actual_fixture == expected_fixture)
                                  and resource.get("resource_observation_complete") is True
-                                 and sync.get("verified") is True and bool(forwarded)
+                                 and sync.get("verified") is True and bool(forwarded) and transport_ok
                                  and {x.get("actor") for x in forwarded} == {"A", "B"}
                                  and all(x.get("actor_mcp_only") is True for x in forwarded)
                                  and all(not (boundary.get("actors", {}).get(role, {}).get("outside_gui_collaboration_contract") or {})
