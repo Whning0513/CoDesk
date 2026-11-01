@@ -29,7 +29,8 @@ from oscombo.collab.data_to_deck.provenance import RunLedger, collect_artifacts
 from oscombo.collab.data_to_deck.workspace_bridge import SavedArtifactBridge
 
 
-WORKSPACE_ASSEMBLY_CASES = {"workspace_assembly", "workspace_assembly_v1p2", "workspace_assembly_v2"}
+WORKSPACE_ASSEMBLY_V2_CASES = {"workspace_assembly_v2", "workspace_assembly_v2p1"}
+WORKSPACE_ASSEMBLY_CASES = {"workspace_assembly", "workspace_assembly_v1p2", *WORKSPACE_ASSEMBLY_V2_CASES}
 
 
 def _profile(case: str):
@@ -41,6 +42,8 @@ def _profile(case: str):
         from oscombo.collab.workspace_assembly_lite_v1p2 import spec, fixtures, oracle
     elif case == "workspace_assembly_v2":
         from oscombo.collab.workspace_assembly_lite_v2 import spec, fixtures, oracle
+    elif case == "workspace_assembly_v2p1":
+        from oscombo.collab.workspace_assembly_lite_v2p1 import spec, fixtures, oracle
     elif case == "model_review":
         from oscombo.collab.model_and_review_lite_v1 import spec, fixtures, oracle
     else:
@@ -59,7 +62,7 @@ def _install(guest, fixture: Path, task_root: str, case: str, spec):
                 f"{shlex.quote(task_root + '/outputs/agent_A')} "
                 f"{shlex.quote(task_root + '/outputs/agent_B')} "
                 f"{shlex.quote(task_root + '/incoming')}"]
-    if case == "workspace_assembly_v2":
+    if case in WORKSPACE_ASSEMBLY_V2_CASES:
         commands.append(f"mkdir -p {shlex.quote(task_root + '/' + spec.PEER_VIEW_DIRS['A'])}")
     for name in names.values():
         encoded = base64.b64encode((fixture / name).read_bytes()).decode("ascii")
@@ -241,7 +244,7 @@ def _stop_bridge_before_cleanup(bridge, case, run_root, run_id, container_ids, c
     except Exception as exc:
         core._append(run_root / "workspace_sync_errors.jsonl", {"error": str(exc), "time": time.time()})
         cleanup_errors.append(f"bridge stop failed: {type(exc).__name__}: {exc}")
-        if case != "workspace_assembly_v2" or not bridge._thread or not bridge._thread.is_alive():
+        if case not in WORKSPACE_ASSEMBLY_V2_CASES or not bridge._thread or not bridge._thread.is_alive():
             return False
         # Keep the lease and Guests until the worker's process has exited.
         from oscombo.collab.workspace_assembly_lite_v2.deferred_cleanup import write_pending
@@ -325,7 +328,7 @@ def _activate_editor_tab(guest, role: str, shared: bool):
 
 
 def _scripted_actions(case: str, role: str, task_root: str, fixtures, negative: bool) -> list[str]:
-    if case == "workspace_assembly_v2":
+    if case in WORKSPACE_ASSEMBLY_V2_CASES:
         from oscombo.collab.workspace_assembly_lite_v2 import scripted
         if role == "A":
             return scripted.a_move(task_root)
@@ -525,9 +528,9 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
     spec, fixtures, oracle = _profile(case)
     if gui_input_lock and (not model or condition != "collaborative_shared"):
         raise ValueError("GUI input lock arm requires a Shared model run")
-    if scripted_view_version_probe and (case != "workspace_assembly_v2" or model or negative):
+    if scripted_view_version_probe and (case not in WORKSPACE_ASSEMBLY_V2_CASES or model or negative):
         raise ValueError("view version probe requires a v2 scripted positive control")
-    if fixture_seed is not None and case != "workspace_assembly_v2":
+    if fixture_seed is not None and case not in WORKSPACE_ASSEMBLY_V2_CASES:
         raise ValueError("fixture seed is supported only for workspace assembly v2")
     if fixture_seed is not None:
         fixtures.tag_for_seed(fixture_seed)  # validate before allocating a run
@@ -538,11 +541,11 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
     run_root.mkdir(parents=True, exist_ok=False)
     run_id = run_root.name
     fixture = run_root / "fixtures"
-    if case == "workspace_assembly_v2":
+    if case in WORKSPACE_ASSEMBLY_V2_CASES:
         fixtures.build_fixture(fixture, seed=fixture_seed)
     else:
         fixtures.build_fixture(fixture)
-    task_root = spec.TASK_ROOT if case == "workspace_assembly_v2" else f"/tmp/codesk-{case.replace('_', '-')}-lite-v1"
+    task_root = spec.TASK_ROOT if case in WORKSPACE_ASSEMBLY_V2_CASES else f"/tmp/codesk-{case.replace('_', '-')}-lite-v1"
     metadata = {"run_id": run_id, "case_id": spec.CASE_ID, "case_version": spec.CASE_VERSION,
                 "condition": condition, "guest_count": 1 if condition.endswith("shared") else 2,
                 "model": model, "model_called": bool(model), "started_at": time.time(),
@@ -554,7 +557,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 "gui_input_lock_scope": "one desktop input action; screenshot outside lock" if gui_input_lock else None,
                 "blender_scorer": blender_bin if case == "model_review" else None,
                 "scripted_negative_control": negative}
-    if case == "workspace_assembly_v2":
+    if case in WORKSPACE_ASSEMBLY_V2_CASES:
         image_path = Path(image).resolve(strict=True)
         image_stat = image_path.stat()
         metadata["guest_resources_requested"] = {"cpus": os.environ.get("OSCOMBO_GUEST_CPUS", "4"),
@@ -613,7 +616,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                                      outputs=spec.OUTPUTS, mime_types=mime,
                                      allow_initial_missing={"A"} if case in WORKSPACE_ASSEMBLY_CASES else None,
                                      peer_read_only=True,
-                                     peer_view_dirs=spec.PEER_VIEW_DIRS if case == "workspace_assembly_v2" else None)
+                                     peer_view_dirs=spec.PEER_VIEW_DIRS if case in WORKSPACE_ASSEMBLY_V2_CASES else None)
         server.workspace_bridge = bridge
         bridge.start()
         a_path = f"{task_root}/{spec.OUTPUTS['A']}"
@@ -631,14 +634,14 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
             a_app, b_app = "blender", "editor"
         else:
             _launch(guest_a, "files", f"{task_root}/incoming", run_id)
-            if case in {"workspace_assembly_v1p2", "workspace_assembly_v2"}:
+            if case in {"workspace_assembly_v1p2", *WORKSPACE_ASSEMBLY_V2_CASES}:
                 _maximize_case7_files(guest_a)
-            if case == "workspace_assembly_v2":
+            if case in WORKSPACE_ASSEMBLY_V2_CASES:
                 guest_a.actor = "system"
                 guest_a.run_pyautogui("import pyautogui, time; pyautogui.hotkey('ctrl','a'); time.sleep(2)")
                 (run_root / "screenshots" / "setup_A_selected.png").write_bytes(guest_a.screenshot(patience=45))
             _launch(guest_b, "writer", b_path, run_id)
-            if case == "workspace_assembly_v2":
+            if case in WORKSPACE_ASSEMBLY_V2_CASES:
                 guest_b.actor = "system"
                 guest_b.run_pyautogui("import pyautogui, time; pyautogui.hotkey('ctrl','end'); time.sleep(2)")
                 (run_root / "screenshots" / "setup_B_caret.png").write_bytes(guest_b.screenshot(patience=45))
@@ -652,7 +655,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 "B": spec.AGENT_B_INSTRUCTION + f"\nTask root: {task_root}. Your output: {b_path}.",
             }
             for role in "AB":
-                if case == "workspace_assembly_v2":
+                if case in WORKSPACE_ASSEMBLY_V2_CASES:
                     instructions[role] = spec.model_instruction(role)
                 else:
                     instructions[role] += ("\nSaved outputs are versioned and copied to the same paths on both desktops. "
@@ -680,7 +683,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 for role, future in futures.items():
                     outcomes[role] = future.result()
         else:
-            if case == "workspace_assembly_v2":
+            if case in WORKSPACE_ASSEMBLY_V2_CASES:
                 from oscombo.collab.workspace_assembly.fixtures import read_odt
                 from oscombo.collab.workspace_assembly_lite_v2 import scripted
                 _activate(guest_b, "writer", b_path)
@@ -733,7 +736,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
             message = (f"Saved {Path(a_path).name} revision {a_revision['revision']}; "
                        + ("filter defect fixed" if case == "build_verify" else
                           "shade width 1.46 m" if case == "model_review" else "inspection tag RIVER-27"))
-            if case == "workspace_assembly_v2":
+            if case in WORKSPACE_ASSEMBLY_V2_CASES:
                 message = f"Saved {Path(a_path).name} revision {a_revision['revision']} is ready."
             msg = clients["A"].send_message("B", message)
             if msg["message_id"] not in {m["message_id"] for m in clients["B"].read_messages()}:
@@ -756,7 +759,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                     "screenshot": str(peer_shot.relative_to(run_root)),
                     "saved_sha256": a_revision["sha256"]}, indent=2) + "\n")
                 _activate(guest_b, "editor", b_path)
-            elif case == "workspace_assembly_v2":
+            elif case in WORKSPACE_ASSEMBLY_V2_CASES:
                 view_relative = a_revision.get("peer_view_path")
                 if not view_relative:
                     raise RuntimeError("published A revision has no peer view")
@@ -804,7 +807,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 _launch(guest_b, "editor", a_path, run_id)
                 _activate(guest_b, "writer", b_path)
             b_actions = _scripted_actions(case, "B", task_root, fixtures, negative)
-            if case == "workspace_assembly_v2":
+            if case in WORKSPACE_ASSEMBLY_V2_CASES:
                 note = (fixture / spec.FIXTURE_NAMES["asset"]).read_text(encoding="utf-8")
                 tag_match = re.search(r"(?m)^Inspection tag: ([A-Z][A-Z0-9]{2,9}-[0-9]{2})\.$", note)
                 if not tag_match:
@@ -830,7 +833,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
             "final_versions": bridge.snapshot(), "transient_errors": bridge.errors,
             "verified": True}
         bridge_valid = True
-        if case == "workspace_assembly_v2":
+        if case in WORKSPACE_ASSEMBLY_V2_CASES:
             diagnostics = bridge.diagnostics()
             bridge_valid = not diagnostics["infrastructure_review_required"]
             sync_result.update({"final_sync_succeeded": True,
@@ -874,12 +877,15 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 fixture / spec.FIXTURE_NAMES["report"],
                 run_root / "artifacts/B" / Path(b_path).name)
         (run_root / "oracle.json").write_text(json.dumps(score, indent=2, sort_keys=True) + "\n")
-        oracle_fixture_valid = not (case == "workspace_assembly_v2" and
+        oracle_fixture_valid = not (case in WORKSPACE_ASSEMBLY_V2_CASES and
                                     (score.get("invalid_fixture") or score.get("invalid_scorer")))
         browser_trace = _browser_trace_audit(run_root) if case == "build_verify" else None
         process_audit = None
-        if case == "workspace_assembly_v2" and model:
-            from oscombo.collab.workspace_assembly_lite_v2.audit import audit
+        if case in WORKSPACE_ASSEMBLY_V2_CASES and model:
+            if case == "workspace_assembly_v2p1":
+                from oscombo.collab.workspace_assembly_lite_v2p1.audit import audit
+            else:
+                from oscombo.collab.workspace_assembly_lite_v2.audit import audit
             process_audit = audit(run_root)
             (run_root / "behavioral_audit.json").write_text(json.dumps(process_audit, indent=2) + "\n")
         reopen = []
@@ -893,7 +899,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 if app != "files":
                     if case == "build_verify" and condition.endswith("shared"):
                         _activate_editor_tab(guest, role, True)
-                    elif case == "workspace_assembly_v2" and app == "writer" and model:
+                    elif case in WORKSPACE_ASSEMBLY_V2_CASES and app == "writer" and model:
                         restored_closed_writer = _restore_closed_case7_writer(guest, path, run_id)
                     else:
                         _activate(guest, app, path)
@@ -906,7 +912,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                                        "same_bytes": True, "gui_reopen": "skipped_unsaved_buffer",
                                        "saved_sha256": hashlib.sha256(data_before).hexdigest()})
                         continue
-                    if case == "workspace_assembly_v2" and app == "writer" and model and restored_closed_writer:
+                    if case in WORKSPACE_ASSEMBLY_V2_CASES and app == "writer" and model and restored_closed_writer:
                         discarded_unsaved = False
                     else:
                         guest.actor = "system"
@@ -973,7 +979,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                   "status": core._episode_result_status(score["joint_success"] and
                       (browser_trace is None or browser_trace["browser_one_visible_row_after_handoff"]),
                       postscore_lifecycle_ok and bridge_valid and oracle_fixture_valid, outcomes, bool(model))}
-        if case == "workspace_assembly_v2":
+        if case in WORKSPACE_ASSEMBLY_V2_CASES:
             result.update({"behavioral_audit": process_audit, "bridge_valid": bridge_valid,
                            "oracle_fixture_valid": oracle_fixture_valid})
         (run_root / "result.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
@@ -1025,7 +1031,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
 
 def main(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--case", required=True, choices=("build_verify", "workspace_assembly", "workspace_assembly_v1p2", "workspace_assembly_v2", "model_review"))
+    parser.add_argument("--case", required=True, choices=("build_verify", "workspace_assembly", "workspace_assembly_v1p2", "workspace_assembly_v2", "workspace_assembly_v2p1", "model_review"))
     parser.add_argument("--condition", required=True,
                         choices=("collaborative_shared", "collaborative_isolated"))
     parser.add_argument("--run-root", type=Path, required=True)
