@@ -185,3 +185,111 @@ def test_secondary_unit_expression_is_narrow():
     assert extended_amount("decreased by 11 USD thousands versus Q2", -11)
     assert not extended_amount("decreased by 10 USD thousands versus Q2", -11)
     assert not extended_amount("decreased by 11 USD millions versus Q2", -11)
+
+
+def test_pre_handoff_revision_opt_in_preserves_default_and_handles_seen_messages(tmp_path, monkeypatch):
+    """A saved draft must not suppress an opted-in wait; a consumed handoff is done."""
+    class Guest:
+        guest_key = "B"
+
+    class FakeHarness:
+        harness_version = "fake"
+        resumes = 0
+        seen = False
+
+        def __init__(self, spec):
+            pass
+
+        def prepare(self, ctx):
+            pass
+
+        def run(self, ctx):
+            if self.seen:
+                log = ctx.out / "B" / "stdout.log"
+                log.parent.mkdir(parents=True, exist_ok=True)
+                log.write_text(json.dumps({"type": "item.completed", "item": {
+                    "server": "collaboration", "tool": "read_messages",
+                    "result": {"structured_content": {"result": [{"message_id": "m1", "actor": "A"}]}}}}) + "\n")
+            return AgentResult(status="done")
+
+        def resume_after_external_update(self, ctx, timeout):
+            assert timeout > 0
+            type(self).resumes += 1
+            return AgentResult(status="done")
+
+    monkeypatch.setattr("oscombo.harness.external.CodexHarness", FakeHarness)
+    monkeypatch.setenv("TEST_COLLAB_TOKEN", "run-scoped")
+
+    def run(name, client, enabled, seen=False):
+        FakeHarness.seen = seen
+        monkeypatch.setattr(live_pilot, "CollaborationClient", lambda *args: client)
+        root = tmp_path / name
+        root.mkdir()
+        result = live_pilot._run_model_actor(
+            "B", Guest(), "task", root, "model", "http://127.0.0.1:1/v1",
+            "unused", "python", "http://127.0.0.1:2", "TEST_COLLAB_TOKEN",
+            max_steps=25, timeout=10, handoff_from="A", yield_wait=True,
+            allow_pre_handoff_own_revision=enabled)
+        events = root / "actor_lifecycle.jsonl"
+        return result, ([json.loads(line)["event"] for line in events.read_text().splitlines()] if events.exists() else [])
+
+    client = Client()
+    client.own_revision = 1
+    result, events = run("default", client, False)
+    assert result["status"] == "done" and events == []
+
+    release = threading.Timer(0.05, lambda: (setattr(client, "peer_revision", 1),
+                               setattr(client, "peer_messages", [{"actor": "A", "message_id": "m1"}])))
+    release.start()
+    try:
+        result, events = run("wait", client, True)
+    finally:
+        release.join()
+    assert events == ["suspended_for_peer_handoff", "woken_by_peer_handoff"]
+    assert result["status"] == "done" and FakeHarness.resumes == 1
+
+    result, events = run("unread", client, True)
+    assert events == ["suspended_for_peer_handoff", "woken_by_peer_handoff"]
+    assert FakeHarness.resumes == 2
+    result, events = run("seen", client, True, seen=True)
+    assert result["status"] == "done" and events == [] and FakeHarness.resumes == 2
+
+
+def test_pre_handoff_revision_peer_failure_is_not_reported_done(tmp_path, monkeypatch):
+    client = Client()
+    client.own_revision = 1
+
+    class Guest:
+        guest_key = "B"
+
+    class FakeHarness:
+        harness_version = "fake"
+
+        def __init__(self, spec):
+            pass
+
+        def prepare(self, ctx):
+            pass
+
+        def run(self, ctx):
+            return AgentResult(status="done")
+
+        def resume_after_external_update(self, ctx, timeout):
+            raise AssertionError("must not wake without a delivered handoff")
+
+    monkeypatch.setattr("oscombo.harness.external.CodexHarness", FakeHarness)
+    monkeypatch.setattr(live_pilot, "CollaborationClient", lambda *args: client)
+    monkeypatch.setattr(live_pilot, "_recorded_actor_status", lambda *args: "failed")
+    monkeypatch.setenv("TEST_COLLAB_TOKEN", "run-scoped")
+    clock = iter(range(1000))
+    monkeypatch.setattr(live_pilot.time, "monotonic", lambda: float(next(clock)))
+    monkeypatch.setattr(live_pilot.time, "sleep", lambda _: None)
+    result = live_pilot._run_model_actor(
+        "B", Guest(), "task", tmp_path, "model", "http://127.0.0.1:1/v1",
+        "unused", "python", "http://127.0.0.1:2", "TEST_COLLAB_TOKEN",
+        timeout=30, handoff_from="A", yield_wait=True,
+        allow_pre_handoff_own_revision=True)
+    assert result["status"] == "blocked_on_peer"
+    events = [json.loads(line)["event"] for line in (tmp_path / "actor_lifecycle.jsonl").read_text().splitlines()]
+    assert events == ["suspended_for_peer_handoff", "peer_finished_without_handoff"]
+    assert json.loads((tmp_path / "actors.jsonl").read_text())["status"] == "blocked_on_peer"

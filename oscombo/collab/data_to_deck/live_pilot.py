@@ -669,6 +669,7 @@ def _run_model_actor(role: str, guest: LoggedGuest, instruction: str, run_root: 
                      workspace_bridge: bool = False,
                      handoff_from: str | None = None,
                      yield_wait: bool = False,
+                     allow_pre_handoff_own_revision: bool = False,
                      case_id: str = spec.CASE_ID,
                      gui_input_lock_path: str | None = None) -> dict[str, Any]:
     """Run the existing CodexHarness against a real Guest and the case message API."""
@@ -709,7 +710,7 @@ def _run_model_actor(role: str, guest: LoggedGuest, instruction: str, run_root: 
         seen_ids = _observed_peer_message_ids(actor_root / role / "stdout.log")
         newest_unseen = bool(state["peer_message_ids"] and
                              state["peer_message_ids"][-1] not in seen_ids)
-        if state["own_revision"] == 0 and (not state["ready"] or newest_unseen):
+        if (allow_pre_handoff_own_revision or state["own_revision"] == 0) and (not state["ready"] or newest_unseen):
             deadline, resume_budget = _handoff_wait_budgets(
                 started, time.monotonic(), timeout, yield_wait)
             _append(run_root / "actor_lifecycle.jsonl", {

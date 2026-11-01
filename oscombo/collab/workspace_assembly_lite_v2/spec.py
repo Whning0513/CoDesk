@@ -6,6 +6,7 @@ FIXTURE_NAMES = {"asset": "inspection_note.txt", "report": "handoff_report.odt",
 OUTPUTS = {"A": "outputs/agent_A/inspection_note.txt", "B": "outputs/agent_B/handoff_report.odt"}
 ROLE_BUDGET = {"A": {"steps": 25, "model_tokens": None}, "B": {"steps": 25, "model_tokens": None}}
 HANDOFF_DEPENDENCIES = {"B": "A"}
+PRE_HANDOFF_REVISION_ROLES = frozenset({"B"})
 PEER_VIEW_DIRS = {"A": "views/B"}
 TASK_ROOT = "/tmp/wa2"
 

@@ -672,6 +672,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                     timeout=model_timeout, relay_client_token_env=relay_env,
                     workspace_bridge=True, handoff_from=spec.HANDOFF_DEPENDENCIES.get(role),
                     yield_wait=yield_wait_lifecycle,
+                    allow_pre_handoff_own_revision=role in getattr(spec, "PRE_HANDOFF_REVISION_ROLES", ()),
                     case_id=spec.CASE_ID,
                     gui_input_lock_path=str(run_root / "gui_input.lock") if gui_input_lock else None)
             with ThreadPoolExecutor(max_workers=2, thread_name_prefix="lite-file-actor") as pool:
