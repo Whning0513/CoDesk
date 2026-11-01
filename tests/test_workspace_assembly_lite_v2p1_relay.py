@@ -8,7 +8,8 @@ from oscombo.collab.workspace_assembly_lite_v2p1 import campaign, contract, free
 def make_run(root: Path, event: dict) -> None:
     root.mkdir()
     normal = {'time': 10, 'started_at': 9, 'actor': 'B', 'actor_mcp_only': True,
-              'upstream_status': 200, 'headers_sent': True, 'forwarded_bytes': 20}
+              'upstream_status': 200, 'headers_sent': True, 'forwarded_bytes': 20,
+              'response_evidence_version': 1, 'response_format': 'sse', 'response_terminal': 'response.completed'}
     (root / 'codex_relay_events.jsonl').write_text(''.join(json.dumps(x)+'\n' for x in (normal, event)))
     for role in 'AB':
         log = root / f'actor_runs/{role}/{role}/stdout.log'
@@ -54,7 +55,8 @@ def test_v2p1_http200_broken_pipe_is_never_clean_even_with_stale_audit(tmp_path,
     {'upstream_status': None}, {}, {'actor': []}, {'upstream_status': [200]},
 ])
 def test_v2p1_unknown_error_and_cancel_are_transport_review(tmp_path, fields):
-    event = {'actor': 'A', 'actor_mcp_only': True, 'headers_sent': True, 'forwarded_bytes': 20, **fields}
+    event = {'actor': 'A', 'actor_mcp_only': True, 'headers_sent': True, 'forwarded_bytes': 20,
+             'response_evidence_version': 1, 'response_format': 'sse', 'response_terminal': 'response.completed', **fields}
     root = tmp_path / 'run'; make_run(root, event)
     result = contract.audit(root)
     assert not result['valid'] and any('review transport' in e for e in result['errors'])
@@ -62,11 +64,13 @@ def test_v2p1_unknown_error_and_cancel_are_transport_review(tmp_path, fields):
 
 def test_v2p1_normal_200_and_missing_fields(tmp_path):
     good = {'actor': 'A', 'actor_mcp_only': True, 'upstream_status': 200,
-            'headers_sent': True, 'forwarded_bytes': 20}
+            'headers_sent': True, 'forwarded_bytes': 20, 'response_evidence_version': 1,
+            'response_format': 'sse', 'response_terminal': 'response.completed'}
     root = tmp_path / 'run'; make_run(root, good)
     clean = contract.audit(root)
     assert clean['valid'] and contract.relay_event_clean(good)
-    for key in ('actor', 'actor_mcp_only', 'upstream_status', 'headers_sent', 'forwarded_bytes'):
+    for key in ('actor', 'actor_mcp_only', 'upstream_status', 'headers_sent', 'forwarded_bytes',
+                'response_evidence_version', 'response_format', 'response_terminal'):
         bad = dict(good); bad.pop(key)
         assert not contract.relay_event_clean(bad)
     assert not contract.relay_event_clean({'actor': 'other', 'actor_mcp_only': True, 'upstream_status': 200})
@@ -79,7 +83,8 @@ def test_v2p1_normal_200_and_missing_fields(tmp_path):
 def test_v2p1_rejects_empty_or_invalid_forwarded_bytes(tmp_path, value):
     root = tmp_path / 'run'
     make_run(root, {'actor': 'A', 'actor_mcp_only': True, 'upstream_status': 200,
-                    'headers_sent': True, 'forwarded_bytes': value})
+                    'headers_sent': True, 'forwarded_bytes': value, 'response_evidence_version': 1,
+                    'response_format': 'sse', 'response_terminal': 'response.completed'})
     out = contract.audit(root)
     assert not out['valid'] and any('review transport' in error for error in out['errors'])
 
@@ -88,7 +93,8 @@ def test_v2p1_rejects_empty_or_invalid_forwarded_bytes(tmp_path, value):
 def test_v2p1_missing_success_fields_fail_all_gates(tmp_path, monkeypatch, key):
     root = tmp_path / 'run'
     row = {'actor': 'A', 'actor_mcp_only': True, 'upstream_status': 200,
-           'headers_sent': True, 'forwarded_bytes': 20}
+           'headers_sent': True, 'forwarded_bytes': 20, 'response_evidence_version': 1,
+           'response_format': 'sse', 'response_terminal': 'response.completed'}
     row.pop(key)
     make_run(root, row)
     out = contract.audit(root)

@@ -13,7 +13,10 @@ def relay_event_clean(event: object) -> bool:
             and type(event.get("upstream_status")) is int and event["upstream_status"] == 200
             and "error_type" not in event and "phase" not in event
             and event.get("headers_sent") is True
-            and type(event.get("forwarded_bytes")) is int and event["forwarded_bytes"] > 0)
+            and type(event.get("forwarded_bytes")) is int and event["forwarded_bytes"] > 0
+            and type(event.get("response_evidence_version")) is int and event["response_evidence_version"] == 1
+            and event.get("response_format") in ("sse", "json")
+            and event.get("response_terminal") == "response.completed")
 
 
 def audit(root: Path) -> dict:

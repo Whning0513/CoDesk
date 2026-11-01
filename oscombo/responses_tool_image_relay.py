@@ -23,6 +23,16 @@ from urllib.parse import urlparse
 
 import requests
 
+from oscombo.responses_stream_evidence import ResponseEvidence
+
+
+def _safe_response_evidence(observer):
+    try:
+        return observer.finish()
+    except Exception:
+        return {"response_format": "unknown", "response_terminal": "malformed",
+                "response_evidence_version": 1}
+
 
 ACTOR_MCP_TOOLS = {
     "mcp__desktop": frozenset({
@@ -151,6 +161,7 @@ def make_server(host: str, port: int, upstream: str, api_key: str,
             phase = "request_validation"
             status = None
             first_byte_at = None
+            evidence = None
             try:
                 length = int(self.headers.get("Content-Length", "0"))
                 if length < 1 or length > 32 * 1024 * 1024:
@@ -174,6 +185,7 @@ def make_server(host: str, port: int, upstream: str, api_key: str,
                     "Accept": self.headers.get("Accept", "text/event-stream"),
                 }, data=raw, stream=True, timeout=(15, 300)) as upstream_response:
                     status = upstream_response.status_code
+                    evidence = ResponseEvidence(upstream_response.headers.get("Content-Type", ""))
                     phase = "downstream_headers"
                     self.send_response(status)
                     self.send_header("Content-Type", upstream_response.headers.get(
@@ -194,6 +206,12 @@ def make_server(host: str, port: int, upstream: str, api_key: str,
                             self.wfile.write(chunk)
                             self.wfile.flush()
                             forwarded_bytes += len(chunk)
+                            # Observation is passive: parse failures cannot
+                            # change the bytes or order delivered to the Actor.
+                            try:
+                                evidence.feed(chunk)
+                            except Exception:
+                                evidence.invalid = True
                             phase = "upstream_stream"
                     self.close_connection = True
                     usage = None
@@ -216,6 +234,7 @@ def make_server(host: str, port: int, upstream: str, api_key: str,
                                               "removed_tool_names": removed_tools,
                                               "request_bytes": len(raw), "upstream_status": status,
                                               "headers_sent": headers_sent, "forwarded_bytes": forwarded_bytes,
+                                              **_safe_response_evidence(evidence),
                                               "elapsed_s": round(time.monotonic() - started, 3)}) + "\n")
             except Exception as exc:
                 if event_log is not None:
