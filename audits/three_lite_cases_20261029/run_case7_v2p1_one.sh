@@ -132,7 +132,7 @@ if (( model )); then
         --api-key-env AIGCBEST_API_KEY --mcp-python "$python" --yield-wait-lifecycle --actor-mcp-only)
 fi
 unset AIGCBEST_API_KEY CODESK_HAOGPT_KEY_FILE
-AIGCBEST_API_KEY="$credential_value" "$python" -m oscombo.collab.workspace_assembly_lite_v2p1.live_pilot \
+AIGCBEST_API_KEY="$credential_value" "$python" -m oscombo.collab.workspace_assembly_lite_v2p1.signal_entry \
     --condition "collaborative_${side}" --run-root "$run_root" --provider "$OSWORLD_DIR" \
     --image "$OSCOMBO_GUEST_IMAGE" --runtime "$OSCOMBO_RUNTIME_IMAGE" --fixture-seed "$fixture_seed" \
     "${model_args[@]}" "${extra[@]}" > "$log" 2>&1 &
