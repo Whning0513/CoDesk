@@ -27,6 +27,13 @@ from oscombo.collab.spreadsheet_handoff_lite_v1_2.guard_prior import check as gu
 from oscombo.collab.spreadsheet_handoff_lite_v1_2.private.gold import expected_plan, write_gold
 
 
+def _complete_relay_event(role):
+    return {"actor": role, "upstream_status": 200, "actor_mcp_only": True,
+            "headers_sent": True, "forwarded_bytes": 42,
+            "response_evidence_version": 1, "response_format": "sse",
+            "response_terminal": "response.completed"}
+
+
 def _case(tmp_path):
     public = tmp_path / "public"
     fixtures.build_fixture(public)
@@ -421,9 +428,17 @@ def test_pilot_gate_checks_behavior_and_infrastructure_not_success_selection(tmp
             "outside_gui_collaboration_contract": {}} for role in ("A", "B")}},
     }
     for name, value in values.items(): (tmp_path / name).write_text(json.dumps(value))
-    (tmp_path / "codex_relay_events.jsonl").write_text("\n".join(json.dumps({"actor": role,
-        "upstream_status": 200, "actor_mcp_only": True}) for role in ("A", "B")) + "\n")
+    (tmp_path / "codex_relay_events.jsonl").write_text("\n".join(json.dumps(_complete_relay_event(role))
+        for role in ("A", "B")) + "\n")
     assert verify_pilot(tmp_path, "a" * 40)["gate_passed"]
+    relay_path = tmp_path / "codex_relay_events.jsonl"
+    clean_relay = relay_path.read_text()
+    relay_path.write_text(clean_relay + json.dumps({"actor": "B", "error_type": "ChunkedEncodingError"}) + "\n")
+    assert not verify_pilot(tmp_path, "a" * 40)["gate_passed"]
+    relay_path.write_text(clean_relay)
+    relay_path.write_text(clean_relay.replace('"response.completed"', '"missing"', 1))
+    assert not verify_pilot(tmp_path, "a" * 40)["gate_passed"]
+    relay_path.write_text(clean_relay)
     assert not verify_pilot(tmp_path, "b" * 40)["gate_passed"]
     shot.write_bytes(b"modified after review")
     assert not verify_pilot(tmp_path)["gate_passed"]
@@ -557,12 +572,21 @@ def test_round_guard_preserves_valid_failures_and_blocks_full_restart(tmp_path):
         (root / "workspace_sync_result.json").write_text('{"verified": true}')
         (root / "actor_tool_boundary_audit.json").write_text(json.dumps({"actors": {role: {"total_tool_calls": 1,
             "outside_gui_collaboration_contract": {}} for role in ("A", "B")}}))
-        (root / "codex_relay_events.jsonl").write_text("\n".join(json.dumps({"actor": role,
-            "upstream_status": 200, "actor_mcp_only": True}) for role in ("A", "B")) + "\n")
+        (root / "codex_relay_events.jsonl").write_text("\n".join(json.dumps(_complete_relay_event(role))
+            for role in ("A", "B")) + "\n")
         lines.append(f"triad1\t{arm}\t{run_id}\t{exit_code}\t{exit_code}")
     manifest.write_text("\n".join(lines) + "\n")
     status = guard_prior(audit_dir, runs, "triad1", commit)
     assert not status["safe_to_start_full_round"] and status["round_complete"]
+    relay_path = runs / "run-shared/codex_relay_events.jsonl"
+    clean_relay = relay_path.read_text()
+    relay_path.write_text(clean_relay + json.dumps({"actor": "B", "error_type": "BrokenPipeError"}) + "\n")
+    invalid = guard_prior(audit_dir, runs, "triad1", commit)
+    assert not invalid["round_complete"] and invalid["unreadable_prior_manifests"]
+    relay_path.write_text(clean_relay.replace('"response.completed"', '"missing"', 1))
+    invalid = guard_prior(audit_dir, runs, "triad1", commit)
+    assert not invalid["round_complete"] and invalid["unreadable_prior_manifests"]
+    relay_path.write_text(clean_relay)
     assert guard_prior(audit_dir, runs, "triad1", "b" * 40)["safe_to_start_full_round"]
     manifest.write_text("\n".join((lines[0], lines[2], lines[1], lines[3])) + "\n")
     assert not guard_prior(audit_dir, runs, "triad1", commit)["round_complete"]

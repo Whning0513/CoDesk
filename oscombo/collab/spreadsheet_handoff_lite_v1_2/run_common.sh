@@ -103,6 +103,13 @@ case6_run_case() {
         RUN_CASE_CODE=3
         echo "Resource observation incomplete for $run_id; preserve result for infrastructure review." >&2
     fi
+    if [[ "$role" == model && -d "$root" ]]; then
+        if ! "$case6_python" -m oscombo.collab.spreadsheet_handoff_lite_v1_2.relay_transport \
+            "$root" > "$root/relay_transport_audit.log" 2>&1; then
+            RUN_CASE_CODE=3
+            echo "Model relay transport or terminal evidence invalid for $run_id; preserve attempt for review." >&2
+        fi
+    fi
     if [[ "$role" == model && -d "$root/actor_runs" ]]; then
         "$case6_python" -m oscombo.collab.spreadsheet_handoff_lite_v1_2.audit_handoff "$root" > "$root/handoff_audit.json" 2>&1 || true
         "$case6_python" audits/three_lite_cases_20261029/audit_actor_tool_boundary.py "$root" > "$root/actor_tool_boundary_audit.json" 2>&1 || true

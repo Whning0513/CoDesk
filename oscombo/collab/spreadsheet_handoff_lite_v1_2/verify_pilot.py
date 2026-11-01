@@ -5,7 +5,7 @@ import hashlib
 import json
 import sys
 from pathlib import Path
-from . import spec
+from . import relay_transport, spec
 from .verify_controls import _fixture_fingerprint, verify as verify_controls
 
 
@@ -34,6 +34,7 @@ def verify(root: Path, expected_commit: str | None = None,
     boundary = _json(root / "actor_tool_boundary_audit.json")
     relay = _rows(root / "codex_relay_events.jsonl")
     forwarded = [x for x in relay if x.get("upstream_status") is not None]
+    transport_ok = relay_transport.audit(root)["valid"]
     allowlist_ok = (bool(forwarded) and {x.get("actor") for x in forwarded} == {"A", "B"}
                     and all(x.get("actor_mcp_only") is True for x in forwarded)
                     and all(not (boundary.get("actors", {}).get(role, {}).get("outside_gui_collaboration_contract") or {})
@@ -94,9 +95,10 @@ def verify(root: Path, expected_commit: str | None = None,
                  and resources.get("resource_observation_complete") is True)
     return {"run_id": root.name, "artifact_status": result.get("status"),
             "infrastructure_and_resource_valid": infra, "request_tool_boundary_valid": allowlist_ok,
+            "model_transport_valid": transport_ok,
             "source_and_model_config_valid": source_ok, "fixture_matches_controls": fixture_matches,
             "handoff_behavior_visually_reviewed": behavior,
-            "gate_passed": bool(infra and allowlist_ok and behavior),
+            "gate_passed": bool(infra and allowlist_ok and transport_ok and behavior),
             "note": "The gate checks execution and evidence; artifact PASS is not selected or required."}
 
 
