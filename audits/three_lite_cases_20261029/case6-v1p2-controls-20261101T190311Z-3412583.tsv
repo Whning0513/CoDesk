@@ -1,0 +1,5 @@
+control	condition	run_id	exit_code	driver_exit_code
+positive	shared	sh-lite-v1p2-positive-shared-20261101T190311Z-3412583	0	0
+positive	isolated	sh-lite-v1p2-positive-isolated-20261101T190311Z-3412583	0	0
+wrong-units	shared	sh-lite-v1p2-wrong-units-shared-20261101T190311Z-3412583	2	2
+wrong-units	isolated	sh-lite-v1p2-wrong-units-isolated-20261101T190311Z-3412583	2	2
