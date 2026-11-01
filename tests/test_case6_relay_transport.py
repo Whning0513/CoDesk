@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import pytest
 
 from oscombo.collab.spreadsheet_handoff_lite_v1_2.relay_transport import (
     audit, audit_and_mark, relay_event_clean,
@@ -89,11 +90,20 @@ def test_versioned_runner_stops_on_transport_invalid_without_guest(tmp_path):
     write(tmp_path, [event("A"), event("B"),
                      {"actor": "B", "error_type": "ChunkedEncodingError", "upstream_status": 200}])
     (tmp_path / "codex_relay_events.jsonl").replace(events)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    docker = bin_dir / "docker"
+    docker.write_text("#!/bin/sh\n[ \"$1\" = ps ]\n")
+    docker.chmod(0o700)
     command = ("source \"$CASE6_RUN_COMMON\"; case6_root=\"$CASE6_TEST_ROOT\"; "
                "cd \"$case6_root\"; case6_preflight() { return 0; }; "
                "AIGCBEST_API_KEY=synthetic; case6_run_case model collaborative_shared fixture-run 1 || true; "
-               "printf '%s %s\\n' \"$RUN_CASE_DRIVER_CODE\" \"$RUN_CASE_CODE\"")
-    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+               "printf '%s %s\\n' \"$RUN_CASE_DRIVER_CODE\" \"$RUN_CASE_CODE\"; "
+               "before=$(sha256sum runs/fixture-run/result.json audits/three_lite_cases_20261029/fixture-run-driver.log); "
+               "case6_run_case model collaborative_shared fixture-run 1 || true; "
+               "after=$(sha256sum runs/fixture-run/result.json audits/three_lite_cases_20261029/fixture-run-driver.log); "
+               "[[ \"$before\" = \"$after\" ]] && printf '%s %s preserved\\n' \"$RUN_CASE_DRIVER_CODE\" \"$RUN_CASE_CODE\"")
+    env = {"PATH": f"{bin_dir}:{os.environ.get('PATH', '/usr/bin:/bin')}",
            "CODESK_ENV_FILE": str(config),
            "CASE6_RUN_COMMON": str(repo / "oscombo/collab/spreadsheet_handoff_lite_v1_2/run_common.sh"),
            "CASE6_TEST_ROOT": str(test_root), "CASE6_TEST_EVENTS": str(events),
@@ -101,7 +111,50 @@ def test_versioned_runner_stops_on_transport_invalid_without_guest(tmp_path):
     completed = subprocess.run(["bash", "-c", command], cwd=repo, env=env,
                                capture_output=True, text=True, timeout=15)
     assert completed.returncode == 0
-    assert completed.stdout.strip().endswith("2 3")
+    assert completed.stdout.strip().splitlines() == ["2 3", "NOT_STARTED 3 preserved"]
     saved = json.loads((test_root / "runs/fixture-run/result.json").read_text())
     assert saved["status"] == "INVALID_INFRA_OR_RUNNER_ERROR"
     assert saved["pre_transport_status"] == "FAIL"
+
+
+@pytest.mark.parametrize("low_mount", ["/data2", "/data3"])
+def test_preflight_checks_both_backing_filesystems_before_guest(tmp_path, low_mount):
+    repo = Path(__file__).resolve().parents[1]
+    fake_repo = tmp_path / "repo"
+    fake_repo.mkdir()
+    provider = tmp_path / "provider"
+    python = provider / ".venv/bin/python"
+    python.parent.mkdir(parents=True)
+    python.write_text("#!/bin/sh\nexit 0\n")
+    python.chmod(0o700)
+    config = tmp_path / "env.sh"
+    config.write_text(f"export OSWORLD_DIR={provider}\n"
+                      "export OSCOMBO_GUEST_IMAGE=/unused\nexport OSCOMBO_RUNTIME_IMAGE=unused\n")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    git = bin_dir / "git"
+    git.write_text("#!/bin/sh\n"
+                   "if [ \"$1\" = rev-parse ] && [ \"$2\" = --show-toplevel ]; then printf '%s\\n' \"$CASE6_TEST_ROOT\"; "
+                   "elif [ \"$1\" = rev-parse ]; then printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n'; fi\n"
+                   "exit 0\n")
+    git.chmod(0o700)
+    flock = bin_dir / "flock"
+    flock.write_text("#!/bin/sh\nexit 0\n")
+    flock.chmod(0o700)
+    df = bin_dir / "df"
+    df.write_text("#!/bin/sh\n"
+                  "case \"$*\" in *\"$CASE6_LOW_MOUNT\"*) available=1000;; *) available=30000000;; esac\n"
+                  "printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\\n'\n"
+                  "printf '/dev/test 40000000 1 %s 1%% /test\\n' \"$available\"\n")
+    df.chmod(0o700)
+    env = {"PATH": f"{bin_dir}:{os.environ.get('PATH', '/usr/bin:/bin')}",
+           "CODESK_ENV_FILE": str(config), "CASE6_TEST_ROOT": str(fake_repo),
+           "CASE6_LOW_MOUNT": low_mount, "CODESK_GUEST_WINDOW_ASSIGNED": "case6-v1p2"}
+    command = ("source \"$CASE6_RUN_COMMON\"; case6_preflight; "
+               "printf 'preflight=%s\\n' \"$?\"")
+    env["CASE6_RUN_COMMON"] = str(repo / "oscombo/collab/spreadsheet_handoff_lite_v1_2/run_common.sh")
+    completed = subprocess.run(["bash", "-c", command], cwd=repo, env=env,
+                               capture_output=True, text=True, timeout=15)
+    assert completed.returncode == 0
+    assert completed.stdout.strip() == "preflight=3"
+    assert f"at least 15 GiB free on {low_mount}" in completed.stderr

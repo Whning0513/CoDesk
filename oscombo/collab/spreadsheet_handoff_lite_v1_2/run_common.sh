@@ -38,14 +38,22 @@ case6_preflight() {
         echo 'Case 6 Guest resource window is not assigned by the coordinator.' >&2; return 3
     fi
     "$case6_python" -c 'import inspect; from oscombo.collab.data_to_deck.workspace_bridge import SavedArtifactBridge; assert "peer_view_dirs" in inspect.signature(SavedArtifactBridge).parameters and hasattr(SavedArtifactBridge,"diagnostics")' || return 3
-    local available
-    available="$(df -Pk "$case6_root" | awk 'NR == 2 {print $4}')"
-    if [[ ! "$available" =~ ^[0-9]+$ ]] || (( available < 15 * 1024 * 1024 )); then
-        echo "Case 6 needs at least 15 GiB free; available ${available:-unknown} KiB." >&2; return 3
-    fi
+    # Runs can live on /data2 while Docker overlays and the Guest image live
+    # on /data3. Check both backing filesystems before every Guest arm.
+    local capacity_root available
+    for capacity_root in "$case6_root" /data2 /data3; do
+        available="$(df -Pk -- "$capacity_root" 2>/dev/null | awk 'NR == 2 {print $4}')"
+        if [[ ! "$available" =~ ^[0-9]+$ ]] || (( available < 15 * 1024 * 1024 )); then
+            echo "Case 6 needs at least 15 GiB free on $capacity_root; available ${available:-unknown} KiB." >&2
+            return 3
+        fi
+    done
     if ! docker info >/dev/null 2>&1; then echo 'Dedicated Docker is unavailable.' >&2; return 3; fi
-    if pgrep -af '^qemu-system-x86_64' >/dev/null ||
-       [[ -n "$(docker ps --filter label=oscombo=1 --format '{{.ID}}' 2>/dev/null)" ]]; then
+    local active_guests
+    if ! active_guests="$(docker ps --filter label=oscombo=1 --format '{{.ID}}' 2>/dev/null)"; then
+        echo 'Cannot query dedicated Docker Guest state.' >&2; return 3
+    fi
+    if pgrep -af '^qemu-system-x86_64' >/dev/null || [[ -n "$active_guests" ]]; then
         echo 'Another QEMU/OSWorld Guest is active; stop before starting a new run.' >&2; return 3
     fi
 }
@@ -56,15 +64,28 @@ case6_run_case() {
     local role="$1" condition="$2" run_id="$3" guest_count="$4"
     shift 4
     local root="runs/$run_id" log="audits/three_lite_cases_20261029/${run_id}-driver.log"
-    local sampler="" driver code sampler_code
+    local sampler="" driver code sampler_code old_owned
     if case6_stop_requested; then RUN_CASE_DRIVER_CODE=NOT_STARTED; RUN_CASE_CODE=143; return 143; fi
     if ! case6_preflight; then RUN_CASE_DRIVER_CODE=NOT_STARTED; RUN_CASE_CODE=3; return 3; fi
     if case6_stop_requested; then RUN_CASE_DRIVER_CODE=NOT_STARTED; RUN_CASE_CODE=143; return 143; fi
+    if [[ ! "$run_id" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ || -e "$root" || -L "$root" || -e "$log" || -L "$log" ]]; then
+        echo "Case 6 run ID is invalid or its run directory/log already exists: $run_id" >&2
+        RUN_CASE_DRIVER_CODE=NOT_STARTED; RUN_CASE_CODE=3; return 3
+    fi
+    if ! old_owned="$(docker ps -aq --filter "label=oscombo.run=$run_id" 2>/dev/null)" || [[ -n "$old_owned" ]]; then
+        echo "Case 6 run ID already owns Docker state or cannot be checked: $run_id" >&2
+        RUN_CASE_DRIVER_CODE=NOT_STARTED; RUN_CASE_CODE=3; return 3
+    fi
+    # Claim the log atomically and append only. A same-name old log is never truncated.
+    if ! (set -o noclobber; : > "$log"); then
+        echo "Case 6 driver log could not be claimed: $log" >&2
+        RUN_CASE_DRIVER_CODE=NOT_STARTED; RUN_CASE_CODE=3; return 3
+    fi
     if [[ "$role" == model ]]; then export AIGCBEST_API_KEY; fi
     "$case6_python" -m oscombo.collab.spreadsheet_handoff_lite_v1_2.live_pilot \
         --condition "$condition" --run-root "$root" --provider "$OSWORLD_DIR" \
         --image "$OSCOMBO_GUEST_IMAGE" --runtime "$OSCOMBO_RUNTIME_IMAGE" "$@" \
-        > "$log" 2>&1 &
+        >> "$log" 2>&1 &
     driver=$!
     # Keep the provider key out of sampler, audit and later helper processes.
     if [[ "$role" == model ]]; then export -n AIGCBEST_API_KEY; fi

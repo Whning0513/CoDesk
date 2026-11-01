@@ -503,6 +503,7 @@ def test_only_model_driver_inherits_file_key_not_sampler_or_audits(tmp_path):
     (repo / "runs").mkdir()
     bin_dir = tmp_path / "bin"; bin_dir.mkdir()
     flock = bin_dir / "flock"; flock.write_text("#!/bin/sh\nexit 0\n"); flock.chmod(0o700)
+    docker = bin_dir / "docker"; docker.write_text("#!/bin/sh\n[ \"$1\" = ps ]\n"); docker.chmod(0o700)
     git = bin_dir / "git"
     git.write_text("#!/bin/sh\nif [ \"$2\" = --show-toplevel ]; then printf '%s\\n' \"$CODESK_TEST_REPO\"; "
                    "elif [ \"$1\" = rev-parse ]; then printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n'; fi\nexit 0\n")
