@@ -12,9 +12,8 @@ def relay_event_clean(event: object) -> bool:
             and event.get("actor") in {"A", "B"} and event.get("actor_mcp_only") is True
             and type(event.get("upstream_status")) is int and event["upstream_status"] == 200
             and "error_type" not in event and "phase" not in event
-            and ("headers_sent" not in event or event["headers_sent"] is True)
-            and ("forwarded_bytes" not in event or
-                 (type(event["forwarded_bytes"]) is int and event["forwarded_bytes"] >= 0)))
+            and event.get("headers_sent") is True
+            and type(event.get("forwarded_bytes")) is int and event["forwarded_bytes"] > 0)
 
 
 def audit(root: Path) -> dict:
