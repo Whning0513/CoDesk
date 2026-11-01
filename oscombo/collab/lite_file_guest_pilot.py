@@ -220,6 +220,41 @@ def _restore_closed_case7_writer(guest, path: str, run_id: str) -> bool:
         return True
 
 
+def _dismiss_postscore_open_dialog(guest, phase: str) -> bool:
+    """Cancel an Actor-left Writer Open picker after artifact scoring.
+
+    This only runs after both Actors have stopped.  Escape does not select the
+    entered path or alter the scored file; the caller still verifies saved
+    bytes after GUI reopen.  Retain before/after frames for visual review.
+    """
+    active = guest.active_window() or ""
+    if active.strip().casefold() != "open":
+        return False
+    import struct
+    before = guest.screenshot(patience=45)
+    if (len(before) < 24 or not before.startswith(b"\x89PNG\r\n\x1a\n") or
+            struct.unpack(">II", before[16:24]) != (1920, 1080)):
+        raise RuntimeError("cannot verify postscore Open dialog screenshot")
+    before_path = guest.root / "screenshots" / f"{phase}-open-dialog-before.png"
+    before_path.parent.mkdir(parents=True, exist_ok=True)
+    before_path.write_bytes(before)
+    guest.actor = "system"
+    for attempt in range(1, 4):
+        guest.run_pyautogui("import pyautogui, time; pyautogui.press('esc'); time.sleep(1)")
+        after = guest.active_window() or ""
+        if after.strip().casefold() != "open":
+            after_path = guest.root / "screenshots" / f"{phase}-open-dialog-after.png"
+            after_path.write_bytes(guest.screenshot(patience=45))
+            core._append(guest.root / "observations.jsonl", {
+                "actor": "system", "guest_key": guest.guest_key, "time_utc": core._stamp(),
+                "phase": phase, "postscore_open_dialog_cancelled": True,
+                "escape_attempts": attempt, "before_window": active, "after_window": after,
+                "before_screenshot": str(before_path.relative_to(guest.root)),
+                "after_screenshot": str(after_path.relative_to(guest.root)), "atomic": False})
+            return True
+    raise RuntimeError("postscore Open dialog did not close after three Escape attempts")
+
+
 def _case7_control_retry_open(guest, run_root: Path, instruction: str, case_id: str) -> bool:
     """Retry a still-open GTK file picker once, only for scripted controls."""
     if (guest.active_window() or "").strip().casefold() != "open":
@@ -923,6 +958,8 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
             data_before = guest.env.controller.get_file(path)
             try:
                 if app != "files":
+                    dismissed_open_dialog = (_dismiss_postscore_open_dialog(
+                        guest, f"reopen-{role}") if app == "writer" and model else False)
                     if case == "build_verify" and condition.endswith("shared"):
                         _activate_editor_tab(guest, role, True)
                     elif case in WORKSPACE_ASSEMBLY_V2_CASES and app == "writer" and model:
@@ -956,6 +993,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                     raise RuntimeError(f"{role} saved bytes changed during GUI reopen")
                 reopen.append({"role": role, "guest": guest.guest_key,
                     "sha256": hashlib.sha256(data_after).hexdigest(), "same_bytes": True,
+                    "dismissed_postscore_open_dialog": dismissed_open_dialog if app != "files" else False,
                     "discarded_uncommitted_buffer_after_scoring": discarded_unsaved})
             except (RuntimeError, TimeoutError) as exc:
                 # Oracle already scored the saved bytes. Keep its judgement

@@ -1,9 +1,12 @@
 import json
+import io
 
 from PIL import Image, ImageDraw
+import pytest
 
 from oscombo.collab.lite_file_guest_pilot import (
-    _browser_trace_audit, _postscore_lifecycle_ok, _result_exit_code,
+    _browser_trace_audit, _dismiss_postscore_open_dialog,
+    _postscore_lifecycle_ok, _result_exit_code,
 )
 
 
@@ -18,6 +21,67 @@ def test_postscore_lifecycle_separates_missing_task_output_from_reopen_fault():
     assert _postscore_lifecycle_ok([
         {"role": "A", "missing_output": True, "same_bytes": False},
         {"role": "B", "same_bytes": True}])
+
+
+def _png() -> bytes:
+    out = io.BytesIO()
+    Image.new("RGB", (1920, 1080), "white").save(out, format="PNG")
+    return out.getvalue()
+
+
+class _PickerGuest:
+    def __init__(self, root, titles, screenshot=None):
+        self.root, self.guest_key = root, "B"
+        (root / "screenshots").mkdir()
+        self.titles = list(titles)
+        self.title = self.titles.pop(0)
+        self.frame = screenshot if screenshot is not None else _png()
+        self.actions = []
+        self.actor = None
+
+    def active_window(self):
+        return self.title
+
+    def screenshot(self, patience):
+        assert patience == 45
+        return self.frame
+
+    def run_pyautogui(self, code):
+        assert self.actor == "system"
+        self.actions.append(code)
+        self.title = self.titles.pop(0)
+
+
+def test_postscore_open_picker_is_cancelled_without_opening_entered_path(tmp_path):
+    guest = _PickerGuest(tmp_path, ["Open", "Open", "handoff_report.odt - LibreOffice Writer"])
+    assert _dismiss_postscore_open_dialog(guest, "reopen-B") is True
+    assert len(guest.actions) == 2
+    assert all("press('esc')" in code and "write(" not in code for code in guest.actions)
+    assert (tmp_path / "screenshots/reopen-B-open-dialog-before.png").exists()
+    assert (tmp_path / "screenshots/reopen-B-open-dialog-after.png").exists()
+    row = json.loads((tmp_path / "observations.jsonl").read_text())
+    assert row["escape_attempts"] == 2 and row["postscore_open_dialog_cancelled"] is True
+
+
+def test_postscore_open_picker_noop_without_modal(tmp_path):
+    guest = _PickerGuest(tmp_path, ["handoff_report.odt - LibreOffice Writer"])
+    assert _dismiss_postscore_open_dialog(guest, "reopen-B") is False
+    assert not guest.actions and not (tmp_path / "observations.jsonl").exists()
+
+
+def test_postscore_open_picker_fails_closed_if_still_open(tmp_path):
+    guest = _PickerGuest(tmp_path, ["Open", "Open", "Open", "Open"])
+    with pytest.raises(RuntimeError, match="did not close"):
+        _dismiss_postscore_open_dialog(guest, "reopen-B")
+    assert len(guest.actions) == 3
+    assert (tmp_path / "screenshots/reopen-B-open-dialog-before.png").exists()
+
+
+def test_postscore_open_picker_rejects_unverifiable_frame_before_input(tmp_path):
+    guest = _PickerGuest(tmp_path, ["Open"], screenshot=b"not a PNG")
+    with pytest.raises(RuntimeError, match="cannot verify"):
+        _dismiss_postscore_open_dialog(guest, "reopen-B")
+    assert not guest.actions
     assert not _postscore_lifecycle_ok([
         {"role": "A", "same_bytes": False, "postscore_error": "modal"},
         {"role": "B", "same_bytes": True}])
