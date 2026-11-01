@@ -30,14 +30,15 @@ from oscombo.collab.data_to_deck.provenance import RunLedger, collect_artifacts
 from oscombo.collab.data_to_deck.workspace_bridge import SavedArtifactBridge
 
 
-WORKSPACE_ASSEMBLY_V2_CASES = {"workspace_assembly_v2", "workspace_assembly_v2p1"}
+WORKSPACE_ASSEMBLY_V2_CASES = {"workspace_assembly_v2", "workspace_assembly_v2p1", "workspace_assembly_v2p2"}
 WORKSPACE_ASSEMBLY_CASES = {"workspace_assembly", "workspace_assembly_v1p2", *WORKSPACE_ASSEMBLY_V2_CASES}
 
 
 def _case7_v2_module(case: str, name: str):
     """Resolve versioned run components without falling back across versions."""
     packages = {"workspace_assembly_v2": "workspace_assembly_lite_v2",
-                "workspace_assembly_v2p1": "workspace_assembly_lite_v2p1"}
+                "workspace_assembly_v2p1": "workspace_assembly_lite_v2p1",
+                "workspace_assembly_v2p2": "workspace_assembly_lite_v2p2"}
     if case not in packages or name not in {"scripted", "audit", "deferred_cleanup"}:
         raise ValueError("unknown Case 7 version or component")
     return importlib.import_module(f"oscombo.collab.{packages[case]}.{name}")
@@ -54,6 +55,8 @@ def _profile(case: str):
         from oscombo.collab.workspace_assembly_lite_v2 import spec, fixtures, oracle
     elif case == "workspace_assembly_v2p1":
         from oscombo.collab.workspace_assembly_lite_v2p1 import spec, fixtures, oracle
+    elif case == "workspace_assembly_v2p2":
+        from oscombo.collab.workspace_assembly_lite_v2p2 import spec, fixtures, oracle
     elif case == "model_review":
         from oscombo.collab.model_and_review_lite_v1 import spec, fixtures, oracle
     else:
@@ -378,7 +381,9 @@ def _scripted_actions(case: str, role: str, task_root: str, fixtures, negative: 
         if role == "A":
             return scripted.a_move(task_root)
         if role == "B":
-            return scripted.b_finish("WRONG-00" if negative else fixtures.DEFAULT_TAG)
+            return scripted.b_finish((fixtures.wrong_code(fixtures.DEFAULT_TAG)
+                                      if case == "workspace_assembly_v2p2" else "WRONG-00")
+                                     if negative else fixtures.DEFAULT_TAG)
         raise ValueError((case, role))
     if case == "build_verify" and role == "A":
         corrected = fixtures.source_html().replace('value="delievered"',
@@ -688,7 +693,11 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
             _launch(guest_b, "writer", b_path, run_id)
             if case in WORKSPACE_ASSEMBLY_V2_CASES:
                 guest_b.actor = "system"
-                guest_b.run_pyautogui("import pyautogui, time; pyautogui.hotkey('ctrl','end'); time.sleep(2)")
+                guest_b.run_pyautogui(
+                    "import pyautogui, time; pyautogui.hotkey('ctrl','end'); "
+                    "pyautogui.press('up'); pyautogui.press('end'); time.sleep(2)"
+                    if case == "workspace_assembly_v2p2" else
+                    "import pyautogui, time; pyautogui.hotkey('ctrl','end'); time.sleep(2)")
                 (run_root / "screenshots" / "setup_B_caret.png").write_bytes(guest_b.screenshot(patience=45))
             a_app, b_app = "files", "writer"
         outcomes = {}
@@ -742,7 +751,9 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 pre_path = run_root / "control_prework.odt"
                 pre_path.write_bytes(controllers["B"].get_file(b_path))
                 pre_text, _ = read_odt(pre_path)
-                if ("Audience: " + audience_match.group(1).title() + ".") not in pre_text:
+                expected_prework = ("Audience: " + audience_match.group(1).title() +
+                                    ("" if case == "workspace_assembly_v2p2" else "."))
+                if expected_prework not in pre_text:
                     raise RuntimeError("scripted B pre-handoff edit was not saved")
                 pre_revision = bridge.publish("B")
                 (run_root / "control_prework.json").write_text(json.dumps({
@@ -830,7 +841,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 # alongside the expected X11 window title.  It cannot infer
                 # that B read the file without human screenshot review.
                 peer_view_baseline = None
-                if case == "workspace_assembly_v2p1":
+                if case in {"workspace_assembly_v2p1", "workspace_assembly_v2p2"}:
                     baseline_before = guest_b.active_window() or ""
                     peer_view_baseline = guest_b.screenshot(patience=45)
                     baseline_after = guest_b.active_window() or ""
@@ -843,8 +854,11 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                     raise RuntimeError("scripted B peer-view GUI open failed")
                 _case7_control_retry_open(guest_b, run_root, spec.AGENT_B_INSTRUCTION, spec.CASE_ID)
                 observation = None
-                if case == "workspace_assembly_v2p1":
-                    from oscombo.collab.workspace_assembly_lite_v2p1.visual_observation import capture_peer_view_candidate
+                if case in {"workspace_assembly_v2p1", "workspace_assembly_v2p2"}:
+                    visual_module = ("oscombo.collab.workspace_assembly_lite_v2p2.visual_observation"
+                                     if case == "workspace_assembly_v2p2" else
+                                     "oscombo.collab.workspace_assembly_lite_v2p1.visual_observation")
+                    capture_peer_view_candidate = importlib.import_module(visual_module).capture_peer_view_candidate
                     title, screenshot, observation = capture_peer_view_candidate(
                         guest_b, run_root, Path(view_path).name, peer_view_baseline)
                 else:
@@ -874,10 +888,15 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
             b_actions = _scripted_actions(case, "B", task_root, fixtures, negative)
             if case in WORKSPACE_ASSEMBLY_V2_CASES:
                 note = (fixture / spec.FIXTURE_NAMES["asset"]).read_text(encoding="utf-8")
-                tag_match = re.search(r"(?m)^Inspection tag: ([A-Z][A-Z0-9]{2,9}-[0-9]{2})\.$", note)
+                tag_pattern = (r"(?m)^Inspection code: ([2-9]{3})\.$"
+                               if case == "workspace_assembly_v2p2" else
+                               r"(?m)^Inspection tag: ([A-Z][A-Z0-9]{2,9}-[0-9]{2})\.$")
+                tag_match = re.search(tag_pattern, note)
                 if not tag_match:
                     raise RuntimeError("scripted control cannot derive the public note tag")
-                b_actions = scripted.b_finish("WRONG-00" if negative else tag_match.group(1))
+                bad = (fixtures.wrong_code(tag_match.group(1)) if case == "workspace_assembly_v2p2"
+                       else "WRONG-00")
+                b_actions = scripted.b_finish(bad if negative else tag_match.group(1))
             if case == "build_verify":
                 browser_result = core._run_actor("B", guest_b, spec.AGENT_B_INSTRUCTION,
                     b_actions[:5] + ["DONE"], run_root, max_steps=25, case_id=spec.CASE_ID)
@@ -1095,7 +1114,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
 
 def main(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--case", required=True, choices=("build_verify", "workspace_assembly", "workspace_assembly_v1p2", "workspace_assembly_v2", "workspace_assembly_v2p1", "model_review"))
+    parser.add_argument("--case", required=True, choices=("build_verify", "workspace_assembly", "workspace_assembly_v1p2", "workspace_assembly_v2", "workspace_assembly_v2p1", "workspace_assembly_v2p2", "model_review"))
     parser.add_argument("--condition", required=True,
                         choices=("collaborative_shared", "collaborative_isolated"))
     parser.add_argument("--run-root", type=Path, required=True)
