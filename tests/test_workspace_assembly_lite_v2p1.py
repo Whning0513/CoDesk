@@ -84,3 +84,42 @@ def test_a_delivery_and_b_local_content_scored_independently(tmp_path):
     assert result['actors']['B']['success'] is None and not result['actors']['B']['handoff_verifiable']
     assert result['actors']['B']['checks']['draft_text_preserved'] is True
     assert result['actors']['B']['checks']['audience_matches_draft'] is True
+
+
+def test_versioned_components_and_guest_root_are_isolated(monkeypatch, tmp_path):
+    from oscombo.collab.workspace_assembly_lite_v2 import scripted as old_scripted, audit as old_audit
+    from oscombo.collab.workspace_assembly_lite_v2p1 import scripted, audit, deferred_cleanup
+    from oscombo.collab.workspace_assembly_lite_v2 import deferred_cleanup as old_cleanup
+    assert spec.TASK_ROOT != old_spec.TASK_ROOT
+    assert spec.TASK_ROOT == '/tmp/wa21'
+    for name, old, new in [('scripted', old_scripted, scripted), ('audit', old_audit, audit),
+                           ('deferred_cleanup', old_cleanup, deferred_cleanup)]:
+        assert runner._case7_v2_module('workspace_assembly_v2', name) is old
+        assert runner._case7_v2_module('workspace_assembly_v2p1', name) is new
+    with pytest.raises(ValueError):
+        runner._case7_v2_module('workspace_assembly_v2p1', 'oracle')
+    called = []
+    monkeypatch.setattr(scripted, 'a_move', lambda root: called.append(root) or ['DONE'])
+    assert runner._scripted_actions('workspace_assembly_v2p1', 'A', spec.TASK_ROOT, fixtures, False) == ['DONE']
+    assert called == ['/tmp/wa21']
+    class Bridge:
+        class Thread:
+            def is_alive(self): return True
+        _thread = Thread()
+        def stop(self): raise RuntimeError('still active')
+    monkeypatch.setattr(deferred_cleanup, 'write_pending', lambda *args: called.append('v2p1 cleanup'))
+    assert runner._stop_bridge_before_cleanup(Bridge(), 'workspace_assembly_v2p1', tmp_path,
+                                              'test-run', {}, [])
+    assert called[-1] == 'v2p1 cleanup'
+
+
+def test_v2p1_trace_audit_uses_own_version_and_root(tmp_path):
+    from oscombo.collab.workspace_assembly_lite_v2p1 import audit
+    fixtures.build_fixture(tmp_path / "fixtures")
+    actions = tmp_path / "actor_runs/B/B/actions.jsonl"
+    actions.parent.mkdir(parents=True)
+    import json
+    actions.write_text(json.dumps({"n": 9, "args": {"path": "/tmp/wa21/incoming/inspection_note.txt"}}) + "\n")
+    result = audit.audit(tmp_path)
+    assert result["case_version"] == spec.CASE_VERSION
+    assert result["B_original_input_path_action_candidates"] == [9]

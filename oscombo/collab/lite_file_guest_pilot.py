@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import importlib
 import hashlib
 import json
 import os
@@ -31,6 +32,15 @@ from oscombo.collab.data_to_deck.workspace_bridge import SavedArtifactBridge
 
 WORKSPACE_ASSEMBLY_V2_CASES = {"workspace_assembly_v2", "workspace_assembly_v2p1"}
 WORKSPACE_ASSEMBLY_CASES = {"workspace_assembly", "workspace_assembly_v1p2", *WORKSPACE_ASSEMBLY_V2_CASES}
+
+
+def _case7_v2_module(case: str, name: str):
+    """Resolve versioned run components without falling back across versions."""
+    packages = {"workspace_assembly_v2": "workspace_assembly_lite_v2",
+                "workspace_assembly_v2p1": "workspace_assembly_lite_v2p1"}
+    if case not in packages or name not in {"scripted", "audit", "deferred_cleanup"}:
+        raise ValueError("unknown Case 7 version or component")
+    return importlib.import_module(f"oscombo.collab.{packages[case]}.{name}")
 
 
 def _profile(case: str):
@@ -247,7 +257,7 @@ def _stop_bridge_before_cleanup(bridge, case, run_root, run_id, container_ids, c
         if case not in WORKSPACE_ASSEMBLY_V2_CASES or not bridge._thread or not bridge._thread.is_alive():
             return False
         # Keep the lease and Guests until the worker's process has exited.
-        from oscombo.collab.workspace_assembly_lite_v2.deferred_cleanup import write_pending
+        write_pending = _case7_v2_module(case, "deferred_cleanup").write_pending
         try:
             write_pending(run_root, run_id, dict(container_ids), str(exc))
         except Exception as pending_exc:
@@ -329,7 +339,7 @@ def _activate_editor_tab(guest, role: str, shared: bool):
 
 def _scripted_actions(case: str, role: str, task_root: str, fixtures, negative: bool) -> list[str]:
     if case in WORKSPACE_ASSEMBLY_V2_CASES:
-        from oscombo.collab.workspace_assembly_lite_v2 import scripted
+        scripted = _case7_v2_module(case, "scripted")
         if role == "A":
             return scripted.a_move(task_root)
         if role == "B":
@@ -407,9 +417,9 @@ def _audit_case7_scripted_delivered_read(run_root: Path) -> dict:
 
 def _control_case7_view_revisions(guest_a, guest_b, controllers, bridge, first,
                                   a_path: str, task_root: str, run_root: Path,
-                                  run_id: str, spec) -> dict:
+                                  run_id: str, spec, case: str = "workspace_assembly_v2") -> dict:
     """Additional GUI-only control for version history, never a model action."""
-    from oscombo.collab.workspace_assembly_lite_v2 import scripted
+    scripted = _case7_v2_module(case, "scripted")
     _launch(guest_a, "editor", a_path, run_id)
     changed = core._run_actor("A", guest_a, spec.AGENT_A_INSTRUCTION,
         scripted.a_probe_change(), run_root, max_steps=25, case_id=spec.CASE_ID)
@@ -685,7 +695,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
         else:
             if case in WORKSPACE_ASSEMBLY_V2_CASES:
                 from oscombo.collab.workspace_assembly.fixtures import read_odt
-                from oscombo.collab.workspace_assembly_lite_v2 import scripted
+                scripted = _case7_v2_module(case, "scripted")
                 _activate(guest_b, "writer", b_path)
                 audience_match = re.search(r"(?im)^Prepared for ([A-Za-z][A-Za-z -]+?) review\.$", fixtures.draft_text())
                 if not audience_match:
@@ -730,7 +740,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
             a_revision = bridge.publish("A")
             if scripted_view_version_probe:
                 a_revision = _control_case7_view_revisions(guest_a, guest_b, controllers, bridge,
-                    a_revision, a_path, task_root, run_root, run_id, spec)
+                    a_revision, a_path, task_root, run_root, run_id, spec, case=case)
             if controllers["B"].get_file(a_path) != controllers["A"].get_file(a_path):
                 raise RuntimeError("B Guest did not receive A's saved version")
             message = (f"Saved {Path(a_path).name} revision {a_revision['revision']}; "
@@ -882,11 +892,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
         browser_trace = _browser_trace_audit(run_root) if case == "build_verify" else None
         process_audit = None
         if case in WORKSPACE_ASSEMBLY_V2_CASES and model:
-            if case == "workspace_assembly_v2p1":
-                from oscombo.collab.workspace_assembly_lite_v2p1.audit import audit
-            else:
-                from oscombo.collab.workspace_assembly_lite_v2.audit import audit
-            process_audit = audit(run_root)
+            process_audit = _case7_v2_module(case, "audit").audit(run_root)
             (run_root / "behavioral_audit.json").write_text(json.dumps(process_audit, indent=2) + "\n")
         reopen = []
         for role, guest, app, path in (("A", guest_a, a_app, a_path), ("B", guest_b, b_app, b_path)):

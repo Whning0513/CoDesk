@@ -8,7 +8,7 @@ ROLE_BUDGET = {"A": {"steps": 25, "model_tokens": None}, "B": {"steps": 25, "mod
 HANDOFF_DEPENDENCIES = {"B": "A"}
 PRE_HANDOFF_REVISION_ROLES = frozenset({"B"})
 PEER_VIEW_DIRS = {"A": "views/B"}
-TASK_ROOT = "/tmp/wa2"
+TASK_ROOT = "/tmp/wa21"
 
 AGENT_A_INSTRUCTION = """You are A, the asset organizer. In File Manager, move inspection_note.txt from the incoming folder into your output folder outputs/agent_A, preserving the file bytes. The folder contains just this one note, initially selected. Check the selection before moving. Publish your saved output with the collaboration tool, then send B only a notification that the file revision is ready and its revision number. Do not send the note's tag or contents in your message. You may work concurrently with B. Do not use Terminal, scripts, evaluator files or Gold data."""
 

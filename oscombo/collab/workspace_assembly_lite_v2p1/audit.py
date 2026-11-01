@@ -73,7 +73,7 @@ def audit(run_root: str | Path) -> dict:
     prework_commits = [e for e in events if e.get("event") == "revision_committed" and e.get("actor") == "B" and
                        int(e.get("revision", 0)) > 0 and before is not None and prep and
                        when(prep[0]) <= float(e.get("time", 0)) < before]
-    original_paths = ("/tmp/wa2/incoming", "/tmp/wa2/input", "/tmp/wa2/outputs/agent_a")
+    original_paths = ("/tmp/wa21/incoming", "/tmp/wa21/input", "/tmp/wa21/outputs/agent_a")
     original_candidates = []
     for action in actions:
         text = (str(action.get("args", {})) + " " + str(action.get("window_before", "")) +

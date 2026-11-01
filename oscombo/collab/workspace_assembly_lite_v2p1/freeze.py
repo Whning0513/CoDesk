@@ -150,7 +150,7 @@ def _control(root: Path, commit: str, name: str) -> dict:
     draft, _ = read_odt(root / "fixtures/handoff_report.odt")
     audience = re.search(r"(?im)^Prepared for ([A-Za-z][A-Za-z -]+?) review\.$", draft)
     _require(audience is not None and bool(re.search(r"(?im)^(?:audience|for):\s*" +
-             re.escape(audience.group(1)) + r"(?:\s+team)?[.!]?$", pre_text)),
+             re.escape(audience.group(1)) + r"(?:\s+(?:team|reviewers))?[.!]?$", pre_text)),
              f"{root.name}: prework did not save the draft audience")
     _file(root, pre["trace_path"])
     _file(root, view["trace_path"])
