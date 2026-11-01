@@ -1,0 +1,23 @@
+[
+  {
+    "run_id": "wa-lite-v2p1-control-positive-shared-20261101T092423Z-2498655",
+    "source": "screenshots/B-009.png",
+    "file": "case7_v2p1_first_control_B_picker.png",
+    "sha256": "25b1835debe4d601f3312f4be4c96a2ef88af4becb71ee0826d1af9c538786a3",
+    "bytes": 153085
+  },
+  {
+    "run_id": "wa-lite-v2p1-control-positive-shared-20261101T092423Z-2498655",
+    "source": "screenshots/B-010.png",
+    "file": "case7_v2p1_first_control_B_stale_report.png",
+    "sha256": "e6457d747f60ca1792e8e4c70c12a62f6b3132ab046b5ffd82320d51577c9db5",
+    "bytes": 133430
+  },
+  {
+    "run_id": "wa-lite-v2p1-control-positive-shared-20261101T092423Z-2498655",
+    "source": "screenshots/B-011.png",
+    "file": "case7_v2p1_first_control_B_delayed_note.png",
+    "sha256": "7ac984734b2ff6c72ff40299dd33b4a508fff6ef4a9f75fc380f387803a916a4",
+    "bytes": 112167
+  }
+]

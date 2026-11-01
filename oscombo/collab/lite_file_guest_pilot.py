@@ -790,19 +790,37 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 if not owner_mode.isdigit() or not (int(owner_mode, 8) & 0o200):
                     raise RuntimeError("A original output unexpectedly lost owner write permission")
                 _activate(guest_b, "writer", b_path)
+                # This is an observation baseline only.  The v2.1 control
+                # later requires a visibly changed, stable title-bar frame
+                # alongside the expected X11 window title.  It cannot infer
+                # that B read the file without human screenshot review.
+                peer_view_baseline = None
+                if case == "workspace_assembly_v2p1":
+                    baseline_before = guest_b.active_window() or ""
+                    peer_view_baseline = guest_b.screenshot(patience=45)
+                    baseline_after = guest_b.active_window() or ""
+                    if not all(Path(b_path).name.casefold() in title.casefold()
+                               for title in (baseline_before, baseline_after)):
+                        raise RuntimeError("B report was not the active window around peer-view baseline")
                 read = core._run_actor("B", guest_b, spec.AGENT_B_INSTRUCTION,
                     scripted.b_read(view_path), run_root, max_steps=25, case_id=spec.CASE_ID)
                 if read["status"] != "done":
                     raise RuntimeError("scripted B peer-view GUI open failed")
                 _case7_control_retry_open(guest_b, run_root, spec.AGENT_B_INSTRUCTION, spec.CASE_ID)
-                title = ""
-                for _ in range(12):
-                    title = guest_b.active_window() or ""
-                    if Path(view_path).name.casefold() in title.casefold() and "read-only" in title.casefold():
-                        break
-                    time.sleep(5)
-                screenshot = run_root / "screenshots" / "control_B_peer_view.png"
-                screenshot.write_bytes(guest_b.screenshot(patience=45))
+                observation = None
+                if case == "workspace_assembly_v2p1":
+                    from oscombo.collab.workspace_assembly_lite_v2p1.visual_observation import capture_peer_view_candidate
+                    title, screenshot, observation = capture_peer_view_candidate(
+                        guest_b, run_root, Path(view_path).name, peer_view_baseline)
+                else:
+                    title = ""
+                    for _ in range(12):
+                        title = guest_b.active_window() or ""
+                        if Path(view_path).name.casefold() in title.casefold() and "read-only" in title.casefold():
+                            break
+                        time.sleep(5)
+                    screenshot = run_root / "screenshots" / "control_B_peer_view.png"
+                    screenshot.write_bytes(guest_b.screenshot(patience=45))
                 if Path(view_path).name.casefold() not in title.casefold() or "read-only" not in title.casefold():
                     raise RuntimeError("B did not visibly open the revision in read-only Writer")
                 (run_root / "control_B_peer_view.json").write_text(json.dumps({
@@ -810,7 +828,9 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                     "sha256": a_revision["sha256"], "mode": mode, "owner_mode": owner_mode,
                     "opened_at": time.time(), "window": title,
                     "recovered_copy": str(recovered_view.relative_to(run_root)),
-                    "trace_path": read["trace_path"], "screenshot": str(screenshot.relative_to(run_root))}, indent=2) + "\n")
+                    "trace_path": read["trace_path"], "screenshot": str(screenshot.relative_to(run_root)),
+                    **({"visual_observation": str(observation.relative_to(run_root)),
+                        "manual_visual_review_required": True} if observation else {})}, indent=2) + "\n")
             else:
                 # Smoke the real peer file in a GUI viewer before the scripted
                 # Writer edit. Model actors must choose their own read action.
