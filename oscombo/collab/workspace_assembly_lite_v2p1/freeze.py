@@ -199,7 +199,7 @@ def _pilot(root: Path, commit: str, review_path: Path) -> dict:
              meta.get("yield_wait_lifecycle") is True and result.get("status") in {"PASS", "FAIL"},
              f"{root.name}: Pilot config or status invalid")
     relay = _events(root / "codex_relay_events.jsonl")
-    _require(bool(relay) and all(e.get("actor_mcp_only") is True and e.get("upstream_status") == 200 for e in relay),
+    _require(bool(relay) and all(contract.relay_event_clean(e) for e in relay),
              f"{root.name}: Pilot relay/allowlist failure")
     contract_result = contract.audit(root)
     _require(contract_result == _read(root / "contract_audit.json") and contract_result.get("valid") is True,

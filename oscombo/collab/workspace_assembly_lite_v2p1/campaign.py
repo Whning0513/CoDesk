@@ -66,7 +66,8 @@ def classify(run_root: Path, exit_code: int) -> str:
     try:
         result = json.loads(result_path.read_text())
         resource = json.loads((run_root / "resource_audit.json").read_text())
-        contract = json.loads((run_root / "contract_audit.json").read_text())
+        saved_contract = json.loads((run_root / "contract_audit.json").read_text())
+        observed_contract = contract.audit(run_root)
         metrics = json.loads((run_root / "model_metrics_v2.json").read_text())
         freeze._validate_reopens(run_root, result, allow_missing_outputs=True)
     except (OSError, ValueError):
@@ -74,7 +75,8 @@ def classify(run_root: Path, exit_code: int) -> str:
     if not (result.get("postscore_lifecycle_ok") is True and result.get("bridge_valid") is True
             and result.get("oracle_fixture_valid") is True
             and resource.get("valid") is True
-            and contract.get("valid") is True and not metrics.get("lifecycle_errors")):
+            and saved_contract.get("valid") is True and observed_contract.get("valid") is True
+            and saved_contract == observed_contract and not metrics.get("lifecycle_errors")):
         return "INVALID_INFRA"
     status = result.get("status")
     if status == "PASS" and exit_code == 0: return "VALID_PASS"

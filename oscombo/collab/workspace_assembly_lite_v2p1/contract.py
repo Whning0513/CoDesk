@@ -6,6 +6,17 @@ import json
 from pathlib import Path
 
 
+def relay_event_clean(event: object) -> bool:
+    """Treat every recorded relay error, including cancellations, as review."""
+    return (isinstance(event, dict) and isinstance(event.get("actor"), str)
+            and event.get("actor") in {"A", "B"} and event.get("actor_mcp_only") is True
+            and type(event.get("upstream_status")) is int and event["upstream_status"] == 200
+            and "error_type" not in event and "phase" not in event
+            and ("headers_sent" not in event or event["headers_sent"] is True)
+            and ("forwarded_bytes" not in event or
+                 (type(event["forwarded_bytes"]) is int and event["forwarded_bytes"] >= 0)))
+
+
 def audit(root: Path) -> dict:
     errors = []
     events_path = root / "codex_relay_events.jsonl"
@@ -22,13 +33,15 @@ def audit(root: Path) -> dict:
                     events.append(item)
                 except ValueError:
                     errors.append("malformed relay event")
-    by_role = Counter(e.get("actor") for e in events)
+    by_role = Counter(e.get("actor") if isinstance(e.get("actor"), str) else "<invalid>" for e in events)
     if any(by_role[role] == 0 for role in "AB"):
         errors.append("both Actors require real relay requests")
     if any(e.get("actor_mcp_only") is not True for e in events):
         errors.append("request-level tool allowlist missing")
     if any(e.get("upstream_status") != 200 for e in events):
         errors.append("upstream response missing or not HTTP 200; review transport")
+    if any(not relay_event_clean(e) for e in events):
+        errors.append("relay error or ambiguous request evidence; review transport")
     call_types = {"mcp_tool_call", "command_execution", "file_change", "web_search",
                   "collab_tool_call", "dynamic_tool_call", "tool_call", "function_call", "custom_tool_call"}
     seen = {"A": set(), "B": set()}
