@@ -1,13 +1,46 @@
 """Independent v2 offline controls, not a substitute for real Guest GUI."""
 from copy import deepcopy
+from io import BytesIO
 import hashlib
 import os
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 from oscombo.collab.model_and_review_lite_v2 import fixtures, gold, oracle, spec
-from oscombo.collab.lite_file_guest_pilot import _profile, _scripted_actions
+from oscombo.collab.lite_file_guest_pilot import _blender_xy_dimension_candidate, _profile, _scripted_actions
+
+
+def test_v2_blender_candidate_real_frames_and_negative_controls():
+    evidence = Path(__file__).resolve().parent / 'fixtures/case5_v2_blender'
+    old = (evidence / 'pre_handoff.png').read_bytes()
+    new = (evidence / 'reverted.png').read_bytes()
+    assert not _blender_xy_dimension_candidate(old, old)['candidate']
+    observed = _blender_xy_dimension_candidate(old, new)
+    assert observed['candidate'] and min(observed['changed_pixels']) >= 4
+    assert observed['mask_overlap'] >= .7
+    assert 'not' in observed['scope']
+    # Completely unpainted and one-axis-only frames cannot pass merely because
+    # some bytes differ. Numeric interpretation remains human review.
+    for color in (0, 255):
+        out = BytesIO()
+        Image.new('L', (1920, 1080), color).save(out, format='PNG')
+        assert not _blender_xy_dimension_candidate(old, out.getvalue())['candidate']
+    with Image.open(BytesIO(new)) as newer, Image.open(BytesIO(old)) as older:
+        frame = newer.convert('RGB')
+        frame.paste(older.crop((1500, 484, 1550, 503)), (1500, 484))
+        out = BytesIO()
+        frame.save(out, format='PNG')
+    assert not _blender_xy_dimension_candidate(old, out.getvalue())['candidate']
+
+
+def test_v2_blender_candidate_rejects_geometry_changes():
+    old = BytesIO(); new = BytesIO()
+    Image.new('L', (1920, 1080), 50).save(old, format='PNG')
+    Image.new('L', (1280, 720), 50).save(new, format='PNG')
+    with pytest.raises(RuntimeError, match='changed resolution'):
+        _blender_xy_dimension_candidate(old.getvalue(), new.getvalue())
 
 
 def test_v2_public_fixture_and_prompts_do_not_disclose_private_gold(tmp_path):

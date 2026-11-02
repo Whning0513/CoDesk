@@ -235,6 +235,45 @@ def _blender_dimension_region_change(before: bytes, after: bytes) -> float:
         return round(ImageStat.Stat(ImageChops.difference(a.crop(box), b.crop(box))).mean[0], 3)
 
 
+def _blender_xy_dimension_candidate(before: bytes, after: bytes) -> dict:
+    """Find matching changed text shapes in both pinned Blender X/Y value rows.
+
+    This is a screenshot candidate, not an OCR result or proof of a numeric
+    value.  A reviewer must inspect the selected full frame and the scorer must
+    independently validate the saved scene.  Blank/unpainted rows fail closed.
+    """
+    from io import BytesIO
+    from PIL import Image, ImageChops
+
+    with Image.open(BytesIO(before)) as first, Image.open(BytesIO(after)) as second:
+        a, b = first.convert("L"), second.convert("L")
+        if a.size != b.size:
+            raise RuntimeError("Blender scripted peer screenshots changed resolution")
+        w, h = a.size
+        if w < 640 or h < 400:
+            raise RuntimeError("Blender scripted peer screenshot too small")
+        boxes = [tuple(round(v * dim / standard) for v, dim, standard in
+                       ((1500, w, 1920), (top, h, 1080), (1550, w, 1920), (bottom, h, 1080)))
+                 for top, bottom in ((465, 484), (484, 503))]
+        masks, current, foreground = [], [], []
+        for box in boxes:
+            old = a.crop(box).point(lambda value: 255 if value > 160 else 0)
+            new = b.crop(box).point(lambda value: 255 if value > 160 else 0)
+            foreground.append((old.histogram()[255], new.histogram()[255], old.width * old.height))
+            masks.append(ImageChops.difference(old, new))
+            current.append(new.tobytes())
+        counts = [mask.histogram()[255] for mask in masks]
+        overlap = ImageChops.darker(*masks).histogram()[255]
+        union = ImageChops.lighter(*masks).histogram()[255]
+        foreground_ok = all(5 <= old < area * .8 and 5 <= new < area * .8
+                            for old, new, area in foreground)
+        coherent = bool(foreground_ok and min(counts) >= 4 and union and overlap / union >= .7)
+        return {"candidate": coherent, "changed_pixels": counts,
+                "mask_overlap": round(overlap / union, 3) if union else 0.0,
+                "fingerprint": hashlib.sha256(b"".join(current)).hexdigest(),
+                "scope": "candidate only, not numeric proof; full GUI screenshot requires manual review"}
+
+
 def _blender_revert_confirmation_visible(screenshot: bytes) -> bool:
     """Recognize Blender 5.0's Revert confirmation in the pinned Guest UI."""
     from io import BytesIO
@@ -639,6 +678,9 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
             elif case in MODEL_REVIEW_CASES:
                 # Scripted control observes the published scene in the real
                 # Blender GUI; model B must choose its own reload/read action.
+                if case == "model_review_v2":
+                    initial_blender = (run_root / "screenshots" /
+                                       f"{guest_b.guest_key}-blender-setup-complete.png").read_bytes()
                 if condition.endswith("isolated"):
                     # B already has the initial project open. Launching a
                     # second Blender can match that old window before the new
@@ -660,7 +702,41 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 else:
                     _activate(guest_b, "blender", a_path)
                 peer_shot = run_root / "screenshots" / "scripted-peer-blender-after-handoff.png"
-                if condition.endswith("isolated"):
+                visual_observation = None
+                if case == "model_review_v2":
+                    # Shared and Isolated use the same candidate gate. Changed
+                    # pixels never certify a number; preserve every frame and
+                    # require a human review of the selected full screenshot.
+                    visual_observation = {"attempts": [], "manual_review_required": True,
+                                          "scope": "screenshot candidate, not numeric OCR"}
+                    previous = None
+                    stable = 0
+                    for attempt in range(1, 13):
+                        peer_png = guest_b.screenshot(patience=45)
+                        frame_path = (run_root / "screenshots" /
+                                      f"scripted-peer-blender-reload-{attempt:02d}.png")
+                        frame_path.write_bytes(peer_png)
+                        candidate = _blender_xy_dimension_candidate(initial_blender, peer_png)
+                        candidate["screenshot"] = str(frame_path.relative_to(run_root))
+                        candidate["screenshot_sha256"] = hashlib.sha256(peer_png).hexdigest()
+                        candidate["frame_ready"] = _blender_frame_ready(peer_png)
+                        candidate["revert_dialog"] = _blender_revert_confirmation_visible(peer_png)
+                        accepted = candidate["candidate"] and candidate["frame_ready"] and not candidate["revert_dialog"]
+                        stable = stable + 1 if accepted and previous == candidate["fingerprint"] else int(accepted)
+                        previous = candidate["fingerprint"] if accepted else None
+                        candidate["stable_frames"] = stable
+                        visual_observation["attempts"].append(candidate)
+                        if stable >= 2:
+                            break
+                        if attempt < 12:
+                            time.sleep(4)
+                    (run_root / "scripted_peer_blender_observation.json").write_text(
+                        json.dumps(visual_observation, indent=2) + "\n")
+                    if stable < 2:
+                        peer_shot.write_bytes(peer_png)
+                        raise RuntimeError("B Blender dimensions did not yield a stable visual candidate")
+                    display_change = None
+                elif condition.endswith("isolated"):
                     for attempt in range(1, 13):
                         peer_png = guest_b.screenshot(patience=45)
                         (run_root / "screenshots" /
@@ -684,6 +760,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                     "active_window": guest_b.active_window(),
                     "screenshot": str(peer_shot.relative_to(run_root)),
                     "dimension_region_change": display_change,
+                    "manual_numeric_review_required": case == "model_review_v2",
                     "saved_sha256": a_revision["sha256"]}, indent=2) + "\n")
                 _activate(guest_b, "editor", b_path)
             else:
