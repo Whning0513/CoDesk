@@ -56,6 +56,51 @@ class Files:
         return {"status": "success"}
 
 
+def test_existence_probe_retry_is_bounded_and_observable(tmp_path):
+    bridge, a, _ = setup_bridge(tmp_path)
+    bridge.existence_probe_retries = 1
+    original = a.run_bash_script
+    calls = []
+
+    def flaky(script, timeout=30):
+        calls.append(script)
+        if len(calls) == 1:
+            return {"status": "error", "returncode": 7}
+        return original(script, timeout=timeout)
+
+    a.run_bash_script = flaky
+    assert bridge._exists("A", f"/task/{spec.OUTPUTS['A']}") is True
+    assert len(calls) == 2
+    events = [json.loads(line) for line in (bridge.root / "events.jsonl").read_text().splitlines()]
+    assert events[-2]["event"] == "guest_probe_retry"
+    assert events[-2]["status"] == "error" and events[-2]["returncode"] == 7
+    assert events[-1]["event"] == "guest_probe_recovered" and events[-1]["exists"] is True
+    assert bridge.diagnostics()["infrastructure_review_required"] is False
+
+
+def test_existence_probe_retry_failure_remains_infrastructure_fault(tmp_path):
+    bridge, a, _ = setup_bridge(tmp_path)
+    bridge.existence_probe_retries = 1
+    calls = []
+
+    def failed(script, timeout=30):
+        calls.append(script)
+        return {"status": "error", "returncode": 1}
+
+    a.run_bash_script = failed
+    with pytest.raises(RuntimeError, match="existence check failed"):
+        bridge._exists("A", "/task/missing")
+    assert len(calls) == 2
+    assert bridge.diagnostics()["infrastructure_review_required"] is True
+
+
+def test_unresolved_probe_retry_is_not_cleared_by_a_different_probe(tmp_path):
+    bridge, _, _ = setup_bridge(tmp_path)
+    bridge._record(event="guest_probe_retry", actor="A", path="/task/a", probe_id="first")
+    bridge._record(event="guest_probe_recovered", actor="A", path="/task/a", probe_id="other")
+    assert bridge.diagnostics()["infrastructure_review_required"] is True
+
+
 def setup_bridge(tmp_path, shared=False):
     fixture = tmp_path / "fixture"
     build_fixture(fixture)

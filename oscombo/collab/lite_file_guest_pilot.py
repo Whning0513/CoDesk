@@ -665,6 +665,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                                      controllers, ids, case_id=spec.CASE_ID,
                                      outputs=spec.OUTPUTS, mime_types=mime,
                                      allow_initial_missing={"A"} if case in WORKSPACE_ASSEMBLY_CASES else None,
+                                     existence_probe_retries=1 if case == "workspace_assembly_v2p2" else 0,
                                      peer_read_only=True,
                                      peer_view_dirs=spec.PEER_VIEW_DIRS if case in WORKSPACE_ASSEMBLY_V2_CASES else None)
         server.workspace_bridge = bridge

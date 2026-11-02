@@ -35,10 +35,13 @@ class SavedArtifactBridge:
                  mime_types: dict[str, str | None] | None = None,
                  allow_initial_missing: set[str] | None = None,
                  peer_view_dirs: dict[str, str] | None = None,
-                 resume: bool = False):
+                 resume: bool = False, existence_probe_retries: int = 0):
         self.root = Path(root)
         self.run_id, self.task_root = run_id, task_root
         self.controllers, self.guest_ids = controllers, guest_ids
+        if type(existence_probe_retries) is not int or existence_probe_retries not in (0, 1):
+            raise ValueError("existence probe retries must be 0 or 1")
+        self.existence_probe_retries = existence_probe_retries
         self.poll_seconds = poll_seconds
         self.peer_read_only = peer_read_only
         self.outputs = dict(spec.OUTPUTS if outputs is None else outputs)
@@ -163,22 +166,34 @@ class SavedArtifactBridge:
         return data
 
     def _exists(self, role: str, path: str) -> bool:
-        try:
-            result = self.controllers[role].run_bash_script(
-                f"if test -f {shlex.quote(path)}; then printf 1; else printf 0; fi", timeout=30)
-        except Exception as exc:
-            self._record(event="guest_probe_error", actor=role, path=path,
-                         error=f"{type(exc).__name__}: {exc}")
-            raise
-        if not isinstance(result, dict) or result.get("status") != "success":
-            self._record(event="guest_probe_error", actor=role, path=path,
-                         error="Guest artifact existence check failed")
-            raise RuntimeError("Guest artifact existence check failed")
+        probe_id = secrets.token_hex(8)
+        for attempt in range(1 + self.existence_probe_retries):
+            status = code = None
+            try:
+                result = self.controllers[role].run_bash_script(
+                    f"if test -f {shlex.quote(path)}; then printf 1; else printf 0; fi", timeout=30)
+                if not isinstance(result, dict) or result.get("status") != "success":
+                    status = result.get("status") if isinstance(result, dict) else None
+                    code = result.get("returncode") if isinstance(result, dict) else None
+                    raise RuntimeError(f"Guest artifact existence check failed (status={status!r}, returncode={code!r})")
+            except Exception as exc:
+                if attempt < self.existence_probe_retries:
+                    self._record(event="guest_probe_retry", actor=role, path=path,
+                                 probe_id=probe_id, attempt=attempt + 1, error_type=type(exc).__name__,
+                                 status=status, returncode=code)
+                    continue
+                self._record(event="guest_probe_error", actor=role, path=path,
+                             error=f"{type(exc).__name__}: {exc}")
+                raise
+            break
         value = (result.get("output") or "").strip()
         if value not in {"0", "1"}:
             self._record(event="guest_probe_error", actor=role, path=path,
                          error="invalid existence check value")
             raise RuntimeError("Guest artifact existence check returned an invalid value")
+        if attempt:
+            self._record(event="guest_probe_recovered", actor=role, path=path,
+                         probe_id=probe_id, attempts=attempt + 1, exists=value == "1")
         return value == "1"
 
     def _write(self, role: str, path: str, data: bytes):
@@ -458,6 +473,12 @@ class SavedArtifactBridge:
             if not any(row.get("event") == "revision_committed" and row.get("actor") == actor
                        for row in rows[i + 1:]):
                 unresolved.append(rows[i])
+        probe_retries = [i for i, row in enumerate(rows) if row.get("event") == "guest_probe_retry"]
+        unresolved_probes = [rows[i] for i in probe_retries if not any(
+            later.get("event") == "guest_probe_recovered" and
+            later.get("actor") == rows[i].get("actor") and later.get("path") == rows[i].get("path") and
+            rows[i].get("probe_id") and later.get("probe_id") == rows[i].get("probe_id")
+            for later in rows[i + 1:])]
         # Background sync repeats the same validation exception as sync_error;
         # do not relabel a known recovered save retry as an environment fault.
         unknown_sync_errors = []
@@ -473,8 +494,9 @@ class SavedArtifactBridge:
                 unknown_sync_errors.append(row)
         return {"historical_faults": faults, "save_validation_retries": len(retries),
                 "unresolved_save_validation_retries": unresolved,
+                "guest_probe_retries": len(probe_retries), "unresolved_guest_probe_retries": unresolved_probes,
                 "unknown_sync_errors": unknown_sync_errors, "malformed_event_lines": malformed,
-                "infrastructure_review_required": bool(faults or unresolved or unknown_sync_errors or malformed)}
+                "infrastructure_review_required": bool(faults or unresolved or unresolved_probes or unknown_sync_errors or malformed)}
 
     def sync(self):
         for role in ("A", "B"):
