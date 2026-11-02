@@ -33,7 +33,19 @@ active=$(docker ps --filter label=oscombo=1 --format '{{.ID}}') || exit 3
 [[ -z "$active" ]] || { echo 'Another OSWorld Guest is running' >&2; exit 3; }
 existing=$(docker ps -aq --filter "label=oscombo.run=$run_id") || exit 3
 [[ -z "$existing" ]] || exit 3
-"$python" -m oscombo.collab.workspace_assembly_lite_v2p1.preflight >/dev/null || exit 3
+"$python" - <<'PY' || exit 3
+import ctypes, os, pathlib, tempfile
+libc = ctypes.CDLL(None, use_errno=True)
+fd = libc.inotify_init1(os.O_CLOEXEC)
+if fd < 0: raise SystemExit(3)
+try:
+    with tempfile.TemporaryDirectory(prefix='case1-watch-check-') as root:
+        for i in range(64):
+            path = pathlib.Path(root) / str(i); path.mkdir()
+            if libc.inotify_add_watch(fd, os.fsencode(path), 0x100) < 0: raise SystemExit(3)
+finally:
+    os.close(fd)
+PY
 root="$PWD/runs/$run_id"; log="$PWD/audits/three_lite_cases_20261029/$run_id-driver.log"
 mkdir -p "$PWD/runs" "$(dirname "$log")"
 (set -o noclobber; : > "$log") || exit 3
@@ -77,7 +89,15 @@ if not rows or any(len(row) != 3 or not all(value.isdecimal() for value in row)
 PY
 "$python" -m oscombo.collab.spreadsheet_handoff_lite_v1_2.check_resources "$root" "$guests" > "$root/resource_profile_check.log" 2>&1 || code=3
 if (( model )); then
-  "$python" -m oscombo.collab.workspace_assembly_lite_v2p1.contract "$root" > "$root/contract_audit.log" 2>&1 || code=3
+  "$python" -m oscombo.collab.spreadsheet_handoff_lite_v1_2.relay_transport "$root" > "$root/relay_transport_audit.log" 2>&1 || code=3
+  "$python" audits/three_lite_cases_20261029/audit_actor_tool_boundary.py "$root" > "$root/actor_tool_boundary_audit.json" || code=3
+  "$python" - "$root/actor_tool_boundary_audit.json" <<'PY' || code=3
+import json,sys
+x=json.load(open(sys.argv[1], encoding='utf-8'))
+if any(not x['actors'][role]['total_tool_calls'] or
+       x['actors'][role]['outside_gui_collaboration_contract'] for role in ('A','B')):
+    raise SystemExit('Actor tool boundary invalid')
+PY
 fi
 printf 'run_id=%s\nexit=%s\n' "$run_id" "$code"
 exit "$code"
