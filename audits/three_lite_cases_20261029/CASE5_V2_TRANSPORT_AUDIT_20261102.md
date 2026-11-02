@@ -1,0 +1,12 @@
+# Case 5 v2 transport audit, 2026-11-02
+
+The new triad `20261102T134912Z` stopped after Isolated run `mar-lite-v2-triad1-isolated-20261102T134912Z`: `completed_arm_audit.json` flags incomplete relay and whitelist evidence. This is infrastructure-invalid, not an eligible three-arm comparison. The raw Oracle A PASS/B FAIL is preserved as descriptive evidence only. A ended normally after 13 calls, B timed out after 22 counted calls; both Guests reset clean, saved artifacts reopened and the bridge verified without errors. The supervisor exited 3 and its owned process group ended. Shared and Shared+Lock were not run.
+
+Of 45 relay records, 43 show `response.completed`. A B request beginning at 1793629118.419 returned HTTP 200 and forwarded 1177 bytes but recorded terminal `missing` at 1793629145.399. The connection completed from the relay perspective, but evidence cannot distinguish an upstream omitted terminal from an observer failure. Separately, B's final request recorded `BrokenPipeError` in downstream_write after 13945 bytes. B timeout was recorded at 1793630123.789 and the relay error at 1793630123.924, so a timeout-induced client disconnect is plausible, not proven. That record also lacks the tool-filter evidence required by the original gate. Neither event is reclassified as successful.
+
+A separate no-task probe sent two white-image requests to the user-authorized alternative `https://docode.cc/v1`, `gpt-6-astra`, reasoning medium, SSE and auto tool selection. Both requests exposed namespace tools `mcp__desktop.screenshot` and `mcp__collaboration.read_messages`, and asked for one of them; no task content, model text, tool arguments, credential or response bodies were retained.
+
+- Screenshot request: HTTP 200, `response.completed`, desktop screenshot function reported; 3.521 s.
+- Read-messages request: HTTP 200, then ConnectionError after 82.626 s, no completed terminal or function call.
+
+This is a very small compatibility sample, not an endpoint reliability estimate. It does not establish that the alternate provider supports the complete actor flow reliably, and does not justify substituting it into only some comparison arms. Any future endpoint cohort requires the same endpoint and frozen task/role/budget in all arms, a predeclared flow test and retention of every invalid attempt. The old and new Isolated attempts and the valid diagnostic Pilot remain preserved without relabeling.
