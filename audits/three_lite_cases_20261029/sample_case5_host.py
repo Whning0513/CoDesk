@@ -28,7 +28,18 @@ def inotify_watch_count():
             'max_user_watches': int(Path('/proc/sys/fs/inotify/max_user_watches').read_text())}
 
 
-def sample(root, interval, max_seconds):
+def filesystem_samples(paths):
+    result = []
+    for source in paths:
+        path = Path(source).resolve(strict=True)
+        info = os.statvfs(path)
+        result.append({'path': str(path), 'device': os.stat(path).st_dev,
+                       'free_bytes': info.f_bavail * info.f_frsize,
+                       'free_inodes': info.f_favail})
+    return result
+
+
+def sample(root, interval, max_seconds, filesystems=()):
     root = root.resolve()
     if not root.is_dir():
         raise FileNotFoundError(root)
@@ -43,6 +54,11 @@ def sample(root, interval, max_seconds):
                'cpu_counters': Path('/proc/stat').read_text().splitlines()[0],
                'meminfo': mem, 'disk_free_bytes': shutil.disk_usage(root).free,
                'io_pressure': Path('/proc/pressure/io').read_text().strip()}
+        if filesystems:
+            try:
+                row['filesystems'] = filesystem_samples(filesystems)
+            except OSError as exc:
+                row['filesystem_error'] = type(exc).__name__
         now = time.monotonic()
         if now - last_watch >= 60:
             row['inotify'] = inotify_watch_count()
@@ -57,5 +73,6 @@ if __name__ == '__main__':
     parser.add_argument('run_root', type=Path)
     parser.add_argument('--interval', type=float, default=5)
     parser.add_argument('--max-seconds', type=float, default=3600)
+    parser.add_argument('--filesystem', action='append', default=[])
     args = parser.parse_args()
-    sample(args.run_root, args.interval, args.max_seconds)
+    sample(args.run_root, args.interval, args.max_seconds, args.filesystem)

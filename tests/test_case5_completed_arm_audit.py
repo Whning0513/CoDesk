@@ -17,7 +17,8 @@ module_spec.loader.exec_module(module)
 @pytest.mark.parametrize('fault', [None, 'reopen', 'sync', 'relay', 'boundary', 'resources',
                                    'host', 'topology', 'system_collision',
                                    'missing_system_shot', 'missing_actor_shot', 'truncated', 'brokenpipe',
-                                   'failed_terminal', 'old_log', 'missing_body'])
+                                   'failed_terminal', 'old_log', 'missing_body', 'v2_capacity_ok',
+                                   'v2_disk_low', 'v2_missing_fs', 'v2_fs_changed'])
 def test_audit_retains_model_failure_and_stops_on_evidence_fault(tmp_path, fault):
     root = tmp_path / 'case5-example'
     root.mkdir()
@@ -61,15 +62,28 @@ def test_audit_retains_model_failure_and_stops_on_evidence_fault(tmp_path, fault
         resources['guest_count_peak'] = 1
     if fault == 'topology':
         result['actor_results']['B']['guest_key'] = 'A'
-    for filename, value in [('result.json', result), ('provenance.json', {'actor_mcp_only': True}),
+    provenance = {'actor_mcp_only': True}
+    if str(fault).startswith('v2_'):
+        provenance['case_id'] = 'CDD-MAR-LITE-002'
+    for filename, value in [('result.json', result), ('provenance.json', provenance),
                             ('workspace_sync_result.json', sync), ('missing_outputs.json', ['B']),
                             ('model_metrics.json', {'actors': {'A': {}}}), ('oracle.json', result['oracle'])]:
         (root / filename).write_text(json.dumps(value))
     (root / 'codex_relay_events.jsonl').write_text(json.dumps(relay) + '\n'
                                                     + json.dumps({**relay, 'actor': 'B'}) + '\n')
     if fault != 'host':
-        (root / 'host_resources.jsonl').write_text(json.dumps({'time': 1, 'disk_free_bytes': 1,
-                                                               'meminfo': {}, 'io_pressure': ''}) + '\n')
+        row = {'time': 1, 'disk_free_bytes': 1, 'meminfo': {}, 'io_pressure': ''}
+        if str(fault).startswith('v2_') and fault != 'v2_missing_fs':
+            row['filesystems'] = [{'path': str(i), 'device': i, 'free_bytes': 20 * 1024 ** 3,
+                                   'free_inodes': 10000} for i in range(4)]
+            if fault == 'v2_disk_low':
+                row['filesystems'][1]['free_bytes'] = 100
+        rows = [row]
+        if fault == 'v2_fs_changed':
+            changed = json.loads(json.dumps(row))
+            changed['filesystems'][1]['device'] = 99
+            rows.append(changed)
+        (root / 'host_resources.jsonl').write_text(''.join(json.dumps(x) + '\n' for x in rows))
     (root / 'actual_guest.png').write_bytes(b'screenshot marker')
     (root / 'other_guest.png').write_bytes(b'other screenshot marker')
     paths = ['actual_guest.png', 'actual_guest.png' if fault == 'system_collision' else
@@ -85,5 +99,6 @@ def test_audit_retains_model_failure_and_stops_on_evidence_fault(tmp_path, fault
     boundary_path.write_text(json.dumps(boundary))
     resource_path.write_text(json.dumps(resources))
     outcome = module.audit(root, 2, 'collaborative_isolated', boundary_path, resource_path)
-    assert outcome['valid_to_continue'] is (fault is None)
-    assert bool(outcome['errors']) is (fault is not None)
+    good = fault in (None, 'v2_capacity_ok')
+    assert outcome['valid_to_continue'] is good
+    assert bool(outcome['errors']) is (not good)

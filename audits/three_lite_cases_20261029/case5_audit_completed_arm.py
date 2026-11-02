@@ -110,6 +110,25 @@ def audit(root: Path, driver_exit: int, condition: str, boundary_path: Path,
         host_rows = [json.loads(line) for line in (root / 'host_resources.jsonl').read_text().splitlines()]
         if not host_rows or not all('disk_free_bytes' in row and 'meminfo' in row and 'io_pressure' in row for row in host_rows):
             errors.append('host resource samples missing or invalid')
+        if provenance.get('case_id') == 'CDD-MAR-LITE-002':
+            expected_paths = None
+            for row in host_rows:
+                fs = row.get('filesystems')
+                if row.get('filesystem_error') or not isinstance(fs, list) or len(fs) != 4:
+                    errors.append('four-filesystem resource samples missing or invalid')
+                    break
+                try:
+                    identities = [(entry['path'], entry['device']) for entry in fs]
+                    valid = all(type(entry['free_bytes']) is int and entry['free_bytes'] >= 15 * 1024 ** 3
+                                and type(entry['free_inodes']) is int and entry['free_inodes'] >= 1024
+                                for entry in fs)
+                except (KeyError, TypeError):
+                    valid = False
+                    identities = None
+                if not valid or (expected_paths is not None and identities != expected_paths):
+                    errors.append('filesystem capacity below floor or identity changed during run')
+                    break
+                expected_paths = identities
     except (OSError, ValueError):
         host_rows = []
         errors.append('host resource samples missing or invalid')

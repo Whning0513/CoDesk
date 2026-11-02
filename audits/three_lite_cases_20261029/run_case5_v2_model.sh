@@ -93,7 +93,10 @@ for arm in "${arms[@]}"; do
         sampler_pid=$!
         /data3/whn/Project2/OSWorld-V2/.venv/bin/python \
             audits/three_lite_cases_20261029/sample_case5_host.py "$run_root" \
-            --interval 5 --max-seconds 3600 \
+            --interval 5 --max-seconds 3600 --filesystem "$PWD" \
+            --filesystem "$OSCOMBO_GUEST_IMAGE" \
+            --filesystem "$(docker info --format '{{.DockerRootDir}}')" \
+            --filesystem "$(git rev-parse --path-format=absolute --git-common-dir)" \
             > "audits/three_lite_cases_20261029/${run_id}-host-sampler.log" 2>&1 &
         host_sampler_pid=$!
     fi

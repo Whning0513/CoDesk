@@ -14,7 +14,7 @@ The actor-facing task is in `oscombo/collab/model_and_review_lite_v2/TASK_CARD_Z
 
 The existing relay now passively records `response.completed`/failed/incomplete/truncated evidence without changing bytes delivered to Actors. The Case 5 arm audit fails closed for any missing terminal, zero forwarded bytes, interruption, non-200 or missing allowlist. Old records without terminal evidence are preserved but not retroactively certified. The Codex version probe strips provider/run credentials. Model credentials must be owner-only mode 0600. Resource preflight checks the run, source image, actual Docker root and Git common directory, each with 15 GiB and 1,024 inodes, plus a fail-closed active-Guest check. Run IDs and evidence paths are checked before launch. These changes do not add a GUI input lock to baseline conditions.
 
-The candidate has passed **314 offline tests**, including host Blender opening independent positive and wrong-width negative files, the Oracle's A/B result checks, private-fixture staging, stream framing/credential redaction and dual-filesystem gate. Shell syntax and `git diff --check` also pass. These are not GUI or model results.
+The candidate passed **314 offline tests** before the runtime-filesystem-sampling follow-up; its updated Case 5/Blender/relay/resource test subset passes **82 tests**. These include host Blender opening independent positive and wrong-width negative files, the Oracle's A/B result checks, private-fixture staging, stream framing/credential redaction and dual-filesystem gate. Each model run also samples all four filesystem paths and marks capacity/identity failures as infrastructure errors. Shell syntax and `git diff --check` also pass. These are not GUI or model results.
 
 ## Preregistered next gates
 
