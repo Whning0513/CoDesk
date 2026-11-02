@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import threading
 import time
+import uuid
 import zipfile
 from pathlib import Path
 
@@ -23,6 +24,12 @@ from . import spec
 
 def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+class SaveValidationRetry(RuntimeError):
+    def __init__(self, retry_id, actor, guest_path):
+        super().__init__("artifact changed during save; retry after saving completes")
+        self.retry_id, self.actor, self.guest_path = retry_id, actor, guest_path
 
 
 class SavedArtifactBridge:
@@ -37,6 +44,7 @@ class SavedArtifactBridge:
         self.run_id, self.task_root = run_id, task_root
         self.controllers, self.guest_ids = controllers, guest_ids
         self.poll_seconds = poll_seconds
+        self._save_retries = {}
         self.peer_read_only = peer_read_only
         self.outputs = dict(spec.OUTPUTS if outputs is None else outputs)
         self.mime_types = dict({
@@ -125,7 +133,10 @@ class SavedArtifactBridge:
             data = self._read(actor, path)
             # Read twice and check ZIP CRCs before transferring a GUI save.
             if self._read(actor, path) != data:
-                raise RuntimeError("artifact changed during save; retry after saving completes")
+                retry_id = uuid.uuid4().hex
+                self._save_retries[retry_id] = (actor, path, time.time())
+                self._record(event="save_validation_retry", retry_id=retry_id, actor=actor, guest_path=path)
+                raise SaveValidationRetry(retry_id, actor, path)
             expected = self.mime_types[actor]
             if expected == "application/x-blender":
                 from oscombo.collab.model_and_review.blend_format import (
@@ -187,6 +198,13 @@ class SavedArtifactBridge:
             temp = self.root / "current.tmp"
             temp.write_text(json.dumps(self.current, indent=2) + "\n")
             temp.replace(self.root / "current.json")
+            for retry_id, (owner, retry_path, retry_time) in list(self._save_retries.items()):
+                if owner == actor and retry_path == path and time.time() - retry_time <= 60:
+                    self._record(event="save_validation_recovered", retry_id=retry_id, actor=actor,
+                                 guest_path=path, revision=self.current[actor]["revision"],
+                                 sha256=sha, bytes=len(data), destination_guest=self.guest_ids[peer],
+                                 peer_sha256=sha, distinct_guest=distinct)
+                    del self._save_retries[retry_id]
             return dict(self.current[actor])
 
     def snapshot(self) -> dict:
@@ -218,8 +236,10 @@ class SavedArtifactBridge:
                 except Exception as exc:
                     # Preserve failures; callers decide validity after final flush.
                     with self._lock:
-                        self.errors.append(f"{type(exc).__name__}: {exc}")
-                        self._record(event="sync_error", error=self.errors[-1])
+                        self.errors.append(f"RuntimeError: {exc}" if isinstance(exc, SaveValidationRetry) else f"{type(exc).__name__}: {exc}")
+                        fields = ({"retry_id": exc.retry_id, "actor": exc.actor, "guest_path": exc.guest_path}
+                                  if isinstance(exc, SaveValidationRetry) else {})
+                        self._record(event="sync_error", error=self.errors[-1], **fields)
         self._thread = threading.Thread(target=loop, name="saved-artifact-bridge", daemon=True)
         self._thread.start()
 

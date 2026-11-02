@@ -286,3 +286,37 @@ def test_public_snapshot_does_not_wait_for_slow_guest_io_lock(tmp_path):
         assert not reader.is_alive(), "public handoff snapshot blocked behind Guest I/O"
     assert set(observed[0]) == {"A", "B"}
     assert observed[0]["A"]["revision"] == 0
+
+
+def test_changing_save_is_not_transferred_and_recovery_is_attributed(tmp_path, monkeypatch):
+    bridge, a, b = setup_bridge(tmp_path)
+    path = f"/task/{spec.OUTPUTS['A']}"
+    before = b.files[path]
+    new = edited_workbook(tmp_path)
+    a.files[path] = new
+    original = bridge._read
+    reads = 0
+
+    def changing(role, name):
+        nonlocal reads
+        data = original(role, name)
+        if role == 'A' and name == path:
+            reads += 1
+            if reads == 2:
+                return data + b'changed-during-save'
+        return data
+
+    monkeypatch.setattr(bridge, '_read', changing)
+    with pytest.raises(RuntimeError, match='changed during save'):
+        bridge.publish('A')
+    assert b.files[path] == before
+    assert bridge.snapshot()['A']['revision'] == 0
+    recovered = bridge.publish('A')
+    assert recovered['revision'] == 1 and b.files[path] == new
+    rows = [json.loads(x) for x in (bridge.root / 'events.jsonl').read_text().splitlines()]
+    retry = next(x for x in rows if x['event'] == 'save_validation_retry')
+    done = next(x for x in rows if x['event'] == 'save_validation_recovered')
+    assert retry['retry_id'] == done['retry_id']
+    assert retry['actor'] == done['actor'] == 'A'
+    assert done['sha256'] == done['peer_sha256'] == digest(new)
+    assert done['guest_path'] == path

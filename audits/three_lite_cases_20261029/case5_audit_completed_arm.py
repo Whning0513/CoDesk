@@ -4,6 +4,7 @@ import argparse
 from collections import Counter
 import json
 from pathlib import Path
+from oscombo.collab.data_to_deck.case5_save_retry_review import review as review_save_retries
 
 
 def audit(root: Path, driver_exit: int, condition: str, boundary_path: Path,
@@ -68,7 +69,10 @@ def audit(root: Path, driver_exit: int, condition: str, boundary_path: Path,
     if sync.get('verified') is not True:
         errors.append('workspace bridge not verified')
     if sync.get('transient_errors'):
-        errors.append('workspace bridge errors require review')
+        if review_save_retries(root, sync['transient_errors'], condition):
+            warnings.append('bounded save-validation retry independently reviewed as recovered; original errors preserved')
+        else:
+            errors.append('workspace bridge errors require review')
     for role in ('A', 'B'):
         actor = boundary.get('actors', {}).get(role, {})
         if not actor.get('total_tool_calls') or actor.get('outside_gui_collaboration_contract') != {}:
