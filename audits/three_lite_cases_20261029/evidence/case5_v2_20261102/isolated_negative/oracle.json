@@ -1,0 +1,24 @@
+{
+  "actor_subscores": {
+    "A": false,
+    "B": true
+  },
+  "case_id": "CDD-MAR-LITE-002",
+  "checks": {
+    "A_shade_geometry": false,
+    "B_report_matches_saved_scene": true,
+    "protected_objects": true,
+    "scene_inventory": true
+  },
+  "joint_success": false,
+  "measured": {
+    "bulb_width_m": 0.5,
+    "radial_clearance_m": 0.4,
+    "reported_clearance_m": 0.4,
+    "reported_verdict": "pass",
+    "reported_width_m": 1.3,
+    "shade_width_m": 1.3
+  },
+  "oracle_version": "2.0.0",
+  "status": "FAIL"
+}

@@ -1,0 +1,17 @@
+{
+  "condition": "collaborative_isolated",
+  "driver_exit": 2,
+  "driver_status": "FAIL",
+  "errors": [
+    "relay whitelist evidence missing or invalid",
+    "non-200, interrupted or incomplete relay response requires review"
+  ],
+  "expected_guest_count": 2,
+  "host_samples": 636,
+  "relay_status_counts": {
+    "200": 45
+  },
+  "run_id": "mar-lite-v2-triad1-isolated-20261102T134912Z",
+  "valid_to_continue": false,
+  "warnings": []
+}

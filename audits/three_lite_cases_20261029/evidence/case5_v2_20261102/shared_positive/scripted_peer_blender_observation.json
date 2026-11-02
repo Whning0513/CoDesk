@@ -1,0 +1,36 @@
+{
+  "attempts": [
+    {
+      "candidate": true,
+      "changed_pixels": [
+        18,
+        18
+      ],
+      "mask_overlap": 1.0,
+      "fingerprint": "268cce320bae4ac80c91307f7abe2e9e671a453729f090aabb23b220d13256c6",
+      "scope": "candidate only, not numeric proof; full GUI screenshot requires manual review",
+      "screenshot": "screenshots/scripted-peer-blender-reload-01.png",
+      "screenshot_sha256": "38ccaa58205b3fa763c94003e3437e749b0c4d65036a1bdd3f32a512181f3cbc",
+      "frame_ready": true,
+      "revert_dialog": false,
+      "stable_frames": 1
+    },
+    {
+      "candidate": true,
+      "changed_pixels": [
+        18,
+        18
+      ],
+      "mask_overlap": 1.0,
+      "fingerprint": "268cce320bae4ac80c91307f7abe2e9e671a453729f090aabb23b220d13256c6",
+      "scope": "candidate only, not numeric proof; full GUI screenshot requires manual review",
+      "screenshot": "screenshots/scripted-peer-blender-reload-02.png",
+      "screenshot_sha256": "38ccaa58205b3fa763c94003e3437e749b0c4d65036a1bdd3f32a512181f3cbc",
+      "frame_ready": true,
+      "revert_dialog": false,
+      "stable_frames": 2
+    }
+  ],
+  "manual_review_required": true,
+  "scope": "screenshot candidate, not numeric OCR"
+}

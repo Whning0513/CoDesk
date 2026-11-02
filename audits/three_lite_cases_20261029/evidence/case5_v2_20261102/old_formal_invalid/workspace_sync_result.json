@@ -1,0 +1,24 @@
+{
+  "final_versions": {
+    "A": {
+      "actor": "A",
+      "revision": 1,
+      "sha256": "5f27b30e49b0dc1b973eea4bfa991a02e807bf0f62bb9185f6f9c5a32006c89e",
+      "bytes": 111670,
+      "guest_path": "/tmp/codesk-model-review-v2-lite-v1/outputs/agent_A/Lamp_Review.blend",
+      "delivered": true
+    },
+    "B": {
+      "actor": "B",
+      "revision": 1,
+      "sha256": "33b75d71a5e865fdf337cda771833e9174a25d9d55adf607f304d3a583a4bccf",
+      "bytes": 129,
+      "guest_path": "/tmp/codesk-model-review-v2-lite-v1/outputs/agent_B/shade_review.txt",
+      "delivered": true
+    }
+  },
+  "transient_errors": [
+    "RuntimeError: artifact changed during save; retry after saving completes"
+  ],
+  "verified": true
+}

@@ -1,0 +1,14 @@
+{
+  "condition": "collaborative_isolated",
+  "driver_exit": 2,
+  "driver_status": "FAIL",
+  "errors": [],
+  "expected_guest_count": 2,
+  "host_samples": 437,
+  "relay_status_counts": {
+    "200": 34
+  },
+  "run_id": "mar-lite-v2-pilot-isolated-20261102T114924Z",
+  "valid_to_continue": true,
+  "warnings": []
+}

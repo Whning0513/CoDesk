@@ -1,0 +1,14 @@
+[
+  {
+    "guest": "shared",
+    "old": "f7861d0efb7b996cb2da06171d0102e8cc7467943bc749a734d94bcc4a23d0dc",
+    "new": "0b1d438ccd2346a6114971706683bba0a4dfbb6fe3cd1b2dc77d99a3df34ea88",
+    "workspace_clean": true,
+    "labels": {
+      "org.opencontainers.image.ref.name": "ubuntu",
+      "org.opencontainers.image.version": "22.04",
+      "oscombo": "1",
+      "oscombo.run": "mar-lite-v2-control-positive-shared-20261102T100758Z-605177"
+    }
+  }
+]

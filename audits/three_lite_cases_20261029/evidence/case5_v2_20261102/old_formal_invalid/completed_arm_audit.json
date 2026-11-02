@@ -1,0 +1,16 @@
+{
+  "condition": "collaborative_isolated",
+  "driver_exit": 2,
+  "driver_status": "FAIL",
+  "errors": [
+    "workspace bridge errors require review"
+  ],
+  "expected_guest_count": 2,
+  "host_samples": 550,
+  "relay_status_counts": {
+    "200": 46
+  },
+  "run_id": "mar-lite-v2-triad1-isolated-20261102T122638Z",
+  "valid_to_continue": false,
+  "warnings": []
+}

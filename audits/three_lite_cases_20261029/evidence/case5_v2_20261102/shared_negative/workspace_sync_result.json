@@ -1,0 +1,22 @@
+{
+  "final_versions": {
+    "A": {
+      "actor": "A",
+      "revision": 1,
+      "sha256": "e72c23208abf350989417121001b67d42401c1eac648d5a5ab178537224e4778",
+      "bytes": 111698,
+      "guest_path": "/tmp/codesk-model-review-v2-lite-v1/outputs/agent_A/Lamp_Review.blend",
+      "delivered": true
+    },
+    "B": {
+      "actor": "B",
+      "revision": 1,
+      "sha256": "73e0abcd8e461a911a0c93a3b22a0bfa9cb5529b4c36a219e61af805b18a24ec",
+      "bytes": 60,
+      "guest_path": "/tmp/codesk-model-review-v2-lite-v1/outputs/agent_B/shade_review.txt",
+      "delivered": true
+    }
+  },
+  "transient_errors": [],
+  "verified": true
+}

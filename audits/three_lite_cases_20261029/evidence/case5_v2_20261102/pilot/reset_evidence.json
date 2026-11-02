@@ -1,0 +1,26 @@
+[
+  {
+    "guest": "A",
+    "old": "9abadfcad0b36fe23de0a714e5046c5259e003e0de4be05203329d286090c474",
+    "new": "ec1ca8ba69ff414f801984096373a77667a8a62aca9a0260e6ae0fbdb03ee8bf",
+    "workspace_clean": true,
+    "labels": {
+      "org.opencontainers.image.ref.name": "ubuntu",
+      "org.opencontainers.image.version": "22.04",
+      "oscombo": "1",
+      "oscombo.run": "mar-lite-v2-pilot-isolated-20261102T114924Z"
+    }
+  },
+  {
+    "guest": "B",
+    "old": "557e144043e50c93867b09830f1266322440ee4e62540ed4b04ed3e832f0a2fa",
+    "new": "353c257c456c817e21396db2d802297b0a7324b0661d4fbcdffd337d11b90677",
+    "workspace_clean": true,
+    "labels": {
+      "org.opencontainers.image.ref.name": "ubuntu",
+      "org.opencontainers.image.version": "22.04",
+      "oscombo": "1",
+      "oscombo.run": "mar-lite-v2-pilot-isolated-20261102T114924Z"
+    }
+  }
+]

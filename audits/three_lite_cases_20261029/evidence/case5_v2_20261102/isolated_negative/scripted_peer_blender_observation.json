@@ -1,0 +1,66 @@
+{
+  "attempts": [
+    {
+      "candidate": false,
+      "changed_pixels": [
+        0,
+        0
+      ],
+      "mask_overlap": 0.0,
+      "fingerprint": "2548982592d736f17afe3c403b074741399ecf98b4348e1555a6db9f51d92ab6",
+      "scope": "candidate only, not numeric proof; full GUI screenshot requires manual review",
+      "screenshot": "screenshots/scripted-peer-blender-reload-01.png",
+      "screenshot_sha256": "53e345ffa9677aa795656e56bd8cfa1b544602af86366a938eb18735ab72f3bd",
+      "frame_ready": true,
+      "revert_dialog": true,
+      "stable_frames": 0
+    },
+    {
+      "candidate": false,
+      "changed_pixels": [
+        0,
+        0
+      ],
+      "mask_overlap": 0.0,
+      "fingerprint": "2548982592d736f17afe3c403b074741399ecf98b4348e1555a6db9f51d92ab6",
+      "scope": "candidate only, not numeric proof; full GUI screenshot requires manual review",
+      "screenshot": "screenshots/scripted-peer-blender-reload-02.png",
+      "screenshot_sha256": "53e345ffa9677aa795656e56bd8cfa1b544602af86366a938eb18735ab72f3bd",
+      "frame_ready": true,
+      "revert_dialog": true,
+      "stable_frames": 0
+    },
+    {
+      "candidate": true,
+      "changed_pixels": [
+        19,
+        19
+      ],
+      "mask_overlap": 1.0,
+      "fingerprint": "f25b6502892703a5abb12d66ebf9c098ef1c39b9e3e02570e0d0f94dc8f1eca0",
+      "scope": "candidate only, not numeric proof; full GUI screenshot requires manual review",
+      "screenshot": "screenshots/scripted-peer-blender-reload-03.png",
+      "screenshot_sha256": "1d0b1295bd420f019554a75884d6661a495ed66c5bfbd749d1dd341149df23fa",
+      "frame_ready": true,
+      "revert_dialog": false,
+      "stable_frames": 1
+    },
+    {
+      "candidate": true,
+      "changed_pixels": [
+        19,
+        19
+      ],
+      "mask_overlap": 1.0,
+      "fingerprint": "f25b6502892703a5abb12d66ebf9c098ef1c39b9e3e02570e0d0f94dc8f1eca0",
+      "scope": "candidate only, not numeric proof; full GUI screenshot requires manual review",
+      "screenshot": "screenshots/scripted-peer-blender-reload-04.png",
+      "screenshot_sha256": "1d0b1295bd420f019554a75884d6661a495ed66c5bfbd749d1dd341149df23fa",
+      "frame_ready": true,
+      "revert_dialog": false,
+      "stable_frames": 2
+    }
+  ],
+  "manual_review_required": true,
+  "scope": "screenshot candidate, not numeric OCR"
+}

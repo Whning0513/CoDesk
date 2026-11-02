@@ -1,0 +1,18 @@
+[
+  {
+    "role": "A",
+    "guest": "A",
+    "sha256": "5a8dd0d64930eeec3c8d039c48402c010cf8119246a290d04bef845c7f9d8f46",
+    "same_bytes": true,
+    "discarded_uncommitted_buffer_after_scoring": false,
+    "restored_closed_window": false
+  },
+  {
+    "role": "B",
+    "guest": "B",
+    "sha256": "37b3c738d14d7115e570f4f5e37e9fd9f7d57915bf18e1abdba6c51e6453eeb5",
+    "same_bytes": true,
+    "discarded_uncommitted_buffer_after_scoring": false,
+    "restored_closed_window": false
+  }
+]
