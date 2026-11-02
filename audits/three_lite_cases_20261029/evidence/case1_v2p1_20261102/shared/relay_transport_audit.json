@@ -1,0 +1,12 @@
+{
+  "errors": [],
+  "event_count": 34,
+  "invalid_event_count": 0,
+  "malformed_event_count": 0,
+  "requests_by_actor": {
+    "A": 20,
+    "B": 14
+  },
+  "scope": "all recorded relay requests; no request, response or credential content emitted",
+  "valid": true
+}

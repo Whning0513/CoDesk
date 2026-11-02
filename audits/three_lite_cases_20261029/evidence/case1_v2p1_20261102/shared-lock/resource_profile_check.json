@@ -1,0 +1,21 @@
+{
+  "run_id": "cdd-v2p1-formal-shared-lock-20261102T083736Z-444651",
+  "requested_profile_ok": true,
+  "qemu_profile_observed": {
+    "2e1f2d15f035b8172bbcbb4f3cf0494f5fb3e05df7d479190b10c84ae00c9302": {
+      "cpus": "8",
+      "memory": "8G"
+    },
+    "2f98f7d107ce6ccbc8bee31b0e112ab1ccbd5ad251d5ce646969a532469bba47": {
+      "cpus": "8",
+      "memory": "8G"
+    }
+  },
+  "expected_initial_guest_count": 1,
+  "actual_profile_ok": true,
+  "host_resource_coverage": true,
+  "sample_cadence_ok": true,
+  "sample_time_span_ok": true,
+  "malformed_sample_lines": 0,
+  "resource_observation_complete": true
+}

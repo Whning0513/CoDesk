@@ -1,0 +1,18 @@
+[
+  {
+    "actor": "A",
+    "guest_key": "shared",
+    "sha256": "74b628bfd4e398478805dd7ee3a9d4b018f99735030c033b78f7a11cc635a0f4",
+    "same_bytes_after_gui_reopen": true,
+    "restored_closed_window": false,
+    "time": 1793608438.0375798
+  },
+  {
+    "actor": "B",
+    "guest_key": "shared",
+    "sha256": "28750fc25a877da4a1585cb04ea30b20838c3debafdc26f664731dff226db373",
+    "same_bytes_after_gui_reopen": true,
+    "restored_closed_window": false,
+    "time": 1793608476.0012138
+  }
+]

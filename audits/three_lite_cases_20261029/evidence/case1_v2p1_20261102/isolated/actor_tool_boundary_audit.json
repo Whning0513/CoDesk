@@ -1,0 +1,13 @@
+{
+  "run_id": "cdd-v2p1-formal-isolated-20261102T074745Z-329182",
+  "actors": {
+    "A": {
+      "total_tool_calls": 11,
+      "outside_gui_collaboration_contract": {}
+    },
+    "B": {
+      "total_tool_calls": 13,
+      "outside_gui_collaboration_contract": {}
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "run_id": "cdd-v2p1-formal-isolated-20261102T074745Z-329182",
+  "requested_profile_ok": true,
+  "qemu_profile_observed": {
+    "abc83b086a9d42cd93b1df0066da0d625568a1e42ae495cb1f9cc38f44db159a": {
+      "cpus": "8",
+      "memory": "8G"
+    },
+    "c7a53f7311add46eed4e3c1a1790827ef30e064a7934e3d73a9321f5e96d7953": {
+      "cpus": "8",
+      "memory": "8G"
+    },
+    "0d195ef09a7c5220cd1543d6de5bb12c7b1e63453b3b9ac7fdffaca8a27807c2": {
+      "cpus": "8",
+      "memory": "8G"
+    },
+    "4d37f544978cd9cda1e7224d14a017ffed735ea2cb5912084b52201d46b3abfa": {
+      "cpus": "8",
+      "memory": "8G"
+    }
+  },
+  "expected_initial_guest_count": 2,
+  "actual_profile_ok": true,
+  "host_resource_coverage": true,
+  "sample_cadence_ok": true,
+  "sample_time_span_ok": true,
+  "malformed_sample_lines": 0,
+  "resource_observation_complete": true
+}

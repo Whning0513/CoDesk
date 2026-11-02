@@ -1,0 +1,49 @@
+{
+  "budget": {
+    "active_seconds": 1200,
+    "steps": 25
+  },
+  "case": "CDD-LITE-002 v2.0.1",
+  "each_arm_attempts": 1,
+  "effort": "medium",
+  "endpoint": "https://api.haogpt.net/v1",
+  "fixture_sha256": {
+    "case_brief.md": {
+      "bytes": 628,
+      "sha256": "7beef22e891bc9760a154aadcc857255888facda71e099885f14de106e8787b4"
+    },
+    "management_draft.odp": {
+      "bytes": 1840,
+      "sha256": "eae35f5a55b791fca83e6ff7e16d6c1a99876b340d14882394552acc9c5f9ec2"
+    },
+    "quarterly_authority.ods": {
+      "bytes": 1637,
+      "sha256": "d650e712d62652c8d41f45e2c18e73ff39a7c4a7d04ff9f5f813c78b4df9e6ae"
+    }
+  },
+  "guest_cpus": 8,
+  "guest_ram": "8G",
+  "invalid_rule": "stop on infrastructure invalid; preserve all attempts",
+  "model": "gpt-6-astra",
+  "order": [
+    "isolated",
+    "shared",
+    "shared-lock"
+  ],
+  "other_controls_and_pilot_source": "b45717f7e04934e5c63fd27e66a5c46db75da5b2",
+  "pilot_handoff": "A message contains numerical result and source, B read it and listed revision; no attachment or GUI read of ODS observed",
+  "registered_utc": "2026-11-02T07:47:28.383320+00:00",
+  "roles_prompt_sha256": {
+    "A": "79a541c43b756e64d636fa42f5894eb3b73d4be2199d24db6f05a884891949bd",
+    "B": "78e8a31b6cfaadb4caadbbc6326fefbf0ee0eefcb95bfce9bd4253f0d46e9d51"
+  },
+  "shared_control_reuse": "subsequent changes only add post-run audit and source recording; raw artifacts independently checked",
+  "shared_control_source": "0575340",
+  "source_commit": "b45717f7e04934e5c63fd27e66a5c46db75da5b2",
+  "source_runs": {
+    "isolated_positive": "cdd-v2p1-control-isolated-20261102T063422Z-164341",
+    "pilot": "cdd-v2p1-pilot-isolated-20261102T071446Z-245766",
+    "shared_negative": "cdd-v2p1-control-negative-shared-20261102T070000Z-220126",
+    "shared_positive": "cdd-v2p1-control-shared-20261102T0920Z-b"
+  }
+}

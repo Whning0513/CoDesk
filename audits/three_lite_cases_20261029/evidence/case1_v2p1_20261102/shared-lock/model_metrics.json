@@ -1,0 +1,86 @@
+{
+  "actor_active_overlap_excluding_handoff_wait_s": 41.498,
+  "actor_execution_overlap_s": 322.025,
+  "actor_handoff_wait_s": {
+    "B": 280.527
+  },
+  "actor_lifecycle_events": [
+    {
+      "actor": "B",
+      "event": "suspended_for_peer_handoff",
+      "peer": "A",
+      "time": 1793609107.444101
+    },
+    {
+      "actor": "B",
+      "event": "woken_by_peer_handoff",
+      "peer": "A",
+      "time": 1793609387.9710193
+    }
+  ],
+  "actor_phase_s": 542.561,
+  "actors": {
+    "A": {
+      "actor_elapsed_s": 322.03,
+      "actor_status": "done",
+      "cached_input_tokens": 108544,
+      "desktop_tool_calls": 12,
+      "executed_gui_actions": 11,
+      "gui_action_s": 45.996,
+      "input_tokens": 162353,
+      "model_http_statuses": {
+        "200": 15
+      },
+      "model_request_s": 183.322,
+      "model_requests": 15,
+      "output_tokens": 808,
+      "screenshot_s": 55.726,
+      "total_tokens": 163161
+    },
+    "B": {
+      "actor_elapsed_s": 542.56,
+      "actor_status": "done",
+      "cached_input_tokens": 93568,
+      "desktop_tool_calls": 9,
+      "executed_gui_actions": 6,
+      "gui_action_s": 28.158,
+      "input_tokens": 122731,
+      "model_http_statuses": {
+        "200": 15
+      },
+      "model_request_s": 161.168,
+      "model_requests": 15,
+      "output_tokens": 879,
+      "screenshot_s": 40.885,
+      "total_tokens": 123610
+    }
+  },
+  "case_id": "CDD-LITE-002",
+  "condition": "collaborative_shared",
+  "desktop_calls_during_handoff_wait": 0,
+  "gui_action_overlap_s": 0.0,
+  "model": "gpt-6-astra",
+  "model_request_overlap_s": 23.747,
+  "model_requests_during_handoff_wait": 0,
+  "oracle_actor_success": {
+    "A": true,
+    "B": true
+  },
+  "oracle_joint_success": true,
+  "qemu_cpu_seconds_sampled": 0,
+  "qemu_peak_sampled_sum_rss_gib": 0.0,
+  "qemu_peak_single_rss_gib": 0.0,
+  "qemu_process_count": 0,
+  "reset_guests": 1,
+  "result_status": "PASS",
+  "role_step_budget": {
+    "A": 25,
+    "B": 25
+  },
+  "run_id": "cdd-v2p1-formal-shared-lock-20261102T083736Z-444651",
+  "scope": "Actor/API/GUI overlap is measured from timestamps; it does not by itself prove focus interference.",
+  "setup_until_actor_s": 424.36,
+  "total_elapsed_s": 1209.17,
+  "workspace_sync_errors": [],
+  "workspace_transfers": 0
+}

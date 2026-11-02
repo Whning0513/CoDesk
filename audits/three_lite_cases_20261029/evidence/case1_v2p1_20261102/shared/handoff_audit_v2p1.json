@@ -1,0 +1,32 @@
+{
+  "run_id": "cdd-v2p1-formal-shared-20261102T081528Z-407925",
+  "baseline_audit_preserved": {
+    "run_id": "cdd-v2p1-formal-shared-20261102T081528Z-407925",
+    "artifact_joint_success": true,
+    "a_revision": {
+      "revision": 1,
+      "sha256": "74b628bfd4e398478805dd7ee3a9d4b018f99735030c033b78f7a11cc635a0f4",
+      "time": 1793608207.6092014
+    },
+    "a_message": {
+      "message_id": "49c12c6b-2bd1-4227-b3b2-4baec0f46215",
+      "timestamp": 1793608260.3483987
+    },
+    "b_read_message_stdout_item_index": 13,
+    "b_first_gui_edit_after_read_item_index": 18,
+    "b_revision": {
+      "revision": 1,
+      "sha256": "28750fc25a877da4a1585cb04ea30b20838c3debafdc26f664731dff226db373",
+      "time": 1793608368.1971207
+    },
+    "a_transfer_count": 0,
+    "source_delivered": false,
+    "strict_behavioral_handoff": false,
+    "caveat": "B read timing is ordered within its model event stream; the collaboration server does not timestamp reads."
+  },
+  "same_desktop_committed_revision_verified": true,
+  "a_message_contains_result_and_source": true,
+  "attachment_count": 0,
+  "message_read_then_gui_edit_then_saved": true,
+  "scope": "A saved revision plus B read of message and subsequent GUI edit; not evidence B opened the ODS in GUI."
+}

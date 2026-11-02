@@ -1,0 +1,32 @@
+[
+  {
+    "actor": "A",
+    "guest_key": "A",
+    "sha256": "41751674f89d37d7ff1f722681eb87ab2581383e2b7ff6a86682b501537bd67d",
+    "same_bytes_after_gui_reopen": true,
+    "restored_closed_window": false,
+    "time": 1793606886.1549473
+  },
+  {
+    "actor": "A",
+    "guest_key": "B",
+    "sha256": "41751674f89d37d7ff1f722681eb87ab2581383e2b7ff6a86682b501537bd67d",
+    "peer_gui_opened_readonly": true,
+    "time": 1793606912.6362963
+  },
+  {
+    "actor": "B",
+    "guest_key": "B",
+    "sha256": "818b2150377e89e2b34e6826f048c1088cb0ce014b05ed339f58bf0bb0528299",
+    "same_bytes_after_gui_reopen": true,
+    "restored_closed_window": false,
+    "time": 1793606989.759226
+  },
+  {
+    "actor": "B",
+    "guest_key": "A",
+    "sha256": "818b2150377e89e2b34e6826f048c1088cb0ce014b05ed339f58bf0bb0528299",
+    "peer_gui_opened_readonly": true,
+    "time": 1793607015.503573
+  }
+]
