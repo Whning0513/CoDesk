@@ -24,6 +24,7 @@ esac
 [[ "$run_id" =~ ^cdd-v2p1-[a-zA-Z0-9_.-]+$ ]] || { echo 'Unsafe run ID' >&2; exit 3; }
 [[ ! -e "runs/$run_id" && ! -e "audits/three_lite_cases_20261029/$run_id-driver.log" ]] || exit 3
 git diff --quiet && git diff --cached --quiet || { echo 'Commit tracked source before running' >&2; exit 3; }
+source_commit=$(git rev-parse HEAD) || exit 3
 for path in "$PWD" /data2 /data3; do
   free=$(df -Pk -- "$path" | awk 'NR==2 {print $4}') || exit 3
   [[ "$free" =~ ^[0-9]+$ ]] && (( free >= 15 * 1024 * 1024 )) || { echo "Disk floor failed: $path" >&2; exit 3; }
@@ -65,6 +66,7 @@ driver=$!; unset credential
 for _ in {1..100}; do [[ -d "$root" ]] && break; kill -0 "$driver" 2>/dev/null || break; sleep 0.1; done
 sampler=''; disk_monitor=''
 if [[ -d "$root" ]] && kill -0 "$driver" 2>/dev/null; then
+  printf '%s\n' "$source_commit" > "$root/launcher_source_commit.txt"
   "$python" -m oscombo.collab.spreadsheet_handoff_lite_v1_2.sample_resources "$root" --interval 5 --max-seconds 7200 > "$root/resource_sampler.log" 2>&1 & sampler=$!
   (
     while kill -0 "$driver" 2>/dev/null; do
@@ -78,6 +80,9 @@ if wait "$driver"; then code=0; else code=$?; fi
 if [[ -n "$sampler" ]]; then kill "$sampler" 2>/dev/null || true; wait "$sampler" 2>/dev/null || true; fi
 if [[ -n "$disk_monitor" ]]; then kill "$disk_monitor" 2>/dev/null || true; wait "$disk_monitor" 2>/dev/null || true; fi
 [[ -d "$root" ]] || exit 3
+if [[ "$(git rev-parse HEAD)" != "$source_commit" ]] || ! git diff --quiet || ! git diff --cached --quiet; then
+  echo 'Source changed during this episode' >&2; code=3
+fi
 "$python" - "$root/disk_capacity_samples.tsv" <<'PY' || code=3
 import sys
 from pathlib import Path
@@ -88,6 +93,7 @@ if not rows or any(len(row) != 3 or not all(value.isdecimal() for value in row)
     raise SystemExit('dual filesystem monitoring missing, invalid, or below floor')
 PY
 "$python" -m oscombo.collab.spreadsheet_handoff_lite_v1_2.check_resources "$root" "$guests" > "$root/resource_profile_check.log" 2>&1 || code=3
+"$python" -m oscombo.collab.data_to_deck_lite_v2_1.audit_run "$root" > "$root/case1_evidence_audit.json" 2>&1 || code=3
 if (( model )); then
   "$python" -m oscombo.collab.spreadsheet_handoff_lite_v1_2.relay_transport "$root" > "$root/relay_transport_audit.log" 2>&1 || code=3
   "$python" audits/three_lite_cases_20261029/audit_actor_tool_boundary.py "$root" > "$root/actor_tool_boundary_audit.json" || code=3
