@@ -5,7 +5,9 @@ source env.local.sh || exit 3
 export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
 source audits/three_lite_cases_20261029/case5_resource_gate.sh || exit 3
 credential_file="${CODESK_MODEL_KEY_FILE:-/data3/whn/Project2/.codesk-secrets/haogpt_20261027.key}"
-if [[ ! -r "$credential_file" ]]; then
+if [[ ! -f "$credential_file" || ! -r "$credential_file" ||
+      "$(stat -c %a "$credential_file")" != 600 ||
+      "$(stat -c %u "$credential_file")" != "$(id -u)" ]]; then
     echo "Model credential file is not readable: ${credential_file}" >&2
     exit 3
 fi
@@ -53,11 +55,7 @@ trap on_term TERM INT
 for arm in "${arms[@]}"; do
     [[ "$(git rev-parse HEAD)" == "$frozen_commit" ]] && git diff --quiet && git diff --cached --quiet || {
         echo 'Frozen source changed; stopping triad' >&2; exit 3; }
-    available_bytes="$(df -PB1 . | awk 'NR==2 {print $4}')"
-    if (( available_bytes < 15 * 1024 * 1024 * 1024 )); then
-        echo "Stopping before next Guest: disk available ${available_bytes} bytes (<15 GiB)" >&2
-        exit 4
-    fi
+    case5_require_capacity || exit 4
     case5_require_no_active_oscombo_guests || exit 4
     condition="collaborative_${arm%_lock}"
     lock_flag=()
@@ -65,6 +63,7 @@ for arm in "${arms[@]}"; do
     run_id="mar-lite-v1-${mode}-${arm}-${stamp}"
     run_root="runs/${run_id}"
     log="audits/three_lite_cases_20261029/${run_id}-driver.log"
+    [[ ! -e "$run_root" && ! -e "$log" ]] || { echo 'Run ID already exists' >&2; exit 3; }
     echo "Starting ${run_id} at $(date -u +%FT%TZ)"
     /data3/whn/Project2/OSWorld-V2/.venv/bin/python \
         audits/three_lite_cases_20261029/case5_signal_safe_module.py \

@@ -119,8 +119,14 @@ def audit(root: Path, driver_exit: int, condition: str, boundary_path: Path,
                 or any(row.get('actor_mcp_only') is not True or row.get('model') != 'gpt-6-astra' for row in relay)):
             errors.append('relay whitelist evidence missing or invalid')
         statuses = Counter(str(row.get('upstream_status')) for row in relay)
-        if any(row.get('upstream_status') != 200 for row in relay):
-            errors.append('non-200 or interrupted relay response requires review')
+        if any(not (type(row.get('upstream_status')) is int and row['upstream_status'] == 200
+                    and 'error_type' not in row and 'phase' not in row
+                    and row.get('headers_sent') is True
+                    and type(row.get('forwarded_bytes')) is int and row['forwarded_bytes'] > 0
+                    and type(row.get('response_evidence_version')) is int and row['response_evidence_version'] == 1
+                    and row.get('response_format') in ('sse', 'json')
+                    and row.get('response_terminal') == 'response.completed') for row in relay):
+            errors.append('non-200, interrupted or incomplete relay response requires review')
     except (OSError, ValueError):
         statuses = Counter()
         errors.append('relay events missing or invalid')

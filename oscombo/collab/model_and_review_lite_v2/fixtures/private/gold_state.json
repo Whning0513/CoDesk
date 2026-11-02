@@ -1,0 +1,16 @@
+{
+  "case_id": "CDD-MAR-LITE-002",
+  "case_version": "2.0.0",
+  "scene_name": "Lamp_Lite_Review",
+  "shade_outside_dimensions_m": [
+    1.5,
+    1.5,
+    0.6
+  ],
+  "bulb_width_m": 0.5,
+  "radial_clearance_m": 0.5,
+  "minimum_radial_clearance_m": 0.4,
+  "review_verdict": "pass",
+  "reference_blend": "gold.blend",
+  "reference_blend_sha256": "4ad50a2263720ffc8c38142e6d998d7b46a51064a9766888f7b529626a6851fc"
+}

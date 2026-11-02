@@ -16,7 +16,8 @@ module_spec.loader.exec_module(module)
 
 @pytest.mark.parametrize('fault', [None, 'reopen', 'sync', 'relay', 'boundary', 'resources',
                                    'host', 'topology', 'system_collision',
-                                   'missing_system_shot', 'missing_actor_shot'])
+                                   'missing_system_shot', 'missing_actor_shot', 'truncated', 'brokenpipe',
+                                   'failed_terminal', 'old_log', 'missing_body'])
 def test_audit_retains_model_failure_and_stops_on_evidence_fault(tmp_path, fault):
     root = tmp_path / 'case5-example'
     root.mkdir()
@@ -31,7 +32,9 @@ def test_audit_retains_model_failure_and_stops_on_evidence_fault(tmp_path, fault
                         {'old': 'b0', 'new': 'b1', 'workspace_clean': True,
                          'labels': {'oscombo': '1', 'oscombo.run': run_id}}]}
     sync = {'verified': True, 'transient_errors': []}
-    relay = {'actor': 'A', 'actor_mcp_only': True, 'upstream_status': 200, 'model': 'gpt-6-astra'}
+    relay = {'actor': 'A', 'actor_mcp_only': True, 'upstream_status': 200, 'model': 'gpt-6-astra',
+             'headers_sent': True, 'forwarded_bytes': 10, 'response_evidence_version': 1,
+             'response_format': 'sse', 'response_terminal': 'response.completed'}
     boundary = {'actors': {role: {'total_tool_calls': 1, 'outside_gui_collaboration_contract': {}}
                            for role in ('A', 'B')}}
     resources = {'samples': 3, 'guest_count_peak': 2}
@@ -42,6 +45,16 @@ def test_audit_retains_model_failure_and_stops_on_evidence_fault(tmp_path, fault
         sync['transient_errors'] = ['bridge connection lost']
     if fault == 'relay':
         relay['upstream_status'] = 500
+    if fault == 'truncated':
+        relay['response_terminal'] = 'truncated'
+    if fault == 'brokenpipe':
+        relay['error_type'] = 'BrokenPipeError'
+    if fault == 'failed_terminal':
+        relay['response_terminal'] = 'response.failed'
+    if fault == 'old_log':
+        relay.pop('response_evidence_version')
+    if fault == 'missing_body':
+        relay['forwarded_bytes'] = 0
     if fault == 'boundary':
         boundary['actors']['B']['outside_gui_collaboration_contract'] = {'shell': 1}
     if fault == 'resources':

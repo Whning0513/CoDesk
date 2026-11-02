@@ -1,0 +1,23 @@
+# Case 5 Lite v2 design and offline review
+
+This is an independent candidate `CDD-MAR-LITE-002`. It does not overwrite v1's task, fixture, Gold, Oracle or recorded runs. It is not yet a real-Guest PASS or a model comparison.
+
+## Why a new version
+
+The retained v1 Isolated Pilot `mar-lite-v1-pilot-isolated-20261031T050523Z` has artifact Oracle A/B/joint FAIL. A used the 12-step diagnostic limit; B suspended while waiting and then stopped when A had not delivered. A's real screenshots and trace show the Blender Dimensions text-edit problem: step 5 typed `1.46` into an existing `1.2 m` value without selecting it, and step 12 showed an incorrect X dimension of 2.66 m. The saved scene Oracle reported 1.20 m. This is an ordinary numeric-entry failure, not evidence of Isolated desktop interference. Its old relay has 15 HTTP 200 events but no response-terminal evidence, so it cannot be certified against the new stream gate.
+
+v2 keeps the lamp modelling and real saved-scene review: A horizontally scales the selected shade in the 3D viewport by 1.25 using Blender's standard S, Shift+Z, 1.25, Enter interaction, then saves and publishes. B sees neither that factor nor the final width in its role prompt or public brief. It waits for the actual saved revision, opens or reverts it in Blender, reads the width, computes clearance and saves the report. A's message may announce readiness but must not disclose the measured width. The starting public scene remains a real independent `.blend`, with the shade selected; role-specific prompts and visible saved files are the same across Shared and Isolated. The frozen v2 target and expected score remain in host-only Gold and Oracle. Shared+Lock is a single-input-call lock, not an observe–act lock.
+
+The actor-facing task is in `oscombo/collab/model_and_review_lite_v2/TASK_CARD_ZH.md`; the independent fixture, Gold, host Blender Oracle, role prompts and adapter registration are in the same v2 package and `lite_file_guest_pilot.py`. The verified Blender 5.0 host executable creates separate initial/gold/wrong-width `.blend` files, with SHA-256 values in the v2 fixture manifest. The public staging function installs only scene, report and brief; no private Gold is staged. The v1 source remains unchanged in meaning.
+
+## Execution reliability and evidence
+
+The existing relay now passively records `response.completed`/failed/incomplete/truncated evidence without changing bytes delivered to Actors. The Case 5 arm audit fails closed for any missing terminal, zero forwarded bytes, interruption, non-200 or missing allowlist. Old records without terminal evidence are preserved but not retroactively certified. The Codex version probe strips provider/run credentials. Model credentials must be owner-only mode 0600. Resource preflight checks the run, source image, actual Docker root and Git common directory, each with 15 GiB and 1,024 inodes, plus a fail-closed active-Guest check. Run IDs and evidence paths are checked before launch. These changes do not add a GUI input lock to baseline conditions.
+
+The candidate has passed **314 offline tests**, including host Blender opening independent positive and wrong-width negative files, the Oracle's A/B result checks, private-fixture staging, stream framing/credential redaction and dual-filesystem gate. Shell syntax and `git diff --check` also pass. These are not GUI or model results.
+
+## Preregistered next gates
+
+Use `audits/three_lite_cases_20261029/run_case5_v2_guest_controls.sh` only when the resource coordinator releases a window. It runs the two topology positives and two wrong-width negatives, one episode at a time. Inspect A's selected shade and B's real post-Revert dimensions, saved revision SHA, 0444 peer permission, host Blender Oracle, reopen and exact run-owned reset; the negative must have A FAIL, truthful B PASS, joint FAIL. If an application/bridge/resource step fails, preserve that run and stop; do not score it as a model failure.
+
+Then use `run_case5_v2_model.sh pilot` for a single Isolated concurrent Pilot (12 calls and 600 active seconds per role), audit its actual screenshot/revision/message chronology and all model streams. Preserve valid task FAIL as a valid diagnostic result; never tune one condition to obtain a desired score. Freeze one source/model/prompt/fixture/Oracle and run `triad1` Isolated → Shared → Shared+Lock (25 calls and 1200 active seconds per role). Collect each actor's result, active overlap, GUI overlap, lock wait, timing, token and resource samples, and retain all invalid attempts. Interpret focus interference only from screenshot/window/action evidence and report protected-object/Oracle results separately from the actual GUI handoff.

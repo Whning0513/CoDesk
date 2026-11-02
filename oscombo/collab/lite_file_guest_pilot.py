@@ -29,6 +29,7 @@ from oscombo.collab.data_to_deck.workspace_bridge import SavedArtifactBridge
 
 
 WORKSPACE_ASSEMBLY_CASES = {"workspace_assembly", "workspace_assembly_v1p2"}
+MODEL_REVIEW_CASES = {"model_review", "model_review_v2"}
 
 
 def _profile(case: str):
@@ -40,6 +41,8 @@ def _profile(case: str):
         from oscombo.collab.workspace_assembly_lite_v1p2 import spec, fixtures, oracle
     elif case == "model_review":
         from oscombo.collab.model_and_review_lite_v1 import spec, fixtures, oracle
+    elif case == "model_review_v2":
+        from oscombo.collab.model_and_review_lite_v2 import spec, fixtures, oracle
     else:
         raise ValueError(f"unknown Lite case: {case}")
     return spec, fixtures, oracle
@@ -73,7 +76,7 @@ def _install(guest, fixture: Path, task_root: str, case: str, spec):
         commands.append(f"cp {shlex.quote(task_root + '/input/' + names['report'])} "
                         f"{shlex.quote(task_root + '/' + spec.OUTPUTS['B'])}")
         commands.append(f"chmod u+w {shlex.quote(task_root + '/' + spec.OUTPUTS['B'])}")
-    elif case == "model_review":
+    elif case in MODEL_REVIEW_CASES:
         for role, key in (("A", "scene"), ("B", "report")):
             commands.append(f"cp {shlex.quote(task_root + '/input/' + names[key])} "
                             f"{shlex.quote(task_root + '/' + spec.OUTPUTS[role])}")
@@ -367,14 +370,15 @@ def _scripted_actions(case: str, role: str, task_root: str, fixtures, negative: 
         return ["import pyautogui, time; pyautogui.hotkey('ctrl','a'); time.sleep(1)",
                 f"import pyautogui, time; pyautogui.write({text!r}, 0.03); time.sleep(2)",
                 "import pyautogui, time; pyautogui.hotkey('ctrl','s'); time.sleep(3)", "DONE"]
-    if case == "model_review" and role == "A":
-        factor = "1.083333333" if negative else "1.216666667"
+    if case in MODEL_REVIEW_CASES and role == "A":
+        factor = "1.083333333" if negative else ("1.25" if case == "model_review_v2" else "1.216666667")
         return [
             "import pyautogui, time; pyautogui.moveTo(900,500); pyautogui.press('esc'); time.sleep(1)",
             f"import pyautogui, time; pyautogui.press('s'); pyautogui.hotkey('shift','z'); pyautogui.write('{factor}', 0.1); pyautogui.press('enter'); time.sleep(2)",
             "import pyautogui, time; pyautogui.hotkey('ctrl','s'); time.sleep(4)", "DONE"]
-    if case == "model_review" and role == "B":
+    if case in MODEL_REVIEW_CASES and role == "B":
         text = ("Shade width: 1.30 m\nRadial clearance: 0.40 m\nVerdict: PASS\n" if negative else
+                "Shade width: 1.50 m\nRadial clearance: 0.50 m\nVerdict: PASS\n" if case == "model_review_v2" else
                 "Shade width: 1.46 m\nRadial clearance: 0.48 m\nVerdict: PASS\n")
         return ["import pyautogui, time; pyautogui.hotkey('ctrl','a'); time.sleep(1)",
                 f"import pyautogui, time; pyautogui.write({text!r}, 0.02); time.sleep(1)",
@@ -473,7 +477,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
         blender_bin: str | None = None,
         gui_input_lock: bool = False) -> dict:
     spec, fixtures, oracle = _profile(case)
-    if case == "model_review" and (not blender_bin or not Path(blender_bin).is_file()):
+    if case in MODEL_REVIEW_CASES and (not blender_bin or not Path(blender_bin).is_file()):
         raise ValueError("Model-and-Review Lite needs a local Blender scorer executable")
     if condition not in spec.CONDITIONS:
         raise ValueError(condition)
@@ -492,7 +496,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 "yield_wait_lifecycle": bool(yield_wait_lifecycle),
                 "actor_mcp_only": bool(actor_mcp_only),
                 "gui_input_lock": bool(gui_input_lock),
-                "blender_scorer": blender_bin if case == "model_review" else None,
+                "blender_scorer": blender_bin if case in MODEL_REVIEW_CASES else None,
                 "scripted_negative_control": negative}
     ledger = RunLedger(run_root, metadata)
     (run_root / "ownership.json").write_text(json.dumps({"run_id": run_id, "resources": [],
@@ -531,7 +535,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
         controllers = {"A": guest_a.env.controller, "B": guest_b.env.controller}
         ids = {"A": guest_a.guest_key, "B": guest_b.guest_key}
         mime = ({"A": None, "B": None} if case == "build_verify" else
-                {"A": "application/x-blender", "B": None} if case == "model_review" else
+                {"A": "application/x-blender", "B": None} if case in MODEL_REVIEW_CASES else
                 {"A": None, "B": "application/vnd.oasis.opendocument.text"})
         bridge = SavedArtifactBridge(run_root / "workspace_versions", run_id, task_root,
                                      controllers, ids, case_id=spec.CASE_ID,
@@ -547,7 +551,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
             _launch(guest_a, "editor", a_path, run_id)
             _launch(guest_b, "browser", f"{task_root}/input/{spec.FIXTURE_NAMES['source']}", run_id)
             a_app, b_app = "editor", "editor"
-        elif case == "model_review":
+        elif case in MODEL_REVIEW_CASES:
             if condition.endswith("isolated"):
                 _launch(guest_b, "blender", a_path, run_id)
             _launch(guest_b, "editor", b_path, run_id)
@@ -618,7 +622,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                     f"&& test -s {shlex.quote(a_path)}")
             # Blender can finish writing after its GUI Save shortcut returns.
             # The scripted control must never announce initial revision 0.
-            a_revision = (_await_delivered_revision(bridge, "A") if case == "model_review"
+            a_revision = (_await_delivered_revision(bridge, "A") if case in MODEL_REVIEW_CASES
                           else bridge.publish("A"))
             source = controllers["A"].get_file(a_path)
             peer = controllers["B"].get_file(a_path)
@@ -626,12 +630,13 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 raise RuntimeError("B Guest did not receive A's saved revision SHA")
             msg = clients["A"].send_message("B", f"Saved {Path(a_path).name} revision {a_revision['revision']}; "
                     + ("filter defect fixed" if case == "build_verify" else
+                       "saved revision ready" if case == "model_review_v2" else
                        "shade width 1.46 m" if case == "model_review" else "inspection tag RIVER-27"))
             if msg["message_id"] not in {m["message_id"] for m in clients["B"].read_messages()}:
                 raise RuntimeError("B did not receive A's message")
             if case == "build_verify":
                 _activate(guest_b, "browser", a_path)
-            elif case == "model_review":
+            elif case in MODEL_REVIEW_CASES:
                 # Scripted control observes the published scene in the real
                 # Blender GUI; model B must choose its own reload/read action.
                 if condition.endswith("isolated"):
@@ -725,7 +730,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 run_root / "artifacts/A" / Path(a_path).name,
                 fixture / spec.FIXTURE_NAMES["qa"],
                 run_root / "artifacts/B" / Path(b_path).name)
-        elif case == "model_review":
+        elif case in MODEL_REVIEW_CASES:
             score = oracle.evaluate(fixture / spec.FIXTURE_NAMES["scene"],
                 run_root / "artifacts/A" / Path(a_path).name,
                 fixture / spec.FIXTURE_NAMES["report"],
@@ -877,7 +882,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
 
 def main(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--case", required=True, choices=("build_verify", "workspace_assembly", "workspace_assembly_v1p2", "model_review"))
+    parser.add_argument("--case", required=True, choices=("build_verify", "workspace_assembly", "workspace_assembly_v1p2", "model_review", "model_review_v2"))
     parser.add_argument("--condition", required=True,
                         choices=("collaborative_shared", "collaborative_isolated"))
     parser.add_argument("--run-root", type=Path, required=True)
