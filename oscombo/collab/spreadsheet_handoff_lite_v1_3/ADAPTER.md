@@ -1,13 +1,17 @@
-# Lite v1.3 scripted Guest adapter
+# Lite v1.3.1 scripted Guest adapter
 
 `live_pilot.py` provides an explicit positive/negative scripted-control entry
 for this version only. It reuses `lite_file_guest_pilot` Guest helpers,
-`SavedArtifactBridge`, the run provenance utilities, Calc launch, and the v1.3
+`SavedArtifactBridge`, the run provenance utilities, Calc launch, and the v1.3.1
 Fixture and Oracle. It remains scripted-only.
 
 The adapter verifies the delivered A revision bytes, B's received ready
 message, the exact immutable peer-view path in B's GUI action trace, the active
-Calc window and screenshot, and the publish/message/read/edit/save ordering.
+read-only Calc window, a correctly sized real Guest screenshot, and the
+publish/message/read/edit/save ordering. The Open action focuses GTK's location
+field with Ctrl+L and waits for the peer window to become active before taking
+screenshots. Any visible-content claim still requires human review of those
+screenshots.
 The revision number or SHA by itself cannot pass the handoff gate. The
 positive control follows a correct forecast. The negative control saves a
 wrong forecast formula and makes a coherent order from that delivered value;
@@ -18,7 +22,7 @@ implementation review):
 
 ```bash
 PYTHONPATH=. python -m oscombo.collab.spreadsheet_handoff_lite_v1_3.live_pilot \
-  --case-version 1.3.0 \
+  --case-version 1.3.1 \
   --condition collaborative_isolated \
   --control positive \
   --run-root runs/sh13-unique-run-id \

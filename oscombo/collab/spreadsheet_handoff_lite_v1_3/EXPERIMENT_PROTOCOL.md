@@ -1,8 +1,11 @@
-# Spreadsheet Handoff Lite v1.3 model protocol
+# Spreadsheet Handoff Lite v1.3.1 model protocol
 
 This protocol is a prepared entry point, not evidence of a Guest or model run.
 The Task Card, actor prompts, Fixture, Gold, Oracle, and scoring conditions are
-the version-pinned v1.3 files. Do not modify them within a triad.
+the version-pinned v1.3.1 files. Relative to v1.3.0, only the scripted
+peer-view GUI focus/wait evidence changed; prompts, task semantics, fixture,
+Gold, Oracle and model-runner behavior are held constant. Do not modify these
+files within a triad.
 
 ## Conditions
 

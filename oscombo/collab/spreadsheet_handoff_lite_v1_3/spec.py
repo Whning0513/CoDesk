@@ -1,7 +1,7 @@
 """Actor-visible contract for the independent Case 6 v1.3 case."""
 
 CASE_ID = "CDD-SH-LITE-003"
-CASE_VERSION = "1.3.0"
+CASE_VERSION = "1.3.1"
 TASK_ROOT = "/tmp/sh13"
 CONDITIONS = ("collaborative_shared", "collaborative_isolated")
 FIXTURE_NAMES = {

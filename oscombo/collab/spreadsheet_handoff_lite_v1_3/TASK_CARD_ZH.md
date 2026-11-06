@@ -1,6 +1,6 @@
-# Spreadsheet Handoff Lite v1.3：预测交接到整箱补货
+# Spreadsheet Handoff Lite v1.3.1：预测交接到整箱补货
 
-本目录是独立版本 **CDD-SH-LITE-003 / 1.3.0**。它不会覆盖 v1.1 或 v1.2 的任务卡、Fixture、Gold、Oracle 或历史运行。当前版本只实现任务定义与离线评分；真实 Guest Adapter 尚未接入，不能把离线通过当作 GUI 验证。
+本目录是独立版本 **CDD-SH-LITE-003 / 1.3.1**。与 v1.3.0 相比，仅修复 scripted control 的 GUI 文件打开焦点和可见证据流程；任务卡角色目标、Fixture、Gold、Oracle 和模型 Prompt 保持语义一致。不得覆盖 v1.1、v1.2 或 v1.3.0 的记录。
 
 ## 用户需求
 
@@ -45,7 +45,7 @@ Gold 和 Oracle 不得进入 Actor 的 Guest、指令或消息。
 按照正常快捷键操作，约 **12 次有状态 GUI 输入**：
 
 - A：输入公式、提交公式、保存，共约 3 次；
-- B：通过 GUI 打开 peer revision（Ctrl+O、输入路径、Enter），切回订单工作簿（Alt+Tab），输入需求并 Tab 到整箱字段、输入整箱数并提交、保存，共约 9 次。
+- B：通过 GUI 打开 peer revision（Ctrl+O、Ctrl+L 聚焦路径栏、输入路径、Enter），切回订单工作簿（Alt+Tab），输入需求并 Tab 到整箱字段、输入整箱数并提交、保存，共约 10 次。
 
 另有截图、模型推理和消息/附件工具调用，不计为键鼠输入；这些不是执行硬上限。B 打开 peer revision 与回到采购工作簿是完成信息依赖所需的操作，不当作可删除的杂项。
 
@@ -53,4 +53,4 @@ Gold 和 Oracle 不得进入 Actor 的 Guest、指令或消息。
 
 tests/test_spreadsheet_handoff_lite_v1_3.py 覆盖空白公开答案、确定性 Fixture、独立 Gold 正控、错误整箱/件数负控、错误预测公式、漏掉来源、改动源数据、公式完整性、损坏 ODS 和 Host I/O 异常。上述测试不验证 GUI 操作、桌面竞争、真实消息/桥同步或 saved revision 的 GUI 目视读取。
 
-v1.3 现有一个版本专用的 scripted Guest Adapter，复用共享 pilot 的 Guest 生命周期助手与 saved-artifact bridge；它未在真实 Guest 上执行。当前离线测试不验证 GUI 操作、桌面竞争、消息/桥同步、GUI 重开或 Guest reset。模型运行入口尚未提供；真实脚本双拓扑正负控、peer-view 截图人工核验和 Guest reset 仍是模型实验前的独立门槛。见同目录 `ADAPTER.md`。
+v1.3.1 现有版本专用的 scripted Guest Adapter，复用共享 pilot 的 Guest 生命周期助手与 saved-artifact bridge。v1.3.0 的正控虽然 Oracle 和文件生命周期通过，但 B 的 peer-view 截图仍显示文件选择框，因此不视为有效交接控件。v1.3.1 增加路径栏焦点、等待 Calc 活跃只读窗口和真实尺寸截图；离线测试仍不能代替真实 Guest、目视内容、桌面竞争、消息/桥同步、重开与 reset。模型入口已有离线覆盖，正式启动仍以双拓扑正负控、peer-view 截图人工核验和 reset 为门槛。见同目录 `ADAPTER.md`。

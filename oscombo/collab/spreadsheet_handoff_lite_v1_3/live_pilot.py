@@ -1,4 +1,4 @@
-"""Scripted real-Guest adapter for Spreadsheet Handoff Lite v1.3.
+"""Scripted real-Guest adapter for Spreadsheet Handoff Lite v1.3.1.
 
 This entry point deliberately has no model/API option. Importing the module is
 offline; invoking ``main`` starts OSWorld Guest(s). It reuses the established
@@ -9,6 +9,7 @@ unit coverage so far and must not be described as Guest-validated.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -63,6 +64,76 @@ def _trace_actions(run_root: Path, actor_summary: dict) -> list[dict]:
     return [action for step in trace for action in step.get("actions", [])]
 
 
+def _wait_for_peer_window(guest, run_root: Path, peer_path: str,
+                          instruction: str, case_id: str,
+                          retry_trace: dict | None = None) -> tuple[str, Path, list[dict]]:
+    """Wait for Calc's actual peer window before taking evidence screenshots.
+
+    A completed Ctrl+O tool action and an X11 window title can precede the
+    visible frame update under TCG. Capture after the peer title is stable, and
+    retain each frame so a reviewer can verify that the workbook contents were
+    actually visible.
+    """
+    expected = Path(peer_path).name.casefold()
+    deadline = time.monotonic() + 45.0
+    stable_title = 0
+    last_title = ""
+    while time.monotonic() < deadline:
+        title = guest.active_window() or ""
+        if expected in title.casefold() and "read-only" in title.casefold():
+            stable_title = stable_title + 1 if title == last_title else 1
+            last_title = title
+            if stable_title >= 2:
+                break
+        else:
+            stable_title = 0
+            last_title = title
+        time.sleep(1.0)
+    if stable_title < 2:
+        # A GTK location entry can remain open after Enter. Use its visible
+        # Open button only when the dialog is the active window; record the
+        # recovery as a normal B GUI action.
+        if (guest.active_window() or "").strip().casefold() == "open":
+            retry = core._run_actor("B", guest, instruction,
+                ["import pyautogui, time; pyautogui.click(1550,164); time.sleep(8)", "DONE"],
+                run_root, max_steps=5, case_id=case_id)
+            if retry_trace is not None:
+                retry_trace.update(retry)
+            if retry.get("status") == "done":
+                retry_deadline = time.monotonic() + 30.0
+                while time.monotonic() < retry_deadline:
+                    title = guest.active_window() or ""
+                    if expected in title.casefold() and "read-only" in title.casefold():
+                        stable_title = stable_title + 1 if title == last_title else 1
+                        last_title = title
+                        if stable_title >= 2:
+                            break
+                    else:
+                        stable_title = 0
+                        last_title = title
+                    time.sleep(1.0)
+    if stable_title < 2:
+        raise RuntimeError("Calc peer revision did not become the stable active read-only window")
+
+    screenshot_dir = run_root / "screenshots"
+    screenshot_dir.mkdir(parents=True, exist_ok=True)
+    frames = []
+    for number in range(1, 4):
+        before = guest.active_window() or ""
+        frame = guest.screenshot(patience=45)
+        after = guest.active_window() or ""
+        path = screenshot_dir / f"B-peer-revision-candidate-{number:02d}.png"
+        path.write_bytes(frame)
+        frames.append({"screenshot": str(path.relative_to(run_root)),
+                       "window_before": before, "window_after": after,
+                       "sha256": hashlib.sha256(frame).hexdigest()})
+        if number < 3:
+            time.sleep(1.0)
+    selected = screenshot_dir / "B-peer-revision-open.png"
+    selected.write_bytes((run_root / frames[-1]["screenshot"]).read_bytes())
+    return last_title, selected, frames
+
+
 def _guest_controls(case_version: str, condition: str, run_root: Path,
                     provider: Path, image: str, runtime: str,
                     negative: bool = False) -> dict:
@@ -86,7 +157,7 @@ def _guest_controls(case_version: str, condition: str, run_root: Path,
     metadata = {
         "run_id": run_id, "case_id": spec.CASE_ID, "case_version": spec.CASE_VERSION,
         "condition": condition, "guest_count": 1 if shared else 2,
-        "model": None, "model_called": False, "adapter": "scripted-v1.3",
+        "model": None, "model_called": False, "adapter": "scripted-v1.3.1",
         "control": "negative" if negative else "positive",
         "started_at": time.time(), "task_root": spec.TASK_ROOT,
         "role_budget_contract": spec.ROLE_BUDGET,
@@ -166,10 +237,10 @@ def _guest_controls(case_version: str, condition: str, run_root: Path,
         if b_read_result.get("status") != "done":
             raise RuntimeError(f"scripted B GUI peer-read ended as {b_read_result.get('status')}")
         gui_read_at = time.time()
-        peer_shot = run_root / "screenshots" / "B-peer-revision-open.png"
-        peer_shot.parent.mkdir(parents=True, exist_ok=True)
-        peer_shot.write_bytes(guest_b.screenshot(patience=45))
-        peer_title = guest_b.active_window() or ""
+        retry_trace: dict = {}
+        peer_title, peer_shot, peer_frames = _wait_for_peer_window(
+            guest_b, run_root, peer_path, spec.AGENT_B_INSTRUCTION,
+            spec.CASE_ID, retry_trace)
         _save_json(run_root / "handoff_gui_evidence.json", {
             "run_id": run_id, "message_id": message["message_id"],
             "message_received_by_B": message["message_id"] in received_ids,
@@ -177,6 +248,9 @@ def _guest_controls(case_version: str, condition: str, run_root: Path,
             "peer_guest_path": peer_path, "active_window": peer_title,
             "screenshot": str(peer_shot.relative_to(run_root)),
             "gui_open_trace": _trace_actions(run_root, b_read_result),
+            "recovery_trace": retry_trace,
+            "visual_review_required": True,
+            "peer_view_screenshot_candidates": peer_frames,
         })
 
         order_edit_at = time.time()
@@ -305,7 +379,7 @@ def _guest_controls(case_version: str, condition: str, run_root: Path,
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--case-version", required=True, choices=("1.3.0",))
+    parser.add_argument("--case-version", required=True, choices=("1.3.1",))
     parser.add_argument("--condition", required=True,
                         choices=("collaborative_shared", "collaborative_isolated"))
     parser.add_argument("--control", required=True, choices=("positive", "negative"))

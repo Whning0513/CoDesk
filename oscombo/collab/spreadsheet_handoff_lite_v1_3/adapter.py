@@ -1,4 +1,4 @@
-"""Version-pinned scripted controls and evidence gates for Case 6 Lite v1.3.
+"""Version-pinned scripted controls and evidence gates for Case 6 Lite v1.3.1.
 
 This module is host-side orchestration only. It does not expose Gold or Oracle
 data to either actor. Importing it never starts a Guest or contacts a model API.
@@ -7,13 +7,14 @@ from __future__ import annotations
 
 import hashlib
 import re
+import struct
 from pathlib import Path
 
 from . import fixtures, oracle, spec
 
 
 def select_case(case_version: str):
-    """Return the exact v1.3 package; reject implicit fallback to old versions."""
+    """Return the exact v1.3.1 package; reject implicit fallback to old versions."""
     if case_version != spec.CASE_VERSION:
         raise ValueError(f"unsupported Spreadsheet Handoff version: {case_version!r}")
     return spec, fixtures, oracle
@@ -51,10 +52,13 @@ def scripted_actions(negative: bool = False) -> dict[str, list[str]]:
 def peer_read_actions(peer_guest_path: str) -> list[str]:
     """Open a published revision with Calc, using the complete peer-view path."""
     if not peer_guest_path.startswith(spec.TASK_ROOT + "/incoming/A/"):
-        raise ValueError("peer revision must be inside the v1.3 incoming/A view")
+        raise ValueError("peer revision must be inside the v1.3.1 incoming/A view")
     return [
         "import pyautogui, time; pyautogui.hotkey('ctrl','o'); time.sleep(1)",
-        f"import pyautogui, time; pyautogui.write({peer_guest_path!r}, interval=0.02); time.sleep(0.5); pyautogui.press('enter'); time.sleep(4)",
+        # GTK's Open dialog does not focus its location field by default. The
+        # old action typed the path without focusing it, leaving the dialog
+        # open while the title probe could still see the workbook behind it.
+        f"import pyautogui, time; pyautogui.hotkey('ctrl','l'); time.sleep(0.5); pyautogui.write({peer_guest_path!r}, interval=0.02); pyautogui.press('enter'); time.sleep(5)",
         "DONE",
     ]
 
@@ -98,8 +102,12 @@ def verify_handoff(*, revision: dict, peer_sha256: str | None,
         reasons.append("GUI_trace_does_not_open_exact_peer_revision")
     if Path(peer_guest_path).name.casefold() not in (active_window or "").casefold():
         reasons.append("peer_revision_not_visible_in_active_GUI_window")
+    if "read-only" not in (active_window or "").casefold():
+        reasons.append("peer_revision_not_open_read_only")
     shot = Path(screenshot_path)
-    if not shot.is_file() or shot.stat().st_size == 0:
+    png = shot.read_bytes() if shot.is_file() else b""
+    if (len(png) < 24 or not png.startswith(b"\x89PNG\r\n\x1a\n")
+            or struct.unpack(">II", png[16:24]) != (1920, 1080)):
         reasons.append("missing_post_open_GUI_screenshot")
     if not (published_at <= message_received_at <= gui_read_at <= order_edit_at <= order_saved_at):
         reasons.append("handoff_and_order_edit_chronology_invalid")
