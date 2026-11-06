@@ -43,6 +43,9 @@ ARM_CONDITIONS = {
 MODEL_TIMEOUT_S = 1200
 MODEL_EFFORT = "medium"
 REQUEST_RETRIES = 2
+MODEL_RUNNER_VERSION = "1.3.2"
+PILOT_STEP_MIN = 4
+PILOT_STEP_MAX = 12
 ACTOR_TOOL_ALLOWLIST = frozenset({
     "screenshot", "click", "drag", "move", "type_text", "key", "scroll", "wait",
     "declare_infeasible", "send_message", "read_messages", "send_attachment",
@@ -50,17 +53,36 @@ ACTOR_TOOL_ALLOWLIST = frozenset({
 })
 
 
+def _role_budget(pilot_step_limit: int | None = None) -> dict[str, dict[str, int | None]]:
+    """Return the frozen formal budget or an explicit small diagnostic cap."""
+    if pilot_step_limit is None:
+        return {role: dict(budget) for role, budget in spec.ROLE_BUDGET.items()}
+    if (isinstance(pilot_step_limit, bool) or not isinstance(pilot_step_limit, int)
+            or not PILOT_STEP_MIN <= pilot_step_limit <= PILOT_STEP_MAX):
+        raise ValueError(
+            f"pilot step limit must be between {PILOT_STEP_MIN} and {PILOT_STEP_MAX} per role")
+    return {
+        role: {**budget, "steps": min(int(budget["steps"]), pilot_step_limit)}
+        for role, budget in spec.ROLE_BUDGET.items()
+    }
+
+
 def model_contract(arm: str, *, model: str, base_url: str, api_key_env: str,
-                   mcp_python: str) -> dict[str, Any]:
+                   mcp_python: str, pilot_step_limit: int | None = None) -> dict[str, Any]:
     """Return the frozen, secret-free actor/runtime contract for one arm."""
     if arm not in ARM_CONDITIONS:
         raise ValueError(f"unknown v1.3 model arm: {arm!r}")
+    if pilot_step_limit is not None and arm != "isolated":
+        raise ValueError("the diagnostic pilot is Isolated-only; formal arms share the full budget")
     condition, lock_enabled = ARM_CONDITIONS[arm]
     if not model or not base_url or not api_key_env or not mcp_python:
         raise ValueError("model, base_url, api_key_env and mcp_python are required")
     return {
         "case_id": spec.CASE_ID,
         "case_version": spec.CASE_VERSION,
+        "model_runner_version": MODEL_RUNNER_VERSION,
+        "execution_mode": "diagnostic_pilot" if pilot_step_limit is not None else "formal",
+        "pilot_step_limit": pilot_step_limit,
         "arm": arm,
         "condition": condition,
         "guest_count": 2 if arm == "isolated" else 1,
@@ -71,7 +93,7 @@ def model_contract(arm: str, *, model: str, base_url: str, api_key_env: str,
         "effort": MODEL_EFFORT,
         "model_timeout_s": MODEL_TIMEOUT_S,
         "request_retries": REQUEST_RETRIES,
-        "role_budget": spec.ROLE_BUDGET,
+        "role_budget": _role_budget(pilot_step_limit),
         "yield_wait_lifecycle": True,
         "actor_mcp_only": True,
         "gui_input_lock": lock_enabled,
@@ -653,12 +675,15 @@ def run_model_episode(*, arm: str, run_root: Path, provider: Path, image: str,
                       runtime: str, model: str, base_url: str,
                       api_key_env: str, mcp_python: str,
                       effort: str = MODEL_EFFORT, timeout: float = MODEL_TIMEOUT_S,
-                      robase_validation: bool = False) -> dict[str, Any]:
+                      robase_validation: bool = False,
+                      pilot_step_limit: int | None = None) -> dict[str, Any]:
     """Run one v1.3 model arm in real Guest(s); never call this in offline checks."""
     if arm not in ARM_CONDITIONS:
         raise ValueError(f"unknown v1.3 model arm: {arm!r}")
     if effort != MODEL_EFFORT or timeout != MODEL_TIMEOUT_S:
         raise ValueError("the v1.3 triad pins effort=medium and timeout=1200s")
+    if pilot_step_limit is not None and arm != "isolated":
+        raise ValueError("the diagnostic pilot is Isolated-only; formal arms share the full budget")
     if robase_validation:
         required_robase = ("CODESK_CASE6_V13_GUEST_IMAGE_SHA256",
                            "CODESK_CASE6_V13_RUNTIME_IMAGE_ID",
@@ -676,7 +701,8 @@ def run_model_episode(*, arm: str, run_root: Path, provider: Path, image: str,
     if not os.environ.get(api_key_env):
         raise RuntimeError(f"provider credential environment variable is missing: {api_key_env}")
     contract = model_contract(arm, model=model, base_url=base_url,
-                              api_key_env=api_key_env, mcp_python=mcp_python)
+                              api_key_env=api_key_env, mcp_python=mcp_python,
+                              pilot_step_limit=pilot_step_limit)
     condition, lock_enabled = ARM_CONDITIONS[arm]
     run_id = run_root.name
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{5,95}", run_id):
@@ -791,7 +817,7 @@ def run_model_episode(*, arm: str, run_root: Path, provider: Path, image: str,
             return core._run_model_actor(
                 role, guest, instructions[role], run_root, model, actor_url, api_key_env,
                 mcp_python_safe, f"http://127.0.0.1:{server.server_port}", token_envs[role],
-                max_steps=int(spec.ROLE_BUDGET[role]["steps"]), effort=MODEL_EFFORT,
+                max_steps=int(contract["role_budget"][role]["steps"]), effort=MODEL_EFFORT,
                 timeout=MODEL_TIMEOUT_S, request_retries=REQUEST_RETRIES,
                 relay_client_token_env=relay_token_env, workspace_bridge=True,
                 handoff_from=spec.HANDOFF_DEPENDENCIES.get(role), yield_wait=True,
@@ -980,6 +1006,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--api-key-env", required=True)
     parser.add_argument("--mcp-python", required=True)
+    parser.add_argument("--pilot-step-limit", type=int, default=None,
+                        help=(f"Isolated-only diagnostic cap ({PILOT_STEP_MIN}-{PILOT_STEP_MAX} "
+                              "tool steps per role); omit for the unchanged 18-step formal budget"))
     parser.add_argument("--robase-validation", action="store_true",
                         help="enable the versioned read-only-base Guest/cache/runtime checks")
     args = parser.parse_args(argv)
@@ -987,7 +1016,8 @@ def main(argv: list[str] | None = None) -> None:
         result = run_model_episode(arm=args.arm, run_root=args.run_root,
             provider=args.provider.resolve(), image=args.image, runtime=args.runtime,
             model=args.model, base_url=args.base_url, api_key_env=args.api_key_env,
-            mcp_python=args.mcp_python, robase_validation=args.robase_validation)
+            mcp_python=args.mcp_python, robase_validation=args.robase_validation,
+            pilot_step_limit=args.pilot_step_limit)
     except Exception as exc:
         secret = os.environ.get(args.api_key_env, "")
         error_text = str(exc)
@@ -999,6 +1029,9 @@ def main(argv: list[str] | None = None) -> None:
         model_called = any(row.get("started_at") for row in _read_jsonl(relay_log))
         failure = {"status": "INVALID_INFRA_OR_RUNNER_ERROR", "run_id": args.run_root.name,
                    "case_version": spec.CASE_VERSION,
+                   "model_runner_version": MODEL_RUNNER_VERSION,
+                   "execution_mode": "diagnostic_pilot" if args.pilot_step_limit is not None else "formal",
+                   "pilot_step_limit": args.pilot_step_limit,
                    "error_type": type(exc).__name__, "error": error_text,
                    "traceback": trace_text, "model_called": model_called,
                    "secret_value_recorded": False}

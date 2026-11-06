@@ -33,6 +33,35 @@ def test_tri_arm_contract_pins_same_task_prompt_fixture_and_budget():
     assert contracts["sharedlock"]["gui_input_lock"] is True
 
 
+def test_small_isolated_pilot_budget_is_explicit_and_does_not_change_formal_budget():
+    formal = _contract("isolated")
+    pilot = model_pilot.model_contract(
+        "isolated", model="test-model", base_url="https://model.invalid/v1",
+        api_key_env="CASE6_TEST_KEY", mcp_python="/venv/bin/python",
+        pilot_step_limit=8)
+    assert formal["execution_mode"] == "formal"
+    assert formal["role_budget"] == {"A": {"steps": 18, "model_tokens": None},
+                                     "B": {"steps": 18, "model_tokens": None}}
+    assert pilot["execution_mode"] == "diagnostic_pilot"
+    assert pilot["pilot_step_limit"] == 8
+    assert pilot["model_runner_version"] == "1.3.2"
+    assert pilot["role_budget"] == {"A": {"steps": 8, "model_tokens": None},
+                                    "B": {"steps": 8, "model_tokens": None}}
+    assert spec.ROLE_BUDGET == {"A": {"steps": 18, "model_tokens": None},
+                                "B": {"steps": 18, "model_tokens": None}}
+    with pytest.raises(ValueError, match="Isolated-only"):
+        model_pilot.model_contract(
+            "shared", model="test-model", base_url="https://model.invalid/v1",
+            api_key_env="CASE6_TEST_KEY", mcp_python="/venv/bin/python",
+            pilot_step_limit=8)
+    for invalid in (True, 3, 13, 8.0):
+        with pytest.raises(ValueError, match="pilot step limit"):
+            model_pilot.model_contract(
+                "isolated", model="test-model", base_url="https://model.invalid/v1",
+                api_key_env="CASE6_TEST_KEY", mcp_python="/venv/bin/python",
+                pilot_step_limit=invalid)
+
+
 def test_model_contract_has_no_disable_switch_for_request_allowlist():
     contract = _contract("shared")
     assert contract["actor_mcp_only"] is True
@@ -143,6 +172,21 @@ def test_triad_shell_does_not_precreate_python_owned_run_root():
     assert "case6_check_fs 'Docker data-root'" in script
     assert "case6_check_fs 'Git common directory'" in script
     assert "case6_check_fs 'Guest image'" in script
+
+
+def test_model_cli_has_explicit_small_pilot_cap_and_full_formal_default():
+    source = Path(model_pilot.__file__).read_text(encoding="utf-8")
+    assert 'parser.add_argument("--pilot-step-limit"' in source
+    assert 'MODEL_RUNNER_VERSION = "1.3.2"' in source
+    assert "max_steps=int(contract[\"role_budget\"][role][\"steps\"])" in source
+
+
+def test_robase_wrapper_has_isolated_only_pilot_mode_and_preserves_formal_arms():
+    script = Path(model_pilot.__file__).with_name("run_model_triad_robase.sh").read_text()
+    assert 'case6_arms=(isolated shared sharedlock)' in script
+    assert 'case6_arms=(isolated)' in script
+    assert 'model_args+=(--pilot-step-limit "$case6_pilot_step_limit")' in script
+    assert 'pilot_manifest.tsv' in script
 
 
 def test_resource_gates_reject_wrong_docker_root_and_unpinned_runtime_digest():

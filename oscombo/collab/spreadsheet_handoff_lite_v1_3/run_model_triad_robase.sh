@@ -12,6 +12,26 @@ cd "$case6_root"
 export PYTHONDONTWRITEBYTECODE=1
 export PYTHONPATH="$case6_root${PYTHONPATH:+:$PYTHONPATH}"
 
+case6_mode="${1:-triad}"
+case6_pilot_step_limit=''
+case "$case6_mode" in
+    triad)
+        [[ "$#" == 0 ]] || { echo 'Usage: run_model_triad_robase.sh [pilot [4-12-step-limit]]' >&2; exit 2; }
+        ;;
+    pilot)
+        [[ "$#" -le 2 ]] || { echo 'Usage: run_model_triad_robase.sh [pilot [4-12-step-limit]]' >&2; exit 2; }
+        case6_pilot_step_limit="${2:-8}"
+        [[ "$case6_pilot_step_limit" =~ ^([4-9]|1[0-2])$ ]] || {
+            echo 'Diagnostic pilot step limit must be an integer from 4 through 12.' >&2; exit 2;
+        }
+        : "${CODESK_CASE6_V13_PILOT_RUN_BASE:?Set a new, separate /data2 Pilot run directory}"
+        CODESK_CASE6_V13_RUN_BASE="$CODESK_CASE6_V13_PILOT_RUN_BASE"
+        ;;
+    *)
+        echo 'Usage: run_model_triad_robase.sh [pilot [4-12-step-limit]]' >&2; exit 2
+        ;;
+esac
+
 : "${CODESK_CASE6_V13_FROZEN_COMMIT:?Set the reviewed v1.3 source commit}"
 : "${CODESK_CASE6_V13_OSWORLD_COMMIT:?Set the frozen full OSWorld Git commit ID for the RO-base cohort}"
 : "${CODESK_CASE6_V13_OSWORLD_DIFF_SHA256:?Set the frozen SHA-256 of git diff --binary HEAD for OSWorld}"
@@ -189,22 +209,36 @@ printf 'docker_host\t%s\ndocker_data_root\t%s\nruntime_image\t%s\nruntime_image_
     "$CODESK_CASE6_V13_GUEST_IMAGE_SHA256" "$case6_guest_image_sha_verified" \
     "$case6_guest_image_fingerprint" "$case6_git_common" > "$CODESK_CASE6_V13_RUN_BASE/resource_preflight.tsv"
 case6_stamp="$(date -u +%Y%m%dT%H%M%SZ)-$$"
-case6_manifest="$CODESK_CASE6_V13_RUN_BASE/triad_manifest.tsv"
+if [[ "$case6_mode" == pilot ]]; then
+    case6_manifest="$CODESK_CASE6_V13_RUN_BASE/pilot_manifest.tsv"
+    case6_arms=(isolated)
+else
+    case6_manifest="$CODESK_CASE6_V13_RUN_BASE/triad_manifest.tsv"
+    case6_arms=(isolated shared sharedlock)
+fi
 ( set -o noclobber; printf 'arm\trun_id\texit_code\n' > "$case6_manifest" )
 
-for arm in isolated shared sharedlock; do
+for arm in "${case6_arms[@]}"; do
     case6_check_fs "run base before $arm" "$CODESK_CASE6_V13_RUN_BASE"
     case6_check_fs "Docker data-root before $arm" "$case6_actual_data_root"
     case6_check_fs "Git common directory before $arm" "$case6_git_common"
-    run_id="sh-lite-v1p3-${arm}-${case6_stamp}"
+    if [[ "$case6_mode" == pilot ]]; then
+        run_id="sh-lite-v1p3-diagnostic-pilot-${arm}-${case6_stamp}"
+    else
+        run_id="sh-lite-v1p3-${arm}-${case6_stamp}"
+    fi
     run_root="$CODESK_CASE6_V13_RUN_BASE/$run_id"
+    model_args=(--robase-validation)
+    if [[ "$case6_mode" == pilot ]]; then
+        model_args+=(--pilot-step-limit "$case6_pilot_step_limit")
+    fi
     set +e
     "$case6_python" -m oscombo.collab.spreadsheet_handoff_lite_v1_3.model_pilot \
         --arm "$arm" --run-root "$run_root" --provider "$OSWORLD_DIR" \
         --image "$OSCOMBO_GUEST_IMAGE" --runtime "$OSCOMBO_RUNTIME_IMAGE" \
         --model "$CODESK_CASE6_V13_MODEL" --base-url "$CODESK_CASE6_V13_BASE_URL" \
         --api-key-env "$CODESK_CASE6_V13_API_KEY_ENV" --mcp-python "$case6_python" \
-        --robase-validation \
+        "${model_args[@]}" \
         > "$CODESK_CASE6_V13_RUN_BASE/$run_id.runner.log" 2>&1
     code=$?
     set -e
@@ -214,4 +248,8 @@ for arm in isolated shared sharedlock; do
         exit 3
     fi
 done
-echo "Triad episodes ended; inspect each run's result and required visual review. Manifest: $case6_manifest"
+if [[ "$case6_mode" == pilot ]]; then
+    echo "Diagnostic Pilot ended; review solvability and tool-chain evidence before the full triad. Manifest: $case6_manifest"
+else
+    echo "Triad episodes ended; inspect each run's result and required visual review. Manifest: $case6_manifest"
+fi
