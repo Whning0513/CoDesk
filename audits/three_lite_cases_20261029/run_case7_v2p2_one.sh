@@ -82,6 +82,7 @@ from oscombo.collab.workspace_assembly_lite_v2p2 import fixtures
 from oscombo.collab.workspace_assembly_lite_v2p2.freeze import SEQUENCE
 x=json.load(open(sys.argv[1],encoding='utf-8'))
 expected={'source_commit':sys.argv[2], 'case_id':'CDD-WA-LITE-002P2', 'case_version':'2.2.0',
+          'adapter_version':'2.2.1',
           'model':'gpt-6-astra', 'steps_per_role':25, 'active_seconds_per_role':1200,
           'guest_cpus':8, 'guest_ram':'8G', 'controls_verified':True, 'pilot_reviewed':True}
 if any(x.get(k)!=v for k,v in expected.items()):

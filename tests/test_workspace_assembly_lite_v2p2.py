@@ -12,6 +12,8 @@ import zipfile
 import pytest
 
 from oscombo.collab import lite_file_guest_pilot as runner
+from oscombo.collab.workspace_assembly_lite_v2 import spec as spec_v2
+from oscombo.collab.workspace_assembly_lite_v2p1 import spec as spec_v2p1
 from oscombo.collab.workspace_assembly_lite_v2p2 import audit, fixtures, oracle, scripted, spec
 from oscombo.collab.workspace_assembly_lite_v2p2.private import gold
 
@@ -142,12 +144,24 @@ def test_seeded_codes_are_short_distinct_and_not_in_public_instructions(tmp_path
     b = fixtures.build_fixture(tmp_path / "b", seed=seeds[0])
     assert a["fixture_sha256"] == b["fixture_sha256"]
     assert a["case_version"] == "2.2.0"
+    assert "adapter_version" not in a
     with pytest.raises(ValueError):
         fixtures.tag_for_seed("")
 
 
 def test_adapter_is_versioned_and_scripted_inputs_are_short():
     assert runner._profile("workspace_assembly_v2p2") == (spec, fixtures, oracle)
+    assert spec.CASE_VERSION == "2.2.0"
+    assert spec.ADAPTER_VERSION == "2.2.1"
+    assert spec.version_manifest() == {"case_id": spec.CASE_ID,
+                                       "case_version": "2.2.0",
+                                       "adapter_version": "2.2.1"}
+    assert runner._adapter_version_manifest("workspace_assembly_v2", spec_v2) == {}
+    assert runner._adapter_version_manifest("workspace_assembly_v2p1", spec_v2p1) == {}
+    protocol = (Path(__file__).resolve().parents[1] /
+                "oscombo/collab/workspace_assembly_lite_v2p2/PROTOCOL.md").read_text()
+    assert "Task `case_version`: 2.2.0" in protocol
+    assert "Adapter `adapter_version`: 2.2.1" in protocol
     assert runner._case7_v2_module("workspace_assembly_v2p2", "scripted") is scripted
     assert runner._case7_v2_module("workspace_assembly_v2p2", "audit") is audit
     assert spec.TASK_ROOT == "/tmp/wa22"

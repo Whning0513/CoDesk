@@ -43,6 +43,8 @@ def expected_slot(state: dict) -> tuple[int, str, str] | None:
 
 def verify_reservation(state_path: Path, freeze_path: Path, run_id: str, round_name: str, arm: str) -> None:
     state, frozen = json.loads(state_path.read_text()), json.loads(freeze_path.read_text())
+    if any(frozen.get(key) != value for key, value in spec.version_manifest().items()):
+        raise RuntimeError("campaign freeze task/adapter version mismatch")
     if state.get("freeze_sha256") != _sha(freeze_path) or frozen.get("formal_sequence") != [list(x) for x in freeze.SEQUENCE]:
         raise RuntimeError("campaign freeze differs from preregistration")
     attempts = state.get("attempts", [])
@@ -65,6 +67,8 @@ def classify(run_root: Path, exit_code: int) -> str:
         return "INVALID_INFRA"
     try:
         result = json.loads(result_path.read_text())
+        if any(result.get(key) != value for key, value in spec.version_manifest().items()):
+            return "INVALID_INFRA"
         resource = json.loads((run_root / "resource_audit.json").read_text())
         saved_contract = json.loads((run_root / "contract_audit.json").read_text())
         observed_contract = contract.audit(run_root)
@@ -137,6 +141,8 @@ def _verify_repair(path: Path, invalid_run_id: str, commit: str) -> dict:
 def run_next(freeze_path: Path, state_path: Path, repair_review: Path | None = None) -> dict:
     freeze_path, state_path = freeze_path.resolve(strict=True), state_path.resolve()
     frozen = json.loads(freeze_path.read_text())
+    if any(frozen.get(key) != value for key, value in spec.version_manifest().items()):
+        raise ValueError("freeze task/adapter version mismatch")
     if frozen.get("formal_sequence") != [list(x) for x in freeze.SEQUENCE]:
         raise ValueError("freeze sequence mismatch")
     commit = subprocess.check_output(["git", "rev-parse", "--verify", "HEAD"], text=True).strip()

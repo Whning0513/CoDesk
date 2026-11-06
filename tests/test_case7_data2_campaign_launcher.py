@@ -28,6 +28,7 @@ def test_case7_campaign_launcher_fails_closed_to_the_dedicated_data2_daemon() ->
     assert "API_KEY" not in example
 
     slot = (root / "audits/three_lite_cases_20261029/run_case7_v2p2_one.sh").read_text()
+    assert "'adapter_version':'2.2.1'" in slot
     unset_context = slot.index("unset DOCKER_CONTEXT")
     source_finished = slot.index("export PYTHONDONTWRITEBYTECODE=1")
     digest_resolve = slot.index("oscombo.collab.workspace_assembly_lite_v2p2.runtime_image")

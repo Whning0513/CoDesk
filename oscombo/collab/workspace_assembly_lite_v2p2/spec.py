@@ -1,6 +1,7 @@
 """Actor-visible case contract. The inspection code is only in A's note."""
 CASE_ID = "CDD-WA-LITE-002P2"
 CASE_VERSION = "2.2.0"
+ADAPTER_VERSION = "2.2.1"
 CONDITIONS = ("collaborative_shared", "collaborative_isolated")
 FIXTURE_NAMES = {"asset": "inspection_note.txt", "report": "handoff_report.odt", "brief": "case_brief.md"}
 OUTPUTS = {"A": "outputs/agent_A/inspection_note.txt", "B": "outputs/agent_B/handoff_report.odt"}
@@ -9,6 +10,12 @@ HANDOFF_DEPENDENCIES = {"B": "A"}
 PRE_HANDOFF_REVISION_ROLES = frozenset({"B"})
 PEER_VIEW_DIRS = {"A": "views/B"}
 TASK_ROOT = "/tmp/wa22"
+
+
+def version_manifest() -> dict[str, str]:
+    """Separate task semantics version from the runner/adapter release."""
+    return {"case_id": CASE_ID, "case_version": CASE_VERSION,
+            "adapter_version": ADAPTER_VERSION}
 
 AGENT_A_INSTRUCTION = """You are A, the asset organizer. In File Manager, move inspection_note.txt from the incoming folder into your output folder outputs/agent_A, preserving the file bytes. The folder contains just this one note, initially selected. Check the selection before moving. Publish your saved output with the collaboration tool, then send B only a notification that the file revision is ready and its revision number. Do not send the note's inspection code or contents in your message. You may work concurrently with B. Do not use Terminal, scripts, evaluator files or Gold data."""
 

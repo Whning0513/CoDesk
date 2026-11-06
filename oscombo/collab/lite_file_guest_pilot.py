@@ -34,6 +34,12 @@ WORKSPACE_ASSEMBLY_V2_CASES = {"workspace_assembly_v2", "workspace_assembly_v2p1
 WORKSPACE_ASSEMBLY_CASES = {"workspace_assembly", "workspace_assembly_v1p2", *WORKSPACE_ASSEMBLY_V2_CASES}
 
 
+def _adapter_version_manifest(case: str, case_spec) -> dict[str, str]:
+    if case == "workspace_assembly_v2p2":
+        return case_spec.version_manifest()
+    return {}
+
+
 def _case7_v2_module(case: str, name: str):
     """Resolve versioned run components without falling back across versions."""
     packages = {"workspace_assembly_v2": "workspace_assembly_lite_v2",
@@ -608,6 +614,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
                 "blender_scorer": blender_bin if case == "model_review" else None,
                 "scripted_negative_control": negative}
     if case in WORKSPACE_ASSEMBLY_V2_CASES:
+        metadata.update(_adapter_version_manifest(case, spec))
         image_path = Path(image).resolve(strict=True)
         image_stat = image_path.stat()
         metadata["guest_resources_requested"] = {"cpus": os.environ.get("OSCOMBO_GUEST_CPUS", "4"),
@@ -938,6 +945,11 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
         (run_root / "missing_outputs.json").write_text(json.dumps(missing_outputs) + "\n")
         artifacts = collect_artifacts(run_root, artifact_items,
             core.GuestFiles({g.guest_key: g.env.controller for g in guests.values()}))
+        version_manifest = _adapter_version_manifest(case, spec)
+        if version_manifest:
+            artifacts.update(version_manifest)
+            (run_root / "artifact_manifest.json").write_text(
+                json.dumps(artifacts, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         if case == "build_verify":
             score = oracle.evaluate(fixture / spec.FIXTURE_NAMES["source"],
                 run_root / "artifacts/A" / Path(a_path).name,
@@ -1066,6 +1078,7 @@ def run(case: str, condition: str, run_root: Path, provider: Path, image: str, r
         if case in WORKSPACE_ASSEMBLY_V2_CASES:
             result.update({"behavioral_audit": process_audit, "bridge_valid": bridge_valid,
                            "oracle_fixture_valid": oracle_fixture_valid})
+        result.update(_adapter_version_manifest(case, spec))
         (run_root / "result.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
         return result
     finally:

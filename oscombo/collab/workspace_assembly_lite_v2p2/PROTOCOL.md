@@ -1,6 +1,8 @@
 # Case 7 Lite v2.2 validation protocol
 
-Status: new candidate. Keep all earlier Case 7 versions and run records unchanged. Freeze a source commit before launching any Guest. No v2.2 real Guest or model episode has run yet.
+Task `case_version`: 2.2.0. Adapter `adapter_version`: 2.2.1 (peer-view screenshot candidate detection only; no task, prompt, fixture, Gold or Oracle changes).
+
+Status: v2.2.1 adapter candidate. Keep all earlier Case 7 versions and run records unchanged. The untagged v2.2.0 controls are historical and are not eligible for a v2.2.1 freeze. Freeze a source commit before launching any new Guest. No Guest or model episode has run with adapter version 2.2.1 yet.
 
 1. Run offline fixture/Gold/Oracle positives and negatives: correct code, wrong code, merged fields, wrong audience, missing or corrupted A delivery, malformed ODT, fixture error, source-byte changes and seeded variation. This checks code only, not GUI feasibility.
 2. On a resource-approved window, run six real scripted GUI controls in fixed order: Shared positive, Isolated positive, Shared wrong-code, Isolated wrong-code, Shared revision probe, Isolated revision probe. Each gets a unique run ID. Manually inspect B's setup caret, saved audience prework, actual read-only revision screenshot and final Writer field; verify immutable SHA/mode/ownership, independent Oracle, reopen/reset and resource records. Stop on unexpected infrastructure failure. The revision probes are diagnostic and outside the critical task path.

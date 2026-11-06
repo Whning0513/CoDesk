@@ -71,6 +71,11 @@ def _common(root: Path, commit: str, seed: str, condition: str,
     meta, result = _read(root / "provenance.json"), _read(root / "result.json")
     _require(meta.get("case_id") == spec.CASE_ID and meta.get("case_version") == spec.CASE_VERSION,
              f"{root.name}: wrong case/version")
+    manifest = _read(root / "artifact_manifest.json")
+    version_manifest = spec.version_manifest()
+    _require(all(record.get(key) == value for record in (meta, result, manifest)
+                 for key, value in version_manifest.items()),
+             f"{root.name}: wrong or missing adapter version in run evidence")
     _require(meta.get("run_id") == root.name and meta.get("source_commit") == commit and meta.get("fixture_seed") == seed,
              f"{root.name}: run, source commit or seed mismatch")
     _require(meta.get("condition") == "collaborative_" + condition, f"{root.name}: wrong condition")
@@ -262,7 +267,7 @@ def create(output: Path, controls: dict[str, Path], control_review: Path,
     final_stat = image.stat()
     _require({"bytes": final_stat.st_size, "mtime_ns": final_stat.st_mtime_ns} == image_stat,
              "Guest base image changed while hashing")
-    record = {"source_commit": commit, "case_id": spec.CASE_ID, "case_version": spec.CASE_VERSION,
+    record = {"source_commit": commit, **spec.version_manifest(),
               "model": "gpt-6-astra", "model_effort": "medium", "steps_per_role": 25,
               "active_seconds_per_role": 1200, "guest_cpus": 8, "guest_ram": "8G",
               "round_seeds": ROUND_SEEDS, "round_fixture_sha256": round_hashes,
