@@ -12,12 +12,14 @@ else
     echo 'Missing env.local.sh for OSWorld paths' >&2
     exit 3
 fi
+# DOCKER_CONTEXT overrides DOCKER_HOST in the Docker CLI. All direct slot
+# invocations must honor the dedicated data2 socket checked below.
+unset DOCKER_CONTEXT
 export PYTHONDONTWRITEBYTECODE=1
 if [[ -n "${CODESK_CASE7_V2P2_VERIFIED_RUNTIME_IMAGE_ID:-}" ]]; then
     if [[ ! "$CODESK_CASE7_V2P2_VERIFIED_RUNTIME_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]; then
         echo 'Verified Case 7 runtime image ID is malformed; no run was started.' >&2; exit 3
     fi
-    export OSCOMBO_RUNTIME_IMAGE="$CODESK_CASE7_V2P2_VERIFIED_RUNTIME_IMAGE_ID"
 fi
 # The provider credential is read only from the owner-only file below. Do not
 # inherit unrelated API keys from the invoking shell into the coordinator.
@@ -29,6 +31,7 @@ export OSCOMBO_GUEST_CPUS=8 OSCOMBO_GUEST_RAM=8G
 : "${OSCOMBO_RUNTIME_IMAGE:?Set OSCOMBO_RUNTIME_IMAGE}"
 python="${OSWORLD_DIR%/}/.venv/bin/python"
 [[ -x "$python" ]] || { echo 'OSWorld Python is not executable' >&2; exit 3; }
+: "${DOCKER_HOST:?Set DOCKER_HOST to the Case 7 Docker daemon}"
 mode="${1:-}"
 model=0
 round=''
@@ -53,6 +56,16 @@ case "$mode" in
     fixture_seed="codesk-wa-v2p2-${round}-20261101" ;;
   *) fixture_seed='codesk-wa-v2p2-control-20261101' ;;
 esac
+case7_runtime_args=("$OSCOMBO_RUNTIME_IMAGE")
+if [[ -n "${CODESK_CASE7_V2P2_VERIFIED_RUNTIME_IMAGE_ID:-}" ]]; then
+    case7_runtime_args+=(--expected-id "$CODESK_CASE7_V2P2_VERIFIED_RUNTIME_IMAGE_ID")
+fi
+if ! case7_resolved_runtime_image="$("$python" -m oscombo.collab.workspace_assembly_lite_v2p2.runtime_image \
+    "${case7_runtime_args[@]}")"; then
+    echo 'Could not pin the Case 7 runtime image; no run was started.' >&2; exit 3
+fi
+export OSCOMBO_RUNTIME_IMAGE="$case7_resolved_runtime_image"
+export CODESK_CASE7_V2P2_VERIFIED_RUNTIME_IMAGE_ID="$case7_resolved_runtime_image"
 if ! git diff --quiet || ! git diff --cached --quiet; then
     echo 'Tracked source changes must be committed before a Guest run' >&2
     exit 3

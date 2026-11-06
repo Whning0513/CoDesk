@@ -13,6 +13,7 @@ def test_case7_campaign_launcher_fails_closed_to_the_dedicated_data2_daemon() ->
     script = (root / "audits/three_lite_cases_20261029/run_case7_v2p2_campaign_data2.sh").read_text()
     example = (root / "configs/case7_data2.env.example.sh").read_text()
     assert "source env.local.sh" in script
+    assert script.index("unset DOCKER_CONTEXT") < script.index("docker info --format")
     assert "export PYTHONDONTWRITEBYTECODE=1" in script
     assert "unix:///data2/whn/codesk-runs/case7-docker-data2/docker.sock" in script
     assert "/data2/whn/codesk-runs/case7-docker-data2/data" in script
@@ -27,10 +28,16 @@ def test_case7_campaign_launcher_fails_closed_to_the_dedicated_data2_daemon() ->
     assert "API_KEY" not in example
 
     slot = (root / "audits/three_lite_cases_20261029/run_case7_v2p2_one.sh").read_text()
+    unset_context = slot.index("unset DOCKER_CONTEXT")
     source_finished = slot.index("export PYTHONDONTWRITEBYTECODE=1")
-    digest_override = slot.index("export OSCOMBO_RUNTIME_IMAGE=\"$CODESK_CASE7_V2P2_VERIFIED_RUNTIME_IMAGE_ID\"")
+    digest_resolve = slot.index("oscombo.collab.workspace_assembly_lite_v2p2.runtime_image")
+    digest_export = slot.index('export OSCOMBO_RUNTIME_IMAGE="$case7_resolved_runtime_image"')
     freeze_guard = slot.index('if x.get(\'runtime_image\') != sys.argv[6]:')
-    assert source_finished < digest_override < freeze_guard
+    guest_launch = slot.index('--runtime "$OSCOMBO_RUNTIME_IMAGE"')
+    assert unset_context < source_finished < digest_resolve < digest_export < freeze_guard < guest_launch
+    assert "--expected-id \"$CODESK_CASE7_V2P2_VERIFIED_RUNTIME_IMAGE_ID\"" in slot
+    assert "case7_runtime_args=(\"$OSCOMBO_RUNTIME_IMAGE\")" in slot
+    assert unset_context < slot.index('docker ps --filter label=oscombo=1')
 
 
 def _run_mock_campaign_launcher(tmp_path: Path, *, frozen_runtime: str | None,
@@ -86,6 +93,8 @@ else:
 import json, os, sys
 from pathlib import Path
 args = sys.argv[1:]
+if "DOCKER_CONTEXT" in os.environ:
+    raise SystemExit(9)
 with Path(os.environ["CASE7_TEST_DOCKER_LOG"]).open("a") as stream:
     stream.write(json.dumps(args) + "\\n")
 if args[:1] == ["info"]:
@@ -116,6 +125,7 @@ else:
         "CASE7_TEST_IMAGE_MISSING": "1" if image_missing else "0",
         "CASE7_TEST_DOCKER_LOG": str(docker_log),
         "CASE7_TEST_CAMPAIGN_RECORD": str(campaign_record),
+        "DOCKER_CONTEXT": "wrong-context-must-be-ignored",
         "PYTHONDONTWRITEBYTECODE": "1",
     })
     result = subprocess.run(

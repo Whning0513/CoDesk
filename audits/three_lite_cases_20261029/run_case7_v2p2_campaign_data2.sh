@@ -7,6 +7,9 @@ cd "$case7_root"
 source env.local.sh
 export PYTHONDONTWRITEBYTECODE=1
 export PYTHONPATH="$case7_root${PYTHONPATH:+:$PYTHONPATH}"
+# Docker's DOCKER_CONTEXT takes precedence over DOCKER_HOST; keep all wrapper
+# and nested slot Docker CLI calls on the dedicated data2 endpoint.
+unset DOCKER_CONTEXT
 
 case7_expected_docker_host='unix:///data2/whn/codesk-runs/case7-docker-data2/docker.sock'
 case7_expected_docker_root='/data2/whn/codesk-runs/case7-docker-data2/data'
