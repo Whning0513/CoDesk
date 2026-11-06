@@ -12,10 +12,14 @@ the original `run_model_triad.sh` remains available for the original policy.
 The run base must be fresh and on `/data2`. This amendment does not authorize
 starting a Guest or contacting a model endpoint.
 
-The frozen manifest must record the exact Guest image SHA-256. Supply that
-digest in `CODESK_CASE6_V13_GUEST_IMAGE_SHA256`; the runner hashes the selected
-file and fails closed unless it matches. The digest is public provenance, not
-a credential.
+The frozen manifest must record the exact Guest image SHA-256. A candidate
+baseline is recorded in
+`GUEST_IMAGE_BASELINE_CANDIDATE_20261106.json`: it comes from the existing
+Case 7 image freeze, and the current file size and nanosecond mtime match that
+freeze. This is not yet a Case 6 freeze. Supply the Case 6 frozen digest in
+`CODESK_CASE6_V13_GUEST_IMAGE_SHA256`; the runner hashes the selected file and
+fails closed unless it matches. The digest is public provenance, not a
+credential.
 
 ## Resource policy
 

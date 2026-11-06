@@ -1,0 +1,12 @@
+{
+  "bytes": 14891810816,
+  "case6_guest_image_path": "/data3/whn/Project2/images/osworld-v2-ubuntu-x86.qcow2",
+  "current_metadata_recheck_utc": "2026-11-06",
+  "metadata_recheck": "resolved path size and nanosecond mtime match source freeze; sha256 is rechecked by the Case 6 robase runner before any live run",
+  "mode_observed": "0444",
+  "mtime_ns": 1793024909636140184,
+  "note": "The filesystem free-space exemption is only for the read-only Guest base; overlay, cache, run, Docker, and Git writes remain subject to the capacity gates.",
+  "sha256": "28b617987f3edf14edd835069cdde6a6e4708be8e4ae4eb957200d5da335186a",
+  "source_evidence": "/data3/whn/Project2/CoDesk-case7-v2p2-data3-20261102/runs/wa-lite-v2p2-data3-cohort-20261102/freeze.json",
+  "status": "candidate_baseline_not_yet_frozen_for_case6"
+}
