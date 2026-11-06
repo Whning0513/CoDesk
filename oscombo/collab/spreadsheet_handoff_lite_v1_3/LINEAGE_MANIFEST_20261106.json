@@ -1,0 +1,132 @@
+{
+  "created_utc": "2026-11-06",
+  "destination": {
+    "base_commit": "7318a051f6d4db6d2781b73879e167f057c08210",
+    "branch": "experiment/case6-v1p3-model-threearm-20261106",
+    "worktree": "/data2/whn/CoDesk-case6-v1p3-20261106"
+  },
+  "files": [
+    {
+      "bytes": 2069,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/ADAPTER.md",
+      "sha256": "7467e928583ed1edb1df57e74d860de943986151250f34a2ec909d37e7216f89"
+    },
+    {
+      "bytes": 8851,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/AUDIT_AND_RUN_RECIPE_20261105.md",
+      "sha256": "4f52e8c4da92531c94b259ce0154d4a92b325ce616977e0726c7ec5de237dc96"
+    },
+    {
+      "bytes": 5216,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/TASK_CARD_ZH.md",
+      "sha256": "e98ac36ece6ad1b2e8df34515f1d10421b9b5a7c3ca5c203c62f1a2e03c4c626"
+    },
+    {
+      "bytes": 0,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 182,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/__pycache__/__init__.cpython-310.pyc",
+      "sha256": "de51e991e2e7d5492ba4fd4cea13bfd4cd10f5773c3980e40141122062c9e785"
+    },
+    {
+      "bytes": 5928,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/__pycache__/adapter.cpython-310.pyc",
+      "sha256": "e4a9be31d3dbf3ed3e248a11e4e1bd465845cbe9feddb38ac1cde38517bcfde6"
+    },
+    {
+      "bytes": 9467,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/__pycache__/adapter.cpython-311.pyc",
+      "sha256": "26b25b8db60d73402ae00e4e55ee64517ea7762203ce21be835b83aed51880d9"
+    },
+    {
+      "bytes": 8654,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/__pycache__/fixtures.cpython-310.pyc",
+      "sha256": "66cea0db5107ca4695ffc25905b5319f5927d5392fa8183560b2a94bb2984bbb"
+    },
+    {
+      "bytes": 14014,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/__pycache__/live_pilot.cpython-310.pyc",
+      "sha256": "3b13d6bd3162e4aa423f3d1a27d829333073b53724cc751d6133b3e09a2435d9"
+    },
+    {
+      "bytes": 28419,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/__pycache__/live_pilot.cpython-311.pyc",
+      "sha256": "ac9a2ac1e00def567fb2783d30bf954266b039b1d4676d96b246f886d2da18b3"
+    },
+    {
+      "bytes": 10759,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/__pycache__/oracle.cpython-310.pyc",
+      "sha256": "8f54220bdb2dc4a4cb17167f8318d0dcc835d60f4c0c8f09288c9cc8bcb9c84c"
+    },
+    {
+      "bytes": 2786,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/__pycache__/spec.cpython-310.pyc",
+      "sha256": "6455f8083c0d47becf6fd37a21ff44198997209ba56fa401c637c2fc1c518b5b"
+    },
+    {
+      "bytes": 6393,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/adapter.py",
+      "sha256": "e48b58bf4e6c3742edec0e3b2193404a4e7446d2daa533d825b601a1a866ee7f"
+    },
+    {
+      "bytes": 8398,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/fixtures.py",
+      "sha256": "bb7264e1cdf028d354f1369de58a7ef85fcc55e1ddb23a1808709d81b530ecd0"
+    },
+    {
+      "bytes": 17357,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/live_pilot.py",
+      "sha256": "36d43300b7538712c17a63e816d27b5411706a533a52ef942507011321e09233"
+    },
+    {
+      "bytes": 12788,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/oracle.py",
+      "sha256": "44ca21734a373b79e3bb14b657f771a80fc12630577360178696a3bbb4d44b0b"
+    },
+    {
+      "bytes": 0,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/private/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 190,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/private/__pycache__/__init__.cpython-310.pyc",
+      "sha256": "0f15ea29a20076654a66f209f9890413334d05d8ecab72405ad060498fa14bdc"
+    },
+    {
+      "bytes": 1751,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/private/__pycache__/gold.cpython-310.pyc",
+      "sha256": "871ef87cc39274edff7655dbb973ab70bfa45396db2437e62fd04c5f074ca806"
+    },
+    {
+      "bytes": 1599,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/private/gold.py",
+      "sha256": "8d79210eff2c87167ef95428c9ebc6d291eb4ff3e1167a20a72d1173398ad69b"
+    },
+    {
+      "bytes": 2629,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/spec.py",
+      "sha256": "0b651b14d2a7ee33777fd3a7c1301d01cf0e86588e7fbb8c24770dcd96fef98c"
+    },
+    {
+      "bytes": 7945,
+      "path": "tests/test_spreadsheet_handoff_lite_v1_3.py",
+      "sha256": "5b70ec4b00932cabb5c938075c19ac756b43bfdbb4dc736dd5a1eec7bd774ddf"
+    },
+    {
+      "bytes": 6643,
+      "path": "tests/test_spreadsheet_handoff_lite_v1_3_adapter.py",
+      "sha256": "375c7948cfaff9a0fd32ef409d8f10c928f81806360f5320da485632016c3807"
+    }
+  ],
+  "manifest_version": 1,
+  "scope": "Copied, uncommitted Case 6 Spreadsheet Handoff Lite v1.3 package and tests. The manifest itself is excluded from file hashes.",
+  "source": {
+    "branch": "experiment/case6-lite-v1p2-20261031",
+    "commit": "7318a051f6d4db6d2781b73879e167f057c08210",
+    "worktree": "/data3/whn/Project2/CoDesk-case6"
+  }
+}

@@ -1,0 +1,139 @@
+{
+  "created_utc": "2026-11-06T05:04:56.414571+00:00",
+  "destination": {
+    "base_commit": "7318a051f6d4db6d2781b73879e167f057c08210",
+    "branch": "experiment/case6-v1p3-model-threearm-independent-20261106",
+    "clone_method": "git clone --no-local --no-hardlinks",
+    "git_common_dir": ".git",
+    "object_alternates_present": false,
+    "uncommitted_case6_copy": "rsync -a excluding __pycache__; three test files copied individually",
+    "worktree": "/data2/whn/CoDesk-case6-v1p3-independent-20261106"
+  },
+  "file_count": 18,
+  "files": [
+    {
+      "bytes": 3035,
+      "matches_staging_copy": true,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/ADAPTER.md",
+      "sha256": "5ec84e4eee29b3bd32616fb5e2bfda49f1635e1c3da9c8bb7f48e18a2ff15af7"
+    },
+    {
+      "bytes": 11568,
+      "matches_staging_copy": false,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/AUDIT_AND_RUN_RECIPE_20261105.md",
+      "sha256": "c971d517502e6e5a4b3737d34344d4d5e850b952044e2df82186214a2bd76a20"
+    },
+    {
+      "bytes": 3873,
+      "matches_staging_copy": false,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/EXPERIMENT_PROTOCOL.md",
+      "sha256": "66a1fdda87ad1fdd0345f3f9961072715d22df7d90cbda83b1cc6ea79e09d350"
+    },
+    {
+      "bytes": 5264,
+      "matches_staging_copy": true,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/LINEAGE_MANIFEST_20261106.json",
+      "sha256": "2686fd5a2cf8c3dab437f421ac24f33d909ac5170546f8f1d85d01ae923df4bf"
+    },
+    {
+      "bytes": 5216,
+      "matches_staging_copy": true,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/TASK_CARD_ZH.md",
+      "sha256": "e98ac36ece6ad1b2e8df34515f1d10421b9b5a7c3ca5c203c62f1a2e03c4c626"
+    },
+    {
+      "bytes": 0,
+      "matches_staging_copy": true,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 6393,
+      "matches_staging_copy": true,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/adapter.py",
+      "sha256": "e48b58bf4e6c3742edec0e3b2193404a4e7446d2daa533d825b601a1a866ee7f"
+    },
+    {
+      "bytes": 8398,
+      "matches_staging_copy": true,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/fixtures.py",
+      "sha256": "bb7264e1cdf028d354f1369de58a7ef85fcc55e1ddb23a1808709d81b530ecd0"
+    },
+    {
+      "bytes": 17357,
+      "matches_staging_copy": true,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/live_pilot.py",
+      "sha256": "36d43300b7538712c17a63e816d27b5411706a533a52ef942507011321e09233"
+    },
+    {
+      "bytes": 44579,
+      "matches_staging_copy": true,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/model_pilot.py",
+      "sha256": "c53cc3a54da830e8ce9ec97b4c7ef02e9b5884dab2e91068b041d1ed5be9e50a"
+    },
+    {
+      "bytes": 12788,
+      "matches_staging_copy": true,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/oracle.py",
+      "sha256": "44ca21734a373b79e3bb14b657f771a80fc12630577360178696a3bbb4d44b0b"
+    },
+    {
+      "bytes": 0,
+      "matches_staging_copy": true,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/private/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 1599,
+      "matches_staging_copy": true,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/private/gold.py",
+      "sha256": "8d79210eff2c87167ef95428c9ebc6d291eb4ff3e1167a20a72d1173398ad69b"
+    },
+    {
+      "bytes": 8082,
+      "matches_staging_copy": true,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/run_model_triad.sh",
+      "sha256": "1eddeee8425abc7e37d6b1376863a4ff6b0b8e2c57570babec3305ba77611e75"
+    },
+    {
+      "bytes": 2629,
+      "matches_staging_copy": true,
+      "path": "oscombo/collab/spreadsheet_handoff_lite_v1_3/spec.py",
+      "sha256": "0b651b14d2a7ee33777fd3a7c1301d01cf0e86588e7fbb8c24770dcd96fef98c"
+    },
+    {
+      "bytes": 7945,
+      "matches_staging_copy": true,
+      "path": "tests/test_spreadsheet_handoff_lite_v1_3.py",
+      "sha256": "5b70ec4b00932cabb5c938075c19ac756b43bfdbb4dc736dd5a1eec7bd774ddf"
+    },
+    {
+      "bytes": 6643,
+      "matches_staging_copy": true,
+      "path": "tests/test_spreadsheet_handoff_lite_v1_3_adapter.py",
+      "sha256": "375c7948cfaff9a0fd32ef409d8f10c928f81806360f5320da485632016c3807"
+    },
+    {
+      "bytes": 13924,
+      "matches_staging_copy": true,
+      "path": "tests/test_spreadsheet_handoff_lite_v1_3_model.py",
+      "sha256": "22cbf2041329969212203dc17e059a9c6065f1f866e01f404a73da8fc6773e51"
+    }
+  ],
+  "guest_api_docker_qemu_started": false,
+  "manifest_version": 2,
+  "matches_staging_copy_count": 16,
+  "offline_validation": {
+    "bash_n": "passed",
+    "py_compile": "passed",
+    "pytest_command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. pytest -q tests/test_spreadsheet_handoff_lite_v1_3.py tests/test_spreadsheet_handoff_lite_v1_3_adapter.py tests/test_spreadsheet_handoff_lite_v1_3_model.py tests/test_responses_tool_image_relay.py tests/test_case6_relay_transport.py",
+    "pytest_result": "55 passed in 5.34s"
+  },
+  "original_v13_source": {
+    "base_commit": "7318a051f6d4db6d2781b73879e167f057c08210",
+    "staging_copy": "/data2/whn/CoDesk-case6-v1p3-20261106",
+    "worktree": "/data3/whn/Project2/CoDesk-case6"
+  },
+  "purpose": "Independent Case 6 v1.3 local clone and offline model-runner preparation; current uncommitted package/test SHA lineage.",
+  "pycache_copied": false
+}
