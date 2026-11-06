@@ -50,4 +50,4 @@ case7_actual_runtime="$(DOCKER_HOST="$DOCKER_HOST" docker image inspect \
 [[ "$case7_actual_runtime" == "$case7_expected_runtime" ]] || {
     echo 'Runtime image ID differs from the Case 7 freeze; no run was started.' >&2; exit 3;
 }
-exec "$case7_python" -m oscombo.collab.workspace_assembly_lite_v2.campaign "$@"
+exec "$case7_python" -m oscombo.collab.workspace_assembly_lite_v2p2.campaign "$@"

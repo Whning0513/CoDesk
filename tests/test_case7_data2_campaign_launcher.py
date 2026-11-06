@@ -14,6 +14,7 @@ def test_case7_campaign_launcher_fails_closed_to_the_dedicated_data2_daemon() ->
     assert "docker image inspect" in script
     assert "case7_actual_runtime" in script and "case7_expected_runtime" in script
     assert script.index("docker image inspect") < script.index("exec \"$case7_python\" -m")
-    assert "exec \"$case7_python\" -m oscombo.collab.workspace_assembly_lite_v2.campaign" in script
+    assert "exec \"$case7_python\" -m oscombo.collab.workspace_assembly_lite_v2p2.campaign" in script
+    assert "oscombo.collab.workspace_assembly_lite_v2.campaign" not in script
     assert "DOCKER_HOST=unix:///data2/whn/codesk-runs/case7-docker-data2/docker.sock" in example
     assert "API_KEY" not in example

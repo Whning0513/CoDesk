@@ -924,6 +924,19 @@ def _start_local_qwen_gateway(run_root: Path, python: Path, worker: Path, model_
     raise TimeoutError(f"local Qwen gateway did not become ready within 900s; see {log_path}")
 
 
+def _codex_compat_relay_environment(api_key_env: str, client_token_env: str,
+                                    client_token: str) -> dict[str, str]:
+    """Build the relay's minimal environment while retaining Python write policy."""
+    relay_env = {name: os.environ[name] for name in (
+        "PATH", "HOME", "PYTHONPATH", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
+        "http_proxy", "https_proxy", "no_proxy", "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE",
+        "PYTHONDONTWRITEBYTECODE")
+                 if name in os.environ}
+    relay_env.update({api_key_env: os.environ[api_key_env],
+                      client_token_env: client_token, "PYTHONUNBUFFERED": "1"})
+    return relay_env
+
+
 def _start_codex_compat_relay(run_root: Path, upstream: str, api_key_env: str,
                               client_token: str, client_token_env: str,
                               actor_mcp_only: bool = False) -> tuple[subprocess.Popen, str]:
@@ -938,12 +951,7 @@ def _start_codex_compat_relay(run_root: Path, upstream: str, api_key_env: str,
            "--event-log", str(run_root / "codex_relay_events.jsonl")]
     if actor_mcp_only:
         cmd.append("--actor-mcp-only")
-    relay_env = {name: os.environ[name] for name in (
-        "PATH", "HOME", "PYTHONPATH", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
-        "http_proxy", "https_proxy", "no_proxy", "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE")
-                 if name in os.environ}
-    relay_env.update({api_key_env: os.environ[api_key_env],
-                      client_token_env: client_token, "PYTHONUNBUFFERED": "1"})
+    relay_env = _codex_compat_relay_environment(api_key_env, client_token_env, client_token)
     with log_path.open("w", encoding="utf-8") as log:
         process = subprocess.Popen(cmd, cwd=Path(__file__).resolve().parents[3],
                                    env=relay_env,
