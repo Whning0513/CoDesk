@@ -161,10 +161,26 @@ def test_robase_runner_keeps_capacity_gate_on_writable_paths_only() -> None:
     assert "case6_guest_image_fingerprint" in script
     assert "trap case6_exit_trap EXIT" in script
     selected_host = script.index('case6_docker_host="${DOCKER_HOST:-unix:///var/run/docker.sock}"')
+    osworld_pin = script.index(': "${CODESK_CASE6_V13_OSWORLD_COMMIT:')
+    osworld_diff_pin = script.index(': "${CODESK_CASE6_V13_OSWORLD_DIFF_SHA256:')
+    osworld_head = script.index('git -C "$OSWORLD_DIR" rev-parse HEAD')
+    osworld_match = script.index('"$case6_actual_osworld_commit" == "$CODESK_CASE6_V13_OSWORLD_COMMIT"')
+    osworld_diff = script.index('git -C "$OSWORLD_DIR" diff --binary HEAD | sha256sum')
+    osworld_untracked = script.index('git -C "$OSWORLD_DIR" ls-files --others --exclude-standard')
     socket_check = script.index('[[ -S "$case6_docker_socket"')
     exported_host = script.index('export DOCKER_HOST="$case6_docker_host"')
+    docker_info = script.index("docker info --format '{{.DockerRootDir}}'")
     model_runner = script.index("-m oscombo.collab.spreadsheet_handoff_lite_v1_3.model_pilot")
+    assert osworld_pin < osworld_diff_pin < osworld_head < osworld_match < osworld_diff < osworld_untracked < docker_info
     assert selected_host < socket_check < exported_host < model_runner
+    assert all(name in script for name in (
+        "osworld_commit_pin", "osworld_commit_actual",
+        "osworld_diff_sha256_pin", "osworld_diff_sha256_actual"))
+    assert "case6_verify_osworld_source_unchanged()" in script
+    assert "if ! case6_verify_osworld_source_unchanged; then" in script
+    model = (root / "oscombo/collab/spreadsheet_handoff_lite_v1_3/model_pilot.py").read_text()
+    assert 'metadata["osworld_commit"] = actual_osworld_identity["commit"]' in model
+    assert 'metadata["osworld_diff_sha256"] = actual_osworld_identity["diff_sha256"]' in model
     context_guard = script.index('[[ -z "${DOCKER_CONTEXT:-}" ]]')
     assert context_guard < script.index("docker info --format")
     assert '[[ "$OSCOMBO_GUEST_IMAGE" == "$case6_guest_image" ]]' in script

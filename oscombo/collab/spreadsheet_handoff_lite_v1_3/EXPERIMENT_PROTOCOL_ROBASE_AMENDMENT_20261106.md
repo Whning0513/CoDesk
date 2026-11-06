@@ -21,6 +21,16 @@ the original `run_model_triad.sh` remains available for the original policy.
 The run base must be fresh and on `/data2`. This amendment does not authorize
 starting a Guest or contacting a model endpoint.
 
+The RO-base runner requires `CODESK_CASE6_V13_OSWORLD_COMMIT` and
+`CODESK_CASE6_V13_OSWORLD_DIFF_SHA256`. Before contacting Docker or starting a
+Guest, it compares `git -C "$OSWORLD_DIR" rev-parse HEAD` with the commit pin,
+hashes `git diff --binary HEAD`, and rejects non-ignored untracked files.
+Tracked staged or unstaged changes are allowed only when their combined diff
+hash is explicitly pinned. The exact commit and diff hash are recorded in the
+resource preflight and each arm's run metadata; both are rechecked before arms
+and after the triad. This OSWorld source pin applies only to new RO-base cohorts.
+The original runner and historical evidence are unchanged.
+
 The frozen manifest must record the exact Guest image SHA-256. A candidate
 baseline is recorded in
 `GUEST_IMAGE_BASELINE_CANDIDATE_20261106.json`: it comes from the existing
@@ -46,9 +56,11 @@ compares metadata before and after hashing, rejects a symlink/noncanonical
 image path, and the canonical image path is the one passed to every Guest.
 The Case 6 model adapter also verifies the runtime image ID, actual mount,
 overlay, and DesktopEnv/SetupController cache root at boot and after postscore
-reset only when the new entrypoint passes `--robase-validation`; the original
-v1.3 model runner does not enable that policy and retains its previous result
-contract.
+reset only when the new entrypoint passes `--robase-validation`. Boot validation
+allows `DesktopEnv.cache_dir` to be absent before OSWorld `_set_task_info()`;
+postscore-reset validation requires the task-specific path to be nonempty and
+inside this Guest's cache root. The original v1.3 model runner does not enable
+that policy and retains its previous result contract.
 After validating the selected Docker socket, the runner exports that same
 `DOCKER_HOST` so the Python Docker SDK and Guest provider cannot silently fall
 back to a different daemon; it rejects a set `DOCKER_CONTEXT` to avoid CLI

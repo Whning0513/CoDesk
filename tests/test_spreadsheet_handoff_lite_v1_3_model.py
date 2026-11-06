@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
 from types import SimpleNamespace
 
 import pytest
@@ -50,14 +51,71 @@ def test_model_entry_rejects_preexisting_run_root_before_guest_or_api(monkeypatc
             api_key_env="CASE6_TEST_KEY", mcp_python="/venv/bin/python")
 
 
-def test_robase_model_mode_requires_frozen_image_and_runtime_pins(monkeypatch, tmp_path):
+def test_robase_model_mode_requires_all_frozen_resource_pins(monkeypatch, tmp_path):
     monkeypatch.setenv("CASE6_TEST_KEY", "offline-sentinel")
     monkeypatch.delenv("CODESK_CASE6_V13_GUEST_IMAGE_SHA256", raising=False)
     monkeypatch.delenv("CODESK_CASE6_V13_RUNTIME_IMAGE_ID", raising=False)
+    monkeypatch.delenv("CODESK_CASE6_V13_OSWORLD_COMMIT", raising=False)
+    monkeypatch.delenv("CODESK_CASE6_V13_OSWORLD_DIFF_SHA256", raising=False)
     run_root = tmp_path / "not-started"
-    with pytest.raises(RuntimeError, match="requires frozen image/runtime pins"):
+    with pytest.raises(RuntimeError, match="requires frozen image/runtime/OSWorld source pins"):
         model_pilot.run_model_episode(
             arm="shared", run_root=run_root, provider=tmp_path, image="image.qcow2",
+            runtime="runtime:tag", model="test-model", base_url="https://model.invalid/v1",
+            api_key_env="CASE6_TEST_KEY", mcp_python="/venv/bin/python",
+            robase_validation=True)
+    assert not run_root.exists()
+
+
+def test_osworld_source_pin_hashes_tracked_diff_and_rejects_untracked_files(tmp_path):
+    repo = tmp_path / "osworld"
+    repo.mkdir()
+    subprocess.run(["git", "init", "--quiet", str(repo)], check=True)
+    (repo / "tracked.txt").write_text("fixture\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "add", "tracked.txt"], check=True)
+    subprocess.run([
+        "git", "-C", str(repo), "-c", "user.name=Offline Test",
+        "-c", "user.email=offline@example.invalid", "commit", "--quiet", "-m", "pin",
+    ], check=True)
+    identity = model_pilot.osworld_source_identity(repo)
+    commit, diff_sha = identity["commit"], identity["diff_sha256"]
+    assert model_pilot.osworld_source_matches(commit, diff_sha, identity)
+    assert not model_pilot.osworld_source_matches("0" * len(commit), diff_sha, identity)
+    assert not model_pilot.osworld_source_matches(commit, "not-a-sha256", identity)
+
+    (repo / "tracked.txt").write_text("tracked change\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "add", "tracked.txt"], check=True)
+    staged_identity = model_pilot.osworld_source_identity(repo)
+    assert staged_identity["commit"] == commit
+    assert staged_identity["diff_sha256"] != diff_sha
+    assert model_pilot.osworld_source_matches(
+        commit, staged_identity["diff_sha256"], staged_identity)
+
+    (repo / "untracked.txt").write_text("uncommitted\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="untracked non-ignored"):
+        model_pilot.osworld_source_identity(repo)
+
+
+def test_robase_model_entry_rejects_mismatched_osworld_commit_before_run_root(monkeypatch, tmp_path):
+    repo = tmp_path / "osworld"
+    repo.mkdir()
+    subprocess.run(["git", "init", "--quiet", str(repo)], check=True)
+    (repo / "tracked.txt").write_text("fixture\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "add", "tracked.txt"], check=True)
+    subprocess.run([
+        "git", "-C", str(repo), "-c", "user.name=Offline Test",
+        "-c", "user.email=offline@example.invalid", "commit", "--quiet", "-m", "pin",
+    ], check=True)
+    identity = model_pilot.osworld_source_identity(repo)
+    monkeypatch.setenv("CASE6_TEST_KEY", "offline-sentinel")
+    monkeypatch.setenv("CODESK_CASE6_V13_GUEST_IMAGE_SHA256", "a" * 64)
+    monkeypatch.setenv("CODESK_CASE6_V13_RUNTIME_IMAGE_ID", "sha256:" + "b" * 64)
+    monkeypatch.setenv("CODESK_CASE6_V13_OSWORLD_COMMIT", "0" * len(identity["commit"]))
+    monkeypatch.setenv("CODESK_CASE6_V13_OSWORLD_DIFF_SHA256", identity["diff_sha256"])
+    run_root = tmp_path / "not-started"
+    with pytest.raises(RuntimeError, match="OSWorld source identity does not match"):
+        model_pilot.run_model_episode(
+            arm="shared", run_root=run_root, provider=repo, image="image.qcow2",
             runtime="runtime:tag", model="test-model", base_url="https://model.invalid/v1",
             api_key_env="CASE6_TEST_KEY", mcp_python="/venv/bin/python",
             robase_validation=True)
@@ -104,17 +162,50 @@ def test_desktopenv_and_setup_cache_must_be_run_owned(tmp_path):
     env = SimpleNamespace(cache_dir_base=str(owned_cache),
                           setup_controller=SimpleNamespace(cache_dir=str(owned_cache)),
                           cache_dir=str(owned_cache / "task-123"))
-    evidence = model_pilot.verify_run_owned_cache(env, run_root, "A")
+    evidence = model_pilot.verify_run_owned_cache(env, run_root, "A", stage="boot")
     assert evidence["verified"] is True
     assert evidence["desktop_env_task_cache_dir"] == str(owned_cache / "task-123")
 
     env.setup_controller.cache_dir = str(owned_cache / "task-123")
-    evidence = model_pilot.verify_run_owned_cache(env, run_root, "A")
+    evidence = model_pilot.verify_run_owned_cache(env, run_root, "A", stage="boot")
     assert evidence["setup_controller_cache_dir"] == str(owned_cache / "task-123")
 
     env.setup_controller.cache_dir = str(tmp_path / "outside")
     with pytest.raises(ValueError, match="SetupController.cache_dir is outside"):
-        model_pilot.verify_run_owned_cache(env, run_root, "A")
+        model_pilot.verify_run_owned_cache(env, run_root, "A", stage="boot")
+
+
+def test_boot_allows_missing_task_cache_but_reset_requires_it(tmp_path):
+    run_root = tmp_path / "run"
+    owned_cache = run_root / "cache" / "A"
+    owned_cache.mkdir(parents=True)
+    env = SimpleNamespace(cache_dir_base=str(owned_cache),
+                          setup_controller=SimpleNamespace(cache_dir=str(owned_cache)))
+
+    boot = model_pilot.verify_run_owned_cache(env, run_root, "A", stage="boot")
+    assert boot["verified"] is True
+    assert boot["desktop_env_task_cache_dir"] is None
+    with pytest.raises(ValueError, match="missing after reset"):
+        model_pilot.verify_run_owned_cache(env, run_root, "A", stage="reset")
+
+
+def test_reset_task_cache_must_be_inside_guest_run_owned_cache(tmp_path):
+    run_root = tmp_path / "run"
+    owned_cache = run_root / "cache" / "A"
+    owned_cache.mkdir(parents=True)
+    env = SimpleNamespace(cache_dir_base=str(owned_cache),
+                          setup_controller=SimpleNamespace(cache_dir=str(owned_cache)),
+                          cache_dir=str(tmp_path / "outside-task-cache"))
+    with pytest.raises(ValueError, match="task cache escapes"):
+        model_pilot.verify_run_owned_cache(env, run_root, "A", stage="reset")
+
+    env.cache_dir = str(owned_cache / "task-123")
+    reset = model_pilot.verify_run_owned_cache(env, run_root, "A", stage="reset")
+    assert reset["verified"] is True
+    assert reset["desktop_env_task_cache_dir"] == str(owned_cache / "task-123")
+
+    with pytest.raises(ValueError, match="stage must be"):
+        model_pilot.verify_run_owned_cache(env, run_root, "A", stage="postscore")
 
 
 def test_current_guest_mount_overlay_cache_and_runtime_pin_are_verified(tmp_path, monkeypatch):
@@ -136,18 +227,32 @@ def test_current_guest_mount_overlay_cache_and_runtime_pin_are_verified(tmp_path
         cache_dir=str(owned_cache / "task-123"))
     monkeypatch.setenv("CODESK_CASE6_V13_RUNTIME_IMAGE_ID", expected_runtime)
 
-    evidence = model_pilot.verify_run_owned_guest_resources(container, env, str(image), run_root, "A")
+    evidence = model_pilot.verify_run_owned_guest_resources(
+        container, env, str(image), run_root, "A", stage="boot")
     assert evidence["verified"] is True
     assert evidence["runtime_image_id"] == expected_runtime
     assert evidence["base_mount"]["RW"] is False
+    assert evidence["validation_stage"] == "boot"
+
+    env.cache_dir = None
+    with pytest.raises(ValueError, match="missing after reset"):
+        model_pilot.verify_run_owned_guest_resources(
+            container, env, str(image), run_root, "A", stage="reset")
+    env.cache_dir = str(owned_cache / "task-123")
+    reset_evidence = model_pilot.verify_run_owned_guest_resources(
+        container, env, str(image), run_root, "A", stage="reset")
+    assert reset_evidence["verified"] is True
+    assert reset_evidence["validation_stage"] == "reset"
 
     mount["RW"] = True
     with pytest.raises(ValueError, match="read-only"):
-        model_pilot.verify_run_owned_guest_resources(container, env, str(image), run_root, "A")
+        model_pilot.verify_run_owned_guest_resources(
+            container, env, str(image), run_root, "A", stage="boot")
     mount["RW"] = False
     container.attrs["Image"] = "sha256:" + "b" * 64
     with pytest.raises(ValueError, match="runtime image ID"):
-        model_pilot.verify_run_owned_guest_resources(container, env, str(image), run_root, "A")
+        model_pilot.verify_run_owned_guest_resources(
+            container, env, str(image), run_root, "A", stage="boot")
 
 
 def test_each_filesystem_needs_15_gib_and_1024_free_inodes():

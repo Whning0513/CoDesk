@@ -13,6 +13,8 @@ export PYTHONDONTWRITEBYTECODE=1
 export PYTHONPATH="$case6_root${PYTHONPATH:+:$PYTHONPATH}"
 
 : "${CODESK_CASE6_V13_FROZEN_COMMIT:?Set the reviewed v1.3 source commit}"
+: "${CODESK_CASE6_V13_OSWORLD_COMMIT:?Set the frozen full OSWorld Git commit ID for the RO-base cohort}"
+: "${CODESK_CASE6_V13_OSWORLD_DIFF_SHA256:?Set the frozen SHA-256 of git diff --binary HEAD for OSWorld}"
 : "${CODESK_CASE6_V13_RUN_BASE:?Set a new run directory on /data2}"
 : "${CODESK_CASE6_V13_DOCKER_DATA_ROOT:?Set the expected dedicated Docker data-root on /data2}"
 : "${CODESK_CASE6_V13_RUNTIME_IMAGE_ID:?Set the expected sha256 image ID of the runtime image}"
@@ -39,6 +41,31 @@ case6_python="$OSWORLD_DIR/.venv/bin/python"
 [[ -x "$case6_python" ]] || { echo 'OSWorld Python is unavailable.' >&2; exit 3; }
 [[ -r "$OSCOMBO_GUEST_IMAGE" ]] || { echo 'Guest image is unreadable.' >&2; exit 3; }
 [[ -r "$OSWORLD_DIR/desktop_env/providers" ]] || { echo 'OSWorld provider package is unavailable.' >&2; exit 3; }
+[[ "$CODESK_CASE6_V13_OSWORLD_COMMIT" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || {
+    echo 'OSWorld commit pin must be a full 40- or 64-character lowercase Git object ID.' >&2; exit 3;
+}
+[[ "$CODESK_CASE6_V13_OSWORLD_DIFF_SHA256" =~ ^[0-9a-f]{64}$ ]] || {
+    echo 'OSWorld diff pin must be a full lowercase SHA-256.' >&2; exit 3;
+}
+case6_actual_osworld_commit="$(git -C "$OSWORLD_DIR" rev-parse HEAD 2>/dev/null)" || {
+    echo 'Cannot read the local OSWorld HEAD commit; no Guest will be started.' >&2; exit 3;
+}
+[[ "$case6_actual_osworld_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ &&
+   "$case6_actual_osworld_commit" == "$CODESK_CASE6_V13_OSWORLD_COMMIT" ]] || {
+    echo 'OSWorld HEAD does not match the frozen commit pin; no Guest will be started.' >&2; exit 3;
+}
+case6_actual_osworld_diff_sha256="$(git -C "$OSWORLD_DIR" diff --binary HEAD | sha256sum | awk '{print $1}')" || {
+    echo 'Cannot hash the OSWorld tracked diff; no Guest will be started.' >&2; exit 3;
+}
+[[ "$case6_actual_osworld_diff_sha256" == "$CODESK_CASE6_V13_OSWORLD_DIFF_SHA256" ]] || {
+    echo 'OSWorld tracked diff does not match the frozen SHA-256 pin; no Guest will be started.' >&2; exit 3;
+}
+case6_osworld_untracked="$(git -C "$OSWORLD_DIR" ls-files --others --exclude-standard)" || {
+    echo 'Cannot verify untracked OSWorld files; no Guest will be started.' >&2; exit 3;
+}
+[[ -z "$case6_osworld_untracked" ]] || {
+    echo 'OSWorld checkout has untracked non-ignored files; no Guest will be started.' >&2; exit 3;
+}
 [[ -z "${DOCKER_CONTEXT:-}" ]] || {
     echo 'DOCKER_CONTEXT must be unset; use the explicit Docker socket through DOCKER_HOST.' >&2; exit 3;
 }
@@ -135,16 +162,30 @@ case6_verify_guest_image_unchanged() {
         echo 'Guest image metadata changed during the triad.' >&2; return 1;
     }
 }
+case6_verify_osworld_source_unchanged() {
+    local current_commit current_diff current_untracked
+    current_commit="$(git -C "$OSWORLD_DIR" rev-parse HEAD)" || return 1
+    current_diff="$(git -C "$OSWORLD_DIR" diff --binary HEAD | sha256sum | awk '{print $1}')" || return 1
+    current_untracked="$(git -C "$OSWORLD_DIR" ls-files --others --exclude-standard)" || return 1
+    [[ "$current_commit" == "$CODESK_CASE6_V13_OSWORLD_COMMIT" &&
+       "$current_diff" == "$CODESK_CASE6_V13_OSWORLD_DIFF_SHA256" &&
+       -z "$current_untracked" ]]
+}
 case6_exit_trap() {
     local case6_exit_code=$?
     trap - EXIT
     if ! case6_verify_guest_image_unchanged; then case6_exit_code=3; fi
+    if ! case6_verify_osworld_source_unchanged; then
+        echo 'OSWorld source identity changed during the triad.' >&2; case6_exit_code=3
+    fi
     exit "$case6_exit_code"
 }
 trap case6_exit_trap EXIT
-printf 'docker_host\t%s\ndocker_data_root\t%s\nruntime_image\t%s\nruntime_image_id\t%s\nguest_image\t%s\nguest_image_sha256_expected\t%s\nguest_image_sha256_verified\t%s\nguest_image_fingerprint\t%s\nguest_image_capacity_policy\tread_only_base_digest_and_mount_check\ngit_common\t%s\npythondontwritebytecode\t1\n' \
+printf 'docker_host\t%s\ndocker_data_root\t%s\nruntime_image\t%s\nruntime_image_id\t%s\nosworld_dir\t%s\nosworld_commit_pin\t%s\nosworld_commit_actual\t%s\nosworld_diff_sha256_pin\t%s\nosworld_diff_sha256_actual\t%s\nguest_image\t%s\nguest_image_sha256_expected\t%s\nguest_image_sha256_verified\t%s\nguest_image_fingerprint\t%s\nguest_image_capacity_policy\tread_only_base_digest_and_mount_check\ngit_common\t%s\npythondontwritebytecode\t1\n' \
     "$case6_docker_host" "$case6_actual_data_root" "$OSCOMBO_RUNTIME_IMAGE" \
-    "$case6_actual_runtime_image_id" "$case6_guest_image" \
+    "$case6_actual_runtime_image_id" "$OSWORLD_DIR" \
+    "$CODESK_CASE6_V13_OSWORLD_COMMIT" "$case6_actual_osworld_commit" \
+    "$CODESK_CASE6_V13_OSWORLD_DIFF_SHA256" "$case6_actual_osworld_diff_sha256" "$case6_guest_image" \
     "$CODESK_CASE6_V13_GUEST_IMAGE_SHA256" "$case6_guest_image_sha_verified" \
     "$case6_guest_image_fingerprint" "$case6_git_common" > "$CODESK_CASE6_V13_RUN_BASE/resource_preflight.tsv"
 case6_stamp="$(date -u +%Y%m%dT%H%M%SZ)-$$"

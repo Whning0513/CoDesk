@@ -13,6 +13,7 @@ import os
 import re
 import secrets
 import shlex
+import subprocess
 import sys
 import threading
 import time
@@ -345,10 +346,13 @@ def docker_image_id_matches(expected_id: str, actual_id: str) -> bool:
             and expected_id == actual_id)
 
 
-def verify_run_owned_cache(env: Any, run_root: Path, guest_key: str) -> dict[str, Any]:
-    """Verify DesktopEnv and SetupController use this Guest's run-owned cache."""
+def verify_run_owned_cache(env: Any, run_root: Path, guest_key: str,
+                           stage: str) -> dict[str, Any]:
+    """Verify cache ownership, allowing task cache creation only during boot."""
     if guest_key not in {"shared", "A", "B"}:
         raise ValueError("unknown Case 6 Guest key for cache ownership")
+    if stage not in {"boot", "reset"}:
+        raise ValueError("cache validation stage must be 'boot' or 'reset'")
     root = run_root.resolve(strict=True)
     owned_root = root / "cache" / guest_key
     resolved_owned_root = owned_root.resolve(strict=False)
@@ -376,13 +380,20 @@ def verify_run_owned_cache(env: Any, run_root: Path, guest_key: str) -> dict[str
 
     task_cache = getattr(env, "cache_dir", None)
     task_cache_path = None
-    if task_cache:
+    task_cache_present = (isinstance(task_cache, (str, os.PathLike))
+                          and bool(os.fspath(task_cache)))
+    if task_cache is not None and not task_cache_present:
+        raise ValueError("DesktopEnv task cache path is malformed")
+    if stage == "reset" and not task_cache_present:
+        raise ValueError("DesktopEnv task cache path is missing after reset")
+    if task_cache_present:
         task_cache_path = Path(task_cache).resolve(strict=False)
         try:
             task_cache_path.relative_to(resolved_owned_root)
         except ValueError as exc:
             raise ValueError("DesktopEnv task cache escapes this Guest's run-owned cache directory") from exc
-    return {"guest_key": guest_key, "cache_root": str(resolved_owned_root),
+    return {"guest_key": guest_key, "validation_stage": stage,
+            "cache_root": str(resolved_owned_root),
             "desktop_env_cache_dir_base": str(resolved["DesktopEnv.cache_dir_base"]),
             "setup_controller_cache_dir": str(resolved["SetupController.cache_dir"]),
             "desktop_env_task_cache_dir": str(task_cache_path) if task_cache_path else None,
@@ -390,7 +401,8 @@ def verify_run_owned_cache(env: Any, run_root: Path, guest_key: str) -> dict[str
 
 
 def verify_run_owned_guest_resources(container: Any, env: Any, image: str,
-                                     run_root: Path, guest_key: str) -> dict[str, Any]:
+                                     run_root: Path, guest_key: str,
+                                     stage: str) -> dict[str, Any]:
     """Verify the current Guest's base mount, overlay, cache, and pinned runtime."""
     attrs = getattr(container, "attrs", None)
     if not isinstance(attrs, dict):
@@ -404,7 +416,7 @@ def verify_run_owned_guest_resources(container: Any, env: Any, image: str,
     overlay = getattr(provider, "_oscombo_overlay", None)
     if not isinstance(overlay, (str, os.PathLike)) or not str(overlay):
         raise ValueError("Guest QEMU overlay path is unavailable")
-    cache = verify_run_owned_cache(env, run_root, guest_key)
+    cache = verify_run_owned_cache(env, run_root, guest_key, stage)
     resource_gate_amendment.verify_guest_mount_and_writes(
         image_path=image, run_root=run_root, mount=base_mount,
         overlay_path=overlay, cache_path=cache["cache_root"])
@@ -412,7 +424,8 @@ def verify_run_owned_guest_resources(container: Any, env: Any, image: str,
     actual_runtime = attrs.get("Image")
     if expected_runtime and not docker_image_id_matches(expected_runtime, actual_runtime):
         raise ValueError("Guest container runtime image ID differs from the frozen pin")
-    return {"guest_key": guest_key, "container_id": getattr(container, "id", None),
+    return {"guest_key": guest_key, "validation_stage": stage,
+            "container_id": getattr(container, "id", None),
             "runtime_image_id": actual_runtime, "base_mount": base_mount,
             "overlay_path": str(Path(overlay).resolve(strict=True)),
             "cache": cache, "verified": True}
@@ -424,6 +437,38 @@ def filesystem_capacity_ok(available_kib: int, available_inodes: int,
     return (type(available_kib) is int and type(available_inodes) is int
             and available_kib >= min_gib * 1024 * 1024
             and available_inodes >= min_inodes)
+
+
+def osworld_source_identity(provider: Path) -> dict[str, str]:
+    """Pin local OSWorld HEAD plus tracked worktree/index diff; reject untracked files."""
+    try:
+        head_result = subprocess.run(
+            ["git", "-C", str(provider), "rev-parse", "HEAD"],
+            check=True, capture_output=True, text=True, timeout=10)
+        diff_result = subprocess.run(
+            ["git", "-C", str(provider), "diff", "--binary", "HEAD"],
+            check=True, capture_output=True, timeout=30)
+        untracked_result = subprocess.run(
+            ["git", "-C", str(provider), "ls-files", "--others", "--exclude-standard"],
+            check=True, capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RuntimeError("cannot read the local OSWorld source identity") from exc
+    if untracked_result.stdout.strip():
+        raise RuntimeError("OSWorld checkout has untracked non-ignored files")
+    commit = head_result.stdout.strip()
+    if not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", commit):
+        raise RuntimeError("local OSWorld HEAD is not a full Git commit ID")
+    return {"commit": commit,
+            "diff_sha256": hashlib.sha256(diff_result.stdout).hexdigest()}
+
+
+def osworld_source_matches(expected_commit: str, expected_diff_sha256: str,
+                           actual: dict[str, str]) -> bool:
+    """Require a full HEAD pin and exact binary diff hash for the RO-base cohort."""
+    return (bool(re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", expected_commit or ""))
+            and bool(re.fullmatch(r"[0-9a-f]{64}", expected_diff_sha256 or ""))
+            and actual.get("commit") == expected_commit
+            and actual.get("diff_sha256") == expected_diff_sha256)
 
 
 def _write_no_bytecode_python(run_root: Path, python: str) -> str:
@@ -616,10 +661,18 @@ def run_model_episode(*, arm: str, run_root: Path, provider: Path, image: str,
         raise ValueError("the v1.3 triad pins effort=medium and timeout=1200s")
     if robase_validation:
         required_robase = ("CODESK_CASE6_V13_GUEST_IMAGE_SHA256",
-                           "CODESK_CASE6_V13_RUNTIME_IMAGE_ID")
+                           "CODESK_CASE6_V13_RUNTIME_IMAGE_ID",
+                           "CODESK_CASE6_V13_OSWORLD_COMMIT",
+                           "CODESK_CASE6_V13_OSWORLD_DIFF_SHA256")
         missing_robase = [name for name in required_robase if not os.environ.get(name)]
         if missing_robase:
-            raise RuntimeError("read-only-base validation requires frozen image/runtime pins")
+            raise RuntimeError("read-only-base validation requires frozen image/runtime/OSWorld source pins")
+        actual_osworld_identity = osworld_source_identity(provider)
+        if not osworld_source_matches(os.environ["CODESK_CASE6_V13_OSWORLD_COMMIT"],
+                os.environ["CODESK_CASE6_V13_OSWORLD_DIFF_SHA256"], actual_osworld_identity):
+            raise RuntimeError("OSWorld source identity does not match the frozen commit/diff pins")
+    else:
+        actual_osworld_identity = None
     if not os.environ.get(api_key_env):
         raise RuntimeError(f"provider credential environment variable is missing: {api_key_env}")
     contract = model_contract(arm, model=model, base_url=base_url,
@@ -648,6 +701,10 @@ def run_model_episode(*, arm: str, run_root: Path, provider: Path, image: str,
                 "gui_input_lock_path": str(run_root / "gui_input.lock") if lock_enabled else None}
     if robase_validation:
         metadata["guest_resource_policy"] = "case6_readonly_base_v1"
+        metadata["osworld_commit_pin"] = os.environ["CODESK_CASE6_V13_OSWORLD_COMMIT"]
+        metadata["osworld_commit"] = actual_osworld_identity["commit"]
+        metadata["osworld_diff_sha256_pin"] = os.environ["CODESK_CASE6_V13_OSWORLD_DIFF_SHA256"]
+        metadata["osworld_diff_sha256"] = actual_osworld_identity["diff_sha256"]
     ledger = RunLedger(run_root, metadata)
     _save_json(run_root / "ownership.json", {"run_id": run_id, "resources": [],
         "cleanup": "only exact owned oscombo.run label and full container ID"})
@@ -686,7 +743,7 @@ def run_model_episode(*, arm: str, run_root: Path, provider: Path, image: str,
             if robase_validation:
                 container, _ = core._owned_container(env, run_id)
                 guest_resource_evidence["boot"][key] = verify_run_owned_guest_resources(
-                    container, env, image, run_root, key)
+                    container, env, image, run_root, key, stage="boot")
                 _save_json(run_root / "guest_resource_evidence.json", guest_resource_evidence)
             shared_pilot._install_v13(guest, fixture, spec.CASE_VERSION)
         screenshot_log_lock = threading.Lock()
@@ -820,7 +877,7 @@ def run_model_episode(*, arm: str, run_root: Path, provider: Path, image: str,
             resource_row = None
             if robase_validation:
                 resource_row = verify_run_owned_guest_resources(
-                    new_container, env, image, run_root, key)
+                    new_container, env, image, run_root, key, stage="reset")
                 guest_resource_evidence["reset"][key] = resource_row
                 _save_json(run_root / "guest_resource_evidence.json", guest_resource_evidence)
             if new_container.id == old_id or not core._missing_container(old_id):

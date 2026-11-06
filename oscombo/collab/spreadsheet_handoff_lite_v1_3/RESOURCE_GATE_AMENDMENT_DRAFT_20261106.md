@@ -40,15 +40,21 @@ check for the experiment's outputs.
 
 `run_model_triad_robase.sh` keeps the existing 15 GiB / 1024 inode checks on
 the writable run, Docker, and Git paths, including a recheck before every arm.
-It rejects `DOCKER_CONTEXT`, exports the exact socket checked during
+It requires the OSWorld HEAD commit and `git diff --binary HEAD` SHA-256 pins,
+rejects non-ignored untracked files, and rechecks both at each arm and triad exit.
+Staged and unstaged tracked changes are accepted only as part of the pinned
+diff. It rejects `DOCKER_CONTEXT`, exports the exact socket checked during
 preflight, pins the canonical no-symlink Guest image, and verifies the frozen
 SHA with before/after metadata. The Case 6 model adapter records and checks the
 actual Guest mount, runtime image ID, overlay, and DesktopEnv/SetupController
-cache root at boot and after postscore reset. `resource_gate_amendment.py`
+cache root at boot and after postscore reset; only reset requires a nonempty
+task-specific `env.cache_dir`, since OSWorld assigns it during `_set_task_info()`.
+The original runner does not enable these RO-base checks. `resource_gate_amendment.py`
 contains pure helpers; its offline tests cover capacity thresholds, missing
 paths, digest mismatch and mutation during hashing, wrong mount, escaped
-overlay/cache, runtime mismatch, and the new runner's gate. These tests use
-temporary fixtures, not the OSWorld image. They do not prove that every
+overlay/cache, staged-diff pin, untracked-file rejection, cache lifecycle,
+runtime mismatch, and the new runner's gate. These tests use temporary fixtures,
+not the OSWorld image. They do not prove that every
 provider path is write-free in a live run; Guest mount evidence and scripted
 GUI controls remain mandatory. Test totals must be recorded from the current
 source revision and are not carried forward from earlier commits.
