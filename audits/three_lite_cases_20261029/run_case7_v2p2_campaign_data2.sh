@@ -50,4 +50,8 @@ case7_actual_runtime="$(DOCKER_HOST="$DOCKER_HOST" docker image inspect \
 [[ "$case7_actual_runtime" == "$case7_expected_runtime" ]] || {
     echo 'Runtime image ID differs from the Case 7 freeze; no run was started.' >&2; exit 3;
 }
+# Carry the image ID that was just verified. The slot runner sources env.local.sh
+# again, so it must explicitly prefer this verified ID over the configured tag.
+export CODESK_CASE7_V2P2_VERIFIED_RUNTIME_IMAGE_ID="$case7_actual_runtime"
+export OSCOMBO_RUNTIME_IMAGE="$case7_actual_runtime"
 exec "$case7_python" -m oscombo.collab.workspace_assembly_lite_v2p2.campaign "$@"

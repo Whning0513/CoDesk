@@ -13,6 +13,12 @@ else
     exit 3
 fi
 export PYTHONDONTWRITEBYTECODE=1
+if [[ -n "${CODESK_CASE7_V2P2_VERIFIED_RUNTIME_IMAGE_ID:-}" ]]; then
+    if [[ ! "$CODESK_CASE7_V2P2_VERIFIED_RUNTIME_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+        echo 'Verified Case 7 runtime image ID is malformed; no run was started.' >&2; exit 3
+    fi
+    export OSCOMBO_RUNTIME_IMAGE="$CODESK_CASE7_V2P2_VERIFIED_RUNTIME_IMAGE_ID"
+fi
 # The provider credential is read only from the owner-only file below. Do not
 # inherit unrelated API keys from the invoking shell into the coordinator.
 unset AIGCBEST_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY HAOGPT_API_KEY
