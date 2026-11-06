@@ -10,6 +10,8 @@ else
     echo 'Missing env.local.sh for OSWorld paths' >&2
     exit 3
 fi
+# OSWorld is mounted from its external provider tree; do not write .pyc there.
+export PYTHONDONTWRITEBYTECODE=1
 # The provider credential is read only from the owner-only file below. Do not
 # inherit unrelated API keys from the invoking shell into the coordinator.
 unset AIGCBEST_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY HAOGPT_API_KEY
