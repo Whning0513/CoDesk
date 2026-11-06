@@ -10,7 +10,14 @@ invoking that interpreter, preventing Python bytecode cache writes into the
 provider tree. Experiment output, Guest cache and overlays remain owned by the
 run root.
 
-This source edit changes the frozen source commit. The prior v2.2 freeze and
+The standalone clone also has a separate campaign launcher that sources the
+gitignored, non-secret `env.local.sh`, requires the dedicated data2 Docker
+socket, and verifies the Docker data-root with a read-only `docker info` query
+before invoking the campaign scheduler. It will fail closed instead of falling
+back to a default data3 Docker context. The dedicated socket/data-root has not
+been created or started.
+
+These source edits change the frozen source commit. The prior v2.2 freeze and
 historical records remain tied to their original commit and are not reusable
 for a formal cohort. Before any Guest run, commit this amendment, rerun the
 scripted positive/negative controls on both topologies, review the screenshots
