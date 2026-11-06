@@ -41,6 +41,31 @@ def test_guest_image_digest_mismatch_is_rejected(tmp_path: Path) -> None:
         gate.verify_frozen_image_sha256(image, "0" * 64)
 
 
+def test_guest_image_change_during_hash_is_rejected(tmp_path: Path, monkeypatch) -> None:
+    image = tmp_path / "guest.qcow2"
+    image.write_bytes(b"before")
+    expected = hashlib.sha256(b"before").hexdigest()
+    real_sha256 = gate.hashlib.sha256
+
+    class MutatingHash:
+        def __init__(self):
+            self.inner = real_sha256()
+            self.changed = False
+
+        def update(self, chunk: bytes) -> None:
+            self.inner.update(chunk)
+            if not self.changed:
+                image.write_bytes(b"changed-during-hash")
+                self.changed = True
+
+        def hexdigest(self) -> str:
+            return self.inner.hexdigest()
+
+    monkeypatch.setattr(gate.hashlib, "sha256", MutatingHash)
+    with pytest.raises(ValueError, match="changed while it was being hashed"):
+        gate.verify_frozen_image_sha256(image, expected)
+
+
 def test_guest_image_requires_a_frozen_digest(tmp_path: Path) -> None:
     image = tmp_path / "guest.qcow2"
     image.write_bytes(b"fixture")
@@ -135,3 +160,21 @@ def test_robase_runner_keeps_capacity_gate_on_writable_paths_only() -> None:
     assert "CODESK_CASE6_V13_GUEST_IMAGE_SHA256" in script
     assert "case6_guest_image_fingerprint" in script
     assert "trap case6_exit_trap EXIT" in script
+    selected_host = script.index('case6_docker_host="${DOCKER_HOST:-unix:///var/run/docker.sock}"')
+    socket_check = script.index('[[ -S "$case6_docker_socket"')
+    exported_host = script.index('export DOCKER_HOST="$case6_docker_host"')
+    model_runner = script.index("-m oscombo.collab.spreadsheet_handoff_lite_v1_3.model_pilot")
+    assert selected_host < socket_check < exported_host < model_runner
+    context_guard = script.index('[[ -z "${DOCKER_CONTEXT:-}" ]]')
+    assert context_guard < script.index("docker info --format")
+    assert '[[ "$OSCOMBO_GUEST_IMAGE" == "$case6_guest_image" ]]' in script
+    assert 'export OSCOMBO_GUEST_IMAGE="$case6_guest_image"' in script
+    assert "verify_frozen_image_sha256" in script
+    assert "verify_image_unchanged" in script
+    assert "guest_image_sha256_verified" in script
+    assert "guest_image_sha256_actual" not in script
+    assert "--robase-validation" in script
+    assert 'for arm in isolated shared sharedlock; do' in script
+    assert 'case6_check_fs "run base before $arm"' in script
+    assert 'case6_check_fs "Docker data-root before $arm"' in script
+    assert 'case6_check_fs "Git common directory before $arm"' in script

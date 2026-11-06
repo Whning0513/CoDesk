@@ -4,6 +4,15 @@ Status: offline-only amendment candidate. It does not replace the original v1.3
 protocol or change the Task Card, A/B prompts, Fixture, Gold, Oracle, tool
 allowlist, model budget, or three-arm comparison.
 
+## Scope and precedence
+
+The original `EXPERIMENT_PROTOCOL.md` remains authoritative for the original
+`run_model_triad.sh` entry point and all existing evidence. This amendment
+applies only to the separate `run_model_triad_robase.sh` candidate and only to
+a newly frozen cohort; it does not retroactively waive the old image-filesystem
+gate. A Guest/model run remains unauthorized under the current offline-only
+instruction.
+
 ## Entry point and freeze
 
 Use `run_model_triad_robase.sh` from the independent Case 6 clone. The source
@@ -32,8 +41,21 @@ The common Guest boot path must verify that Docker mounted that exact image at
 `/System.qcow2` with `RW=false`; the QEMU overlay must be run-owned. DesktopEnv
 cache, screenshots, collaboration/relay logs, and final artifacts stay under
 the run root. The shell runner records the image device/inode/size/mtime/ctime
-before the triad and checks the same metadata on every exit. Python bytecode
-writing remains disabled for external OSWorld imports.
+before the triad and checks the same metadata on every exit. The SHA helper
+compares metadata before and after hashing, rejects a symlink/noncanonical
+image path, and the canonical image path is the one passed to every Guest.
+The Case 6 model adapter also verifies the runtime image ID, actual mount,
+overlay, and DesktopEnv/SetupController cache root at boot and after postscore
+reset only when the new entrypoint passes `--robase-validation`; the original
+v1.3 model runner does not enable that policy and retains its previous result
+contract.
+After validating the selected Docker socket, the runner exports that same
+`DOCKER_HOST` so the Python Docker SDK and Guest provider cannot silently fall
+back to a different daemon; it rejects a set `DOCKER_CONTEXT` to avoid CLI
+context precedence ambiguity. The runner rechecks writable filesystem reserve
+before each arm. Python bytecode writing remains disabled for external OSWorld
+imports. These checks are startup guards, not a peak-disk quota, so resource
+samples still need review during any future authorized episode.
 
 ## Comparison conditions and validity
 

@@ -31,7 +31,7 @@ from oscombo.collab.data_to_deck.workspace_bridge import SavedArtifactBridge
 from oscombo.collab.spreadsheet_handoff_lite_v1_2 import relay_transport
 from oscombo.responses_tool_image_relay import make_server as make_allowlisted_relay
 
-from . import adapter, fixtures, oracle, spec
+from . import adapter, fixtures, oracle, resource_gate_amendment, spec
 
 
 ARM_CONDITIONS = {
@@ -345,6 +345,79 @@ def docker_image_id_matches(expected_id: str, actual_id: str) -> bool:
             and expected_id == actual_id)
 
 
+def verify_run_owned_cache(env: Any, run_root: Path, guest_key: str) -> dict[str, Any]:
+    """Verify DesktopEnv and SetupController use this Guest's run-owned cache."""
+    if guest_key not in {"shared", "A", "B"}:
+        raise ValueError("unknown Case 6 Guest key for cache ownership")
+    root = run_root.resolve(strict=True)
+    owned_root = root / "cache" / guest_key
+    resolved_owned_root = owned_root.resolve(strict=False)
+    try:
+        resolved_owned_root.relative_to(root / "cache")
+    except ValueError as exc:
+        raise ValueError("Guest cache root escapes the run-owned cache directory") from exc
+
+    setup = getattr(env, "setup_controller", None)
+    observed = {
+        "DesktopEnv.cache_dir_base": getattr(env, "cache_dir_base", None),
+        "SetupController.cache_dir": getattr(setup, "cache_dir", None),
+    }
+    resolved = {}
+    for label, path in observed.items():
+        if not isinstance(path, (str, os.PathLike)) or not str(path):
+            raise ValueError(f"{label} is unavailable; cannot verify Guest cache ownership")
+        resolved[label] = Path(path).resolve(strict=False)
+        try:
+            resolved[label].relative_to(resolved_owned_root)
+        except ValueError as exc:
+            raise ValueError(f"{label} is outside this Guest's run-owned cache directory") from exc
+        if label == "DesktopEnv.cache_dir_base" and resolved[label] != resolved_owned_root:
+            raise ValueError(f"{label} is outside this Guest's run-owned cache directory")
+
+    task_cache = getattr(env, "cache_dir", None)
+    task_cache_path = None
+    if task_cache:
+        task_cache_path = Path(task_cache).resolve(strict=False)
+        try:
+            task_cache_path.relative_to(resolved_owned_root)
+        except ValueError as exc:
+            raise ValueError("DesktopEnv task cache escapes this Guest's run-owned cache directory") from exc
+    return {"guest_key": guest_key, "cache_root": str(resolved_owned_root),
+            "desktop_env_cache_dir_base": str(resolved["DesktopEnv.cache_dir_base"]),
+            "setup_controller_cache_dir": str(resolved["SetupController.cache_dir"]),
+            "desktop_env_task_cache_dir": str(task_cache_path) if task_cache_path else None,
+            "verified": True}
+
+
+def verify_run_owned_guest_resources(container: Any, env: Any, image: str,
+                                     run_root: Path, guest_key: str) -> dict[str, Any]:
+    """Verify the current Guest's base mount, overlay, cache, and pinned runtime."""
+    attrs = getattr(container, "attrs", None)
+    if not isinstance(attrs, dict):
+        raise ValueError("Guest container inspection attributes are unavailable")
+    mounts = attrs.get("Mounts")
+    if not isinstance(mounts, list):
+        raise ValueError("Guest mount inspection evidence is unavailable")
+    base_mount = next((row for row in mounts if isinstance(row, dict)
+                       and row.get("Destination") == "/System.qcow2"), None)
+    provider = getattr(env, "provider", None)
+    overlay = getattr(provider, "_oscombo_overlay", None)
+    if not isinstance(overlay, (str, os.PathLike)) or not str(overlay):
+        raise ValueError("Guest QEMU overlay path is unavailable")
+    cache = verify_run_owned_cache(env, run_root, guest_key)
+    resource_gate_amendment.verify_guest_mount_and_writes(
+        image_path=image, run_root=run_root, mount=base_mount,
+        overlay_path=overlay, cache_path=cache["cache_root"])
+    expected_runtime = os.environ.get("CODESK_CASE6_V13_RUNTIME_IMAGE_ID")
+    actual_runtime = attrs.get("Image")
+    if expected_runtime and not docker_image_id_matches(expected_runtime, actual_runtime):
+        raise ValueError("Guest container runtime image ID differs from the frozen pin")
+    return {"guest_key": guest_key, "container_id": getattr(container, "id", None),
+            "runtime_image_id": actual_runtime, "base_mount": base_mount,
+            "overlay_path": str(Path(overlay).resolve(strict=True)),
+            "cache": cache, "verified": True}
+
+
 def filesystem_capacity_ok(available_kib: int, available_inodes: int,
                            min_gib: int = 15, min_inodes: int = 1024) -> bool:
     """Pure capacity gate for shell preflight and its offline tests."""
@@ -534,12 +607,19 @@ def _usage_by_actor(run_root: Path) -> dict[str, dict[str, int]]:
 def run_model_episode(*, arm: str, run_root: Path, provider: Path, image: str,
                       runtime: str, model: str, base_url: str,
                       api_key_env: str, mcp_python: str,
-                      effort: str = MODEL_EFFORT, timeout: float = MODEL_TIMEOUT_S) -> dict[str, Any]:
+                      effort: str = MODEL_EFFORT, timeout: float = MODEL_TIMEOUT_S,
+                      robase_validation: bool = False) -> dict[str, Any]:
     """Run one v1.3 model arm in real Guest(s); never call this in offline checks."""
     if arm not in ARM_CONDITIONS:
         raise ValueError(f"unknown v1.3 model arm: {arm!r}")
     if effort != MODEL_EFFORT or timeout != MODEL_TIMEOUT_S:
         raise ValueError("the v1.3 triad pins effort=medium and timeout=1200s")
+    if robase_validation:
+        required_robase = ("CODESK_CASE6_V13_GUEST_IMAGE_SHA256",
+                           "CODESK_CASE6_V13_RUNTIME_IMAGE_ID")
+        missing_robase = [name for name in required_robase if not os.environ.get(name)]
+        if missing_robase:
+            raise RuntimeError("read-only-base validation requires frozen image/runtime pins")
     if not os.environ.get(api_key_env):
         raise RuntimeError(f"provider credential environment variable is missing: {api_key_env}")
     contract = model_contract(arm, model=model, base_url=base_url,
@@ -566,6 +646,8 @@ def run_model_episode(*, arm: str, run_root: Path, provider: Path, image: str,
                 "guest_validation_status": "actual_run_pending",
                 "secret_values_recorded": False,
                 "gui_input_lock_path": str(run_root / "gui_input.lock") if lock_enabled else None}
+    if robase_validation:
+        metadata["guest_resource_policy"] = "case6_readonly_base_v1"
     ledger = RunLedger(run_root, metadata)
     _save_json(run_root / "ownership.json", {"run_id": run_id, "resources": [],
         "cleanup": "only exact owned oscombo.run label and full container ID"})
@@ -588,6 +670,8 @@ def run_model_episode(*, arm: str, run_root: Path, provider: Path, image: str,
     reopen: list[dict[str, Any]] = []
     outcomes: dict[str, dict[str, Any]] = {}
     reset_evidence: list[dict[str, Any]] = []
+    guest_resource_evidence: dict[str, Any] | None = (
+        {"boot": {}, "reset": {}} if robase_validation else None)
     try:
         sys.dont_write_bytecode = True
         os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
@@ -595,8 +679,15 @@ def run_model_episode(*, arm: str, run_root: Path, provider: Path, image: str,
         relay_server, relay_thread, model_base = _start_allowlisted_relay(
             run_root, base_url, api_key_env, os.environ[relay_token_env])
         for key in (("shared",) if arm != "isolated" else ("A", "B")):
+            if robase_validation:
+                (run_root / "cache" / key).mkdir(parents=True, exist_ok=True)
             env, guest, cid = core._boot_guest(run_root, run_id, key, image, provider, runtime, ledger)
             envs[key], guests[key], container_ids[key] = env, guest, cid
+            if robase_validation:
+                container, _ = core._owned_container(env, run_id)
+                guest_resource_evidence["boot"][key] = verify_run_owned_guest_resources(
+                    container, env, image, run_root, key)
+                _save_json(run_root / "guest_resource_evidence.json", guest_resource_evidence)
             shared_pilot._install_v13(guest, fixture, spec.CASE_VERSION)
         screenshot_log_lock = threading.Lock()
         for guest in guests.values():
@@ -725,15 +816,27 @@ def run_model_episode(*, arm: str, run_root: Path, provider: Path, image: str,
             env.is_environment_used = True
             env.reset()
             new_container, labels = core._owned_container(env, run_id)
+            container_ids[key] = new_container.id
+            resource_row = None
+            if robase_validation:
+                resource_row = verify_run_owned_guest_resources(
+                    new_container, env, image, run_root, key)
+                guest_resource_evidence["reset"][key] = resource_row
+                _save_json(run_root / "guest_resource_evidence.json", guest_resource_evidence)
             if new_container.id == old_id or not core._missing_container(old_id):
                 raise RuntimeError("reset did not replace the run-owned v1.3 Guest")
             core._shell(guests[key],
                 f"test ! -e {shlex.quote(spec.TASK_ROOT)} && ! pgrep -x soffice.bin >/dev/null")
-            container_ids[key] = new_container.id
-            reset_evidence.append({"guest": key, "old": old_id, "new": new_container.id,
-                                   "workspace_clean": True, "labels": labels})
+            reset_row = {"guest": key, "old": old_id, "new": new_container.id,
+                         "workspace_clean": True, "labels": labels}
+            if resource_row is not None:
+                reset_row["guest_resources_verified"] = resource_row["verified"]
+            reset_evidence.append(reset_row)
         _save_json(run_root / "reset_evidence.json", reset_evidence)
-        reset_ok = len(reset_evidence) == len(envs) and all(row["workspace_clean"] for row in reset_evidence)
+        reset_ok = (len(reset_evidence) == len(envs)
+                    and all(row["workspace_clean"] and
+                            (not robase_validation or row.get("guest_resources_verified") is True)
+                            for row in reset_evidence))
         status = map_model_result(oracle_result=score, actor_results=outcomes,
             handoff=handoff, bridge_ok=bridge_ok, relay_audit=relay_result,
             actor_tool_audit=boundary, postscore_lifecycle_ok=postscore_ok, reset_ok=reset_ok)
@@ -760,6 +863,9 @@ def run_model_episode(*, arm: str, run_root: Path, provider: Path, image: str,
             "postscore_lifecycle_ok": postscore_ok, "reset": reset_evidence,
             "elapsed_s": round(elapsed, 3), "status": status,
             "visual_review_required": True}
+        if guest_resource_evidence is not None:
+            result["guest_resource_evidence"] = guest_resource_evidence
+            result["guest_resource_policy"] = "case6_readonly_base_v1"
         _save_json(run_root / "result.json", result)
         return result
     finally:
@@ -817,12 +923,14 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--api-key-env", required=True)
     parser.add_argument("--mcp-python", required=True)
+    parser.add_argument("--robase-validation", action="store_true",
+                        help="enable the versioned read-only-base Guest/cache/runtime checks")
     args = parser.parse_args(argv)
     try:
         result = run_model_episode(arm=args.arm, run_root=args.run_root,
             provider=args.provider.resolve(), image=args.image, runtime=args.runtime,
             model=args.model, base_url=args.base_url, api_key_env=args.api_key_env,
-            mcp_python=args.mcp_python)
+            mcp_python=args.mcp_python, robase_validation=args.robase_validation)
     except Exception as exc:
         secret = os.environ.get(args.api_key_env, "")
         error_text = str(exc)

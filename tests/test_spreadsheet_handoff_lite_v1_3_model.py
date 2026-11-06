@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -49,8 +50,23 @@ def test_model_entry_rejects_preexisting_run_root_before_guest_or_api(monkeypatc
             api_key_env="CASE6_TEST_KEY", mcp_python="/venv/bin/python")
 
 
+def test_robase_model_mode_requires_frozen_image_and_runtime_pins(monkeypatch, tmp_path):
+    monkeypatch.setenv("CASE6_TEST_KEY", "offline-sentinel")
+    monkeypatch.delenv("CODESK_CASE6_V13_GUEST_IMAGE_SHA256", raising=False)
+    monkeypatch.delenv("CODESK_CASE6_V13_RUNTIME_IMAGE_ID", raising=False)
+    run_root = tmp_path / "not-started"
+    with pytest.raises(RuntimeError, match="requires frozen image/runtime pins"):
+        model_pilot.run_model_episode(
+            arm="shared", run_root=run_root, provider=tmp_path, image="image.qcow2",
+            runtime="runtime:tag", model="test-model", base_url="https://model.invalid/v1",
+            api_key_env="CASE6_TEST_KEY", mcp_python="/venv/bin/python",
+            robase_validation=True)
+    assert not run_root.exists()
+
+
 def test_triad_shell_does_not_precreate_python_owned_run_root():
     script = Path(model_pilot.__file__).with_name("run_model_triad.sh").read_text()
+    assert "--robase-validation" not in script
     assert 'mkdir -p "$run_root"' not in script
     assert '> "$CODESK_CASE6_V13_RUN_BASE/$run_id.runner.log"' in script
     assert '--run-root "$run_root"' in script
@@ -79,6 +95,59 @@ def test_resource_gates_reject_wrong_docker_root_and_unpinned_runtime_digest():
     assert model_pilot.docker_image_id_matches(good_id, good_id)
     assert not model_pilot.docker_image_id_matches(good_id, "sha256:" + "b" * 64)
     assert not model_pilot.docker_image_id_matches("mutable:tag", "mutable:tag")
+
+
+def test_desktopenv_and_setup_cache_must_be_run_owned(tmp_path):
+    run_root = tmp_path / "run"
+    owned_cache = run_root / "cache" / "A"
+    owned_cache.mkdir(parents=True)
+    env = SimpleNamespace(cache_dir_base=str(owned_cache),
+                          setup_controller=SimpleNamespace(cache_dir=str(owned_cache)),
+                          cache_dir=str(owned_cache / "task-123"))
+    evidence = model_pilot.verify_run_owned_cache(env, run_root, "A")
+    assert evidence["verified"] is True
+    assert evidence["desktop_env_task_cache_dir"] == str(owned_cache / "task-123")
+
+    env.setup_controller.cache_dir = str(owned_cache / "task-123")
+    evidence = model_pilot.verify_run_owned_cache(env, run_root, "A")
+    assert evidence["setup_controller_cache_dir"] == str(owned_cache / "task-123")
+
+    env.setup_controller.cache_dir = str(tmp_path / "outside")
+    with pytest.raises(ValueError, match="SetupController.cache_dir is outside"):
+        model_pilot.verify_run_owned_cache(env, run_root, "A")
+
+
+def test_current_guest_mount_overlay_cache_and_runtime_pin_are_verified(tmp_path, monkeypatch):
+    run_root = tmp_path / "run"
+    owned_cache = run_root / "cache" / "A"
+    overlay = run_root / "overlay" / "A" / "base.qcow2"
+    owned_cache.mkdir(parents=True)
+    overlay.parent.mkdir(parents=True)
+    overlay.write_bytes(b"overlay")
+    image = tmp_path / "guest.qcow2"
+    image.write_bytes(b"immutable base")
+    expected_runtime = "sha256:" + "a" * 64
+    mount = {"Source": str(image), "Destination": "/System.qcow2", "RW": False}
+    container = SimpleNamespace(id="c" * 64, attrs={"Mounts": [mount], "Image": expected_runtime})
+    env = SimpleNamespace(
+        provider=SimpleNamespace(_oscombo_overlay=str(overlay)),
+        cache_dir_base=str(owned_cache),
+        setup_controller=SimpleNamespace(cache_dir=str(owned_cache)),
+        cache_dir=str(owned_cache / "task-123"))
+    monkeypatch.setenv("CODESK_CASE6_V13_RUNTIME_IMAGE_ID", expected_runtime)
+
+    evidence = model_pilot.verify_run_owned_guest_resources(container, env, str(image), run_root, "A")
+    assert evidence["verified"] is True
+    assert evidence["runtime_image_id"] == expected_runtime
+    assert evidence["base_mount"]["RW"] is False
+
+    mount["RW"] = True
+    with pytest.raises(ValueError, match="read-only"):
+        model_pilot.verify_run_owned_guest_resources(container, env, str(image), run_root, "A")
+    mount["RW"] = False
+    container.attrs["Image"] = "sha256:" + "b" * 64
+    with pytest.raises(ValueError, match="runtime image ID"):
+        model_pilot.verify_run_owned_guest_resources(container, env, str(image), run_root, "A")
 
 
 def test_each_filesystem_needs_15_gib_and_1024_free_inodes():

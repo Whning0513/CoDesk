@@ -1,9 +1,9 @@
-"""Offline draft of a versioned capacity policy for a read-only Guest base.
+"""Offline candidate policy for a versioned read-only Guest base.
 
-This helper is deliberately not imported by the frozen v1.3 runner. A future
-protocol amendment may use it after review. Writable run resources retain the
-existing capacity gate; the immutable qcow2 base is verified by digest and by
-the actual Docker mount record instead of requiring free space on its device.
+This helper is imported only by the separate read-only-base runner; the frozen
+v1.3 runner remains unchanged. Writable run resources retain the existing
+capacity gate; the immutable qcow2 base is verified by digest and by the actual
+Docker mount record instead of requiring free space on its device.
 """
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ def image_fingerprint(image_path: str | Path) -> dict[str, int]:
         raise ValueError("Guest base image must be a readable regular file")
     stat = resolved.stat()
     return {"device": stat.st_dev, "inode": stat.st_ino, "size": stat.st_size,
-            "mtime_ns": stat.st_mtime_ns}
+            "mtime_ns": stat.st_mtime_ns, "ctime_ns": stat.st_ctime_ns}
 
 
 def verify_frozen_image_sha256(image_path: str | Path,
