@@ -13,10 +13,13 @@ run root.
 The standalone clone also has a separate campaign launcher that sources the
 gitignored, non-secret `env.local.sh`, requires the dedicated data2 Docker
 socket, and verifies the Docker data-root with a read-only `docker info` query
-before invoking the campaign scheduler. It will fail closed instead of falling
-back to a default data3 Docker context. The dedicated socket/data-root has not
-been created or started. `configs/case7_data2.env.example.sh` contains the
-non-secret paths to copy into the ignored local file; it contains no API key.
+before invoking the campaign scheduler. It reads the runtime image digest from
+the supplied freeze and compares it with a read-only `docker image inspect` in
+that same daemon, so a moved tag fails before any Guest starts. It will fail
+closed instead of falling back to a default data3 Docker context. The dedicated
+socket/data-root has not been created or started.
+`configs/case7_data2.env.example.sh` contains the non-secret paths to copy into
+the ignored local file; it contains no API key.
 
 These source edits change the frozen source commit. The prior v2.2 freeze and
 historical records remain tied to their original commit and are not reusable
