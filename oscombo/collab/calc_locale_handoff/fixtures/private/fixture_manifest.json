@@ -1,0 +1,45 @@
+{
+  "gold_sha256": {
+    "purchase_decision.ods": {
+      "bytes": 1687,
+      "sha256": "f6377da6646f2cce80435fc4560047a80e102b3deb0dce48010c9a65fa836d04"
+    },
+    "vendor_eu.ods": {
+      "bytes": 1790,
+      "sha256": "be2e522679d27def13b0f6f880d189de82299ebd8729bd157b3d738852c4acc5"
+    },
+    "vendor_us.ods": {
+      "bytes": 1699,
+      "sha256": "4884a02875f6a375592e4475c26da882bb2b1e993e357a9ab2c000bf8359220b"
+    }
+  },
+  "gold_visibility": "evaluator only",
+  "negative_text_parse_sha256": {
+    "purchase_decision.ods": {
+      "bytes": 1678,
+      "sha256": "7b85d3c3cc496e45266fcf18eeba31c3f924d38596b9846e0349379c7efb4781"
+    },
+    "vendor_eu.ods": {
+      "bytes": 1752,
+      "sha256": "aa24bdd62744c58e2e34cec4cf1c762611de6df8510ac36ba96add700eccf82f"
+    },
+    "vendor_us.ods": {
+      "bytes": 1699,
+      "sha256": "4884a02875f6a375592e4475c26da882bb2b1e993e357a9ab2c000bf8359220b"
+    }
+  },
+  "negative_wrong_total_sha256": {
+    "purchase_decision.ods": {
+      "bytes": 1678,
+      "sha256": "a7206d17f6ea0dcfaf6b2fe6e91a57ab9e30cd46f3629fe37a5c613e9f944c61"
+    },
+    "vendor_eu.ods": {
+      "bytes": 1790,
+      "sha256": "9f40790e3d82638a55e8e2a2c7fb6ca7d8bdd60ac5922faa809a782f1879b05d"
+    },
+    "vendor_us.ods": {
+      "bytes": 1699,
+      "sha256": "4884a02875f6a375592e4475c26da882bb2b1e993e357a9ab2c000bf8359220b"
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "actor_visible_paths": [
+    "vendor_us.ods",
+    "vendor_eu.ods",
+    "purchase_decision.ods"
+  ],
+  "case_id": "CALC-LOCALE1",
+  "case_version": "candidate-0.1",
+  "files": {
+    "purchase_decision.ods": {
+      "bytes": 1650,
+      "sha256": "5ccc72993f76698582c0e794744960bbb9643f33c70c6a55ec53738544c1de74"
+    },
+    "vendor_eu.ods": {
+      "bytes": 1714,
+      "sha256": "8cd31e64aee05b4f29fd7814456863832e80e321c7d2185006e8e90d1e066a17"
+    },
+    "vendor_us.ods": {
+      "bytes": 1646,
+      "sha256": "887f3d19d925bd0351f2301a9230c6936719de08cd8d15a99cd632d8a67e1c36"
+    }
+  },
+  "fixture_id": "CALC-LOCALE1-QUOTE-001",
+  "schema_version": 1
+}
