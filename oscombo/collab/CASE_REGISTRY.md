@@ -1,6 +1,6 @@
 # CoDesk Collaboration Case Registry
 
-This registry covers the seven standalone collaboration cases in this checkout. Offline fixtures and scripted or application-level checks are not model-agent results. No OSWorld Guest, QEMU, or model was started for Cases 6–7 in this branch update.
+This registry covers the seven standalone collaboration cases in this checkout plus the experimental EDIT-1 Lite v1 case. Offline fixtures and scripted or application-level checks are not model-agent results. No OSWorld Guest, QEMU, or model was started for Cases 6–7 in this branch update.
 
 ## Validation status
 
@@ -13,6 +13,7 @@ This registry covers the seven standalone collaboration cases in this checkout. 
 | 5 | [Model-and-Review](model_and_review/TASK_CARD_ZH.md) (`CDD-MAR-001`) | Real initial and Gold `.blend` files; Blender 5.2.2 background parse, structural Oracle, save/reopen and reset passed. | `tests/test_model_and_review.py` | **Blender background/application-file: PASS. GUI/Guest, Solo, MA-ID, MA-SD and model are pending.** Background Blender is not GUI-Agent evidence. |
 | 6 | [Spreadsheet Handoff](spreadsheet_handoff/TASK_CARD_ZH.md) (`CDD-SH-001`) | Real ODS initial/Gold; cached formulas; protected inputs; positive/negative Oracle; append-only version store and reset. | `tests/test_spreadsheet_handoff.py` | **Offline + LibreOffice Calc ODS save/reopen: PASS.** Guest GUI, Single Agent, MA-ID, MA-SD, natural handoff/interference/recovery pending. |
 | 7 | [Workspace Assembly](workspace_assembly/TASK_CARD_ZH.md) (`CDD-WA-001`) | Real ODT, PNG, PDF, CSV and text fixtures; complete Gold tree; path/hash/manifest/link Oracle and controls. | `tests/test_workspace_assembly.py` | **Offline + LibreOffice Writer same-path open/save/reopen: PASS.** File Manager/Writer Guest GUI, Single Agent, MA-ID, MA-SD and natural interference/recovery pending. |
+| 8 | [EDIT-1 Lite v1](edit_mode_handoff/TASK_CARD_ZH.md) (`CDD-EDIT-001`) | Real FODT fixture, evaluator-only Gold, overwrite-signature negative control, exact saved-text Oracle. | `tests/test_edit_mode_handoff.py` | **Offline: PASS. Real Guest scripted GUI: Isolated PASS, Shared attributable FAIL, Shared+PerActionLock attributable FAIL.** Production message/revision bridge and model-agent run are pending. |
 
 ## Reproduce offline checks
 

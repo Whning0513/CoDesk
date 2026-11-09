@@ -1,0 +1,9 @@
+{
+  "case_id": "CDD-EDIT-001",
+  "case_version": "lite_v1",
+  "files": {
+    "private/gold.fodt": "26d54f36465dee0568be451a753bac35abc95b410280651dfd9c8685724ba33c",
+    "private/negative_overwrite_signature/release_notice.fodt": "196aadee68653a3480816abf6f1e6389d8bb2d79531a6399f7f9e29ea7b7d12e",
+    "public/release_notice.fodt": "7529c979a23218ed716cfdd1aecd80657deda53e4231c588f9d149761cc1dd28"
+  }
+}
